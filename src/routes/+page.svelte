@@ -88,7 +88,7 @@
   }
 
   function renderForeground() {
-    paintSensors(fgContext, sensors, currSensor, sensorGroups, sensorImage);
+    paintSensors(fgContext, sensors, currSensor, sensorImage);
   }
 
   function resizeCanvas() {

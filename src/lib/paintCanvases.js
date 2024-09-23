@@ -2,16 +2,15 @@ export function paintBackground(context, img) {
   const { width, height } = context.canvas;
 
   console.log('Background Drawn');
-  
+
   context.drawImage(img, 0, 0, width, height);
   const maxTopHeight = height * 0.75;
 }
 
-export function paintSensors(context, sensors, currSensor, groups, img) {
+export function paintSensors(context, sensors, currSensor, img) {
   const { width, height } = context.canvas;
   console.log('Sensors Drawn');
   context.clearRect(0, 0, width, height);
-
 
   const index = (currSensor ? sensors.findIndex(sensor => sensor.id === currSensor.id) : null);
   for (let i = 0; i < sensors.length; i++) {
