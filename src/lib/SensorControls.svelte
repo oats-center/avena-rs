@@ -13,6 +13,16 @@
   function deleteChanges() {
     onDeleteSensor();
   }
+
+  function readFile() {
+    const reader = new FileReader();
+    
+    reader.addEventListener("load", () => {
+      localStorage.setItem("background", reader.result);
+    })
+
+    reader.readAsDataURL(this.files[0])
+  }
 </script>
 
 <div id="sensorControls" class="w-2/5 h-3/5">
@@ -61,6 +71,7 @@
     <div class="flex flex-col justify-center items-center mt-5">
       <button class="btn btn-neutral w-full max-w-xs" onclick={onAddSensor}>Add Sensor</button>
       <h2 class="mt-5">Change Background</h2>
+      <input type='file' class='file-input file-input-bordered mt-2' onchange={readFile}/>
     </div>
   {/if}    
 </div>
