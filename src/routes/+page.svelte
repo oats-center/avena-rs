@@ -25,15 +25,16 @@
   let sensorImage = $state(null);
 
   onMount(() => {
-    backgroundImage = getLocalImage('background', "").value;
+    let tempBg = getLocalImage('background', "").value;
     const tempImage = new Image();
     tempImage.src = temp_sensor;
     tempImage.onload = function() {
       sensorImage = tempImage;
     }
     const img = new Image();
-    img.src = backgroundImage ? backgroundImage : background;
+    img.src = tempBg ? tempBg : background;
     img.onload = function () {
+      backgroundImage = img;
       setupCanvases(tempImage, img);
     }
 //
@@ -58,19 +59,23 @@
 
   function setupCanvases(fgImage, bgImage) {
     xMax = window.innerWidth * 0.60;
-      yMax = window.innerHeight * 0.80;
-      
-      let maxTopHeight = yMax * 0.75;
-      let width_ratio = xMax / bgImage.width;
-      let height_ratio = maxTopHeight / bgImage.height;
+    yMax = window.innerHeight * 0.80;
+    
+    let width = bgImage ? bgImage.width : backgroundImage.width;
+    let height = bgImage ? bgImage.height : backgroundImage.height;
 
-      if(width_ratio < height_ratio){
-        xMax = bgImage.width * width_ratio;
-        yMax = bgImage.height * width_ratio;
-      } else {
-        xMax = bgImage.width * height_ratio;
-        yMax = bgImage.height * height_ratio;
-      }
+
+    let maxTopHeight = yMax * 0.75;
+    let width_ratio = xMax / width;
+    let height_ratio = maxTopHeight / height;
+
+    if(width_ratio < height_ratio){
+      xMax = width * width_ratio;
+      yMax = height * width_ratio;
+    } else {
+      xMax = width * height_ratio;
+      yMax = height * height_ratio;
+    }
 
     bgContext = bgCanvas.getContext('2d');
     bgCanvas.width = xMax;
