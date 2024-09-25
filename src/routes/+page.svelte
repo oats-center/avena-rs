@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { useLocalStorage } from '$lib/localStorage.svelte.js';
+  import { useLocalStorage, getLocalImage } from '$lib/localStorage.svelte.js';
   import { Sensor } from '$lib/sensor.js'
   import { paintBackground, paintSensors } from '$lib/paintCanvases.js';
   import SensorControls from '$lib/SensorControls.svelte'
@@ -21,21 +21,23 @@
   let yMax = $state(0);
   let resizeTimeout;
   let animationFrameId;
-  let backgroundImage = useLocalStorage('backgroundImage', []).value;
+  let backgroundImage = $state(null);
   let sensorImage = $state(null);
 
   onMount(() => {
+    let tempBg = getLocalImage('background', "").value;
     const tempImage = new Image();
     tempImage.src = temp_sensor;
     tempImage.onload = function() {
       sensorImage = tempImage;
     }
     const img = new Image();
-    img.src = background;
+    img.src = tempBg ? tempBg : background;
     img.onload = function () {
       backgroundImage = img;
-      setupCanvases();
+      setupCanvases(tempImage, img);
     }
+//
     
     // Initial render
     window.addEventListener('resize', function(e) {
@@ -55,21 +57,25 @@
     }
   }
 
-  function setupCanvases() {
+  function setupCanvases(fgImage, bgImage) {
     xMax = window.innerWidth * 0.60;
-      yMax = window.innerHeight * 0.80;
-      
-      let maxTopHeight = yMax * 0.75;
-      let width_ratio = xMax / backgroundImage.width;
-      let height_ratio = maxTopHeight / backgroundImage.height;
+    yMax = window.innerHeight * 0.80;
+    
+    let width = bgImage ? bgImage.width : backgroundImage.width;
+    let height = bgImage ? bgImage.height : backgroundImage.height;
 
-      if(width_ratio < height_ratio){
-        xMax = backgroundImage.width * width_ratio;
-        yMax = backgroundImage.height * width_ratio;
-      } else {
-        xMax = backgroundImage.width * height_ratio;
-        yMax = backgroundImage.height * height_ratio;
-      }
+
+    let maxTopHeight = yMax * 0.75;
+    let width_ratio = xMax / width;
+    let height_ratio = maxTopHeight / height;
+
+    if(width_ratio < height_ratio){
+      xMax = width * width_ratio;
+      yMax = height * width_ratio;
+    } else {
+      xMax = width * height_ratio;
+      yMax = height * height_ratio;
+    }
 
     bgContext = bgCanvas.getContext('2d');
     bgCanvas.width = xMax;
@@ -79,16 +85,18 @@
     fgCanvas.width = xMax;
     fgCanvas.height = yMax;
 
-    renderBackground(backgroundImage);
-    renderForeground();
+    renderBackground(bgImage);
+    renderForeground(fgImage);
   }
 
   function renderBackground(img) {
-    paintBackground(bgContext, img);
+    if(img) paintBackground(bgContext, img);
+    else paintBackground(bgContext, backgroundImage);
   }
 
-  function renderForeground() {
-    paintSensors(fgContext, sensors, currSensor, sensorGroups, sensorImage);
+  function renderForeground(img) {
+    if(img) paintSensors(fgContext, sensors, currSensor, img);
+    else paintSensors(fgContext, sensors, currSensor, sensorImage);
   }
 
   function resizeCanvas() {
@@ -117,7 +125,7 @@
   function addSensor() {
     sensors.push(new Sensor(generateRandomId(), 0, 0, 'red', 1, 'New Sensor', ""));
     currSensor = JSON.parse(JSON.stringify(sensors[sensors.length - 1]));
-    animateForeground(); // Redraw after adding a sensor
+    animateForeground();
   }
   
   function updateSensors() {

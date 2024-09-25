@@ -6,12 +6,34 @@
   export let onSaveSensor;
   export let onDeleteSensor;
 
+  let fileInput;
+
   function saveChanges() {
     onSaveSensor();
   }
 
   function deleteChanges() {
     onDeleteSensor();
+  }
+
+  function readFile() {
+    const file = fileInput.files[0];
+
+    if(!file){
+      console.log("No file input");
+    }
+
+    const reader = new FileReader();
+    
+    reader.addEventListener("load", () => {
+      localStorage.setItem("background", reader.result);
+    })
+
+    reader.readAsDataURL(file);
+    reader.onloadend = () => {
+      window.location.reload();
+    }
+    
   }
 </script>
 
@@ -61,6 +83,13 @@
     <div class="flex flex-col justify-center items-center mt-5">
       <button class="btn btn-neutral w-full max-w-xs" onclick={onAddSensor}>Add Sensor</button>
       <h2 class="mt-5">Change Background</h2>
+      <input type="file" class="file-input file-input-bordered mt-2" bind:this={fileInput}/>
+      <div class="flex">
+        <button class="btn btn-primary mt-2 mr-2" onclick={() => fileInput.value = ""}>Cancel</button>
+        <button class="btn btn-primary mt-2" onclick={readFile}>Save</button>
+        
+      </div>
+      
     </div>
   {/if}    
 </div>
