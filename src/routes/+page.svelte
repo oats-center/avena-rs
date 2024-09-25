@@ -26,7 +26,6 @@
 
   onMount(() => {
     backgroundImage = getLocalImage('background', "").value;
-    console.log(backgroundImage);
     const tempImage = new Image();
     tempImage.src = temp_sensor;
     tempImage.onload = function() {
@@ -34,7 +33,6 @@
     }
     const img = new Image();
     img.src = backgroundImage ? backgroundImage : background;
-    console.log(backgroundImage)
     img.onload = function () {
       setupCanvases(tempImage, img);
     }
