@@ -6,6 +6,7 @@
   import SensorControls from '$lib/SensorControls.svelte'
   import background from "$lib/images/background.png";
   import temp_sensor from "$lib/images/temp_sensor.png";
+  import press_sensor from "$lib/images/press_sensor.png";
 
   let sensors = useLocalStorage('sensors', []).value;
   let sensorColors = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'grey', 'black'];
@@ -22,20 +23,26 @@
   let resizeTimeout;
   let animationFrameId;
   let backgroundImage = $state(null);
-  let sensorImage = $state(null);
+  let sensorImages = $state([]);
 
   onMount(() => {
     let tempBg = getLocalImage('background', "").value;
     const tempImage = new Image();
     tempImage.src = temp_sensor;
     tempImage.onload = function() {
-      sensorImage = tempImage;
+      sensorImages.push(tempImage);
     }
+    const pressImage = new Image();
+    pressImage.src = press_sensor;
+    pressImage.onload = function() { 
+      sensorImages.push(pressImage);
+    }
+    let fgImgs = [tempImage, pressImage];
     const img = new Image();
     img.src = tempBg ? tempBg : background;
     img.onload = function () {
       backgroundImage = img;
-      setupCanvases(tempImage, img);
+      setupCanvases(fgImgs, img);
     }
 //
     
@@ -96,7 +103,7 @@
 
   function renderForeground(img) {
     if(img) paintSensors(fgContext, sensors, currSensor, img);
-    else paintSensors(fgContext, sensors, currSensor, sensorImage);
+    else paintSensors(fgContext, sensors, currSensor, sensorImages);
   }
 
   function resizeCanvas() {

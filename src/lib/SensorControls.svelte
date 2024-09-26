@@ -83,7 +83,7 @@
     <div class="flex flex-col justify-center items-center mt-5">
       <button class="btn btn-neutral w-full max-w-xs" onclick={onAddSensor}>Add Sensor</button>
       <h2 class="mt-5">Change Background</h2>
-      <input type="file" class="file-input file-input-bordered mt-2" bind:this={fileInput}/>
+      <input type="file" class="file-input file-input-bordered mt-2" accept="image/png, image/jpg" bind:this={fileInput}/>
       <div class="flex">
         <button class="btn btn-primary mt-2 mr-2" onclick={() => fileInput.value = ""}>Cancel</button>
         <button class="btn btn-primary mt-2" onclick={readFile}>Save</button>
