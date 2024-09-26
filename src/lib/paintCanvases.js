@@ -5,43 +5,58 @@ export function paintBackground(context, img) {
   console.log('Background Drawn');
 }
 
-export function paintSensors(context, sensors, currSensor, img) {
+export function paintSensors(context, sensors, currSensor, imgs) {
   const { width, height } = context.canvas;
-  
+
   context.clearRect(0, 0, width, height);
 
-  const index = (currSensor ? sensors.findIndex(sensor => sensor.id === currSensor.id) : null);
+  const index = currSensor ? sensors.findIndex(sensor => sensor.id === currSensor.id) : null;
+
   for (let i = 0; i < sensors.length; i++) {
-    if (i === index && index !== null) {
-      let x = currSensor.x_pos;
-      let y = currSensor.y_pos;
-  
-      if (currSensor.group !== 'temperature' && currSensor.group !== 'pressure') {
-        context.fillStyle = currSensor.color;
-        context.fillRect(x * width - 5, y * height - 5, 10, 10);
+    let sensor = sensors[i];
+    let x = sensor.x_pos;
+    let y = sensor.y_pos;
+
+    // Handle currSensor separately
+    if (i === index && currSensor) {
+      sensor = currSensor;
+      x = currSensor.x_pos;
+      y = currSensor.y_pos;
+    }
+
+    if (sensor.group !== 'temperature' && sensor.group !== 'pressure') {
+      // Draw non-image sensors (non-temperature/pressure)
+      context.fillStyle = sensor.color;
+      context.fillRect(x * width - 5, y * height - 5, 10, 10);
+
+      if(i === index){
         context.beginPath();
         context.arc(x * width, y * height, 15, 0, 2 * Math.PI);
         context.lineWidth = 2;
-        context.strokeStyle = currSensor.color;
+        context.strokeStyle = sensor.color;
         context.stroke();
-      } else {
-        context.drawImage(img, x * width - img.width / 2, y * height - img.height / 2);
       }
+      
+    } else {
+      let img = sensor.group === 'temperature' ? imgs[0] : imgs[1]; 
+      let scale = sensor.group === 'temperature' ? 0.6 : 0.4
+      context.drawImage(img, x * width - img.width / 2, y * height - img.height / 2, img.width * scale, img.height * scale);
+
+      context.globalCompositeOperation = 'source-atop';
+      context.fillStyle = sensor.color;
+      context.fillRect(x * width - img.width / 2, y * height - img.height / 2, img.width * scale, img.height * scale);
+
+      context.globalCompositeOperation = 'source-over';
+    }
+
+    if (i === index && currSensor) {
       continue;
     }
-  
-    let x = sensors[i].x_pos;
-    let y = sensors[i].y_pos;
-  
-    if (sensors[i].group !== 'temperature' && sensors[i].group !== 'pressure') {
-      context.fillStyle = sensors[i].color;
-      context.fillRect(x * width - 5, y * height - 5, 10, 10);
-    } else {
-      context.drawImage(img, x * width - img.width / 2, y * height - img.height / 2);
-    }
-    console.log('Sensors Drawn');
   }
+
+  console.log('Sensors and currSensor Drawn');
 }
+
 
 // Paint Gap
     /*context.fillStyle = "#1f1f1f";
