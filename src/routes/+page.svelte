@@ -6,6 +6,7 @@
   import SensorControls from '$lib/SensorControls.svelte'
   import background from "$lib/images/background.png";
   import temp_sensor from "$lib/images/temp_sensor.png";
+  import press_sensor from "$lib/images/press_sensor.png";
 
   let sensors = useLocalStorage('sensors', []).value;
   let sensorColors = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'grey', 'black'];
@@ -22,20 +23,26 @@
   let resizeTimeout;
   let animationFrameId;
   let backgroundImage = $state(null);
-  let sensorImage = $state(null);
+  let sensorImages = $state([]);
 
   onMount(() => {
     let tempBg = getLocalImage('background', "").value;
     const tempImage = new Image();
     tempImage.src = temp_sensor;
     tempImage.onload = function() {
-      sensorImage = tempImage;
+      sensorImages.push(tempImage);
     }
+    const pressImage = new Image();
+    pressImage.src = press_sensor;
+    pressImage.onload = function() { 
+      sensorImages.push(pressImage);
+    }
+    let fgImgs = [tempImage, pressImage];
     const img = new Image();
     img.src = tempBg ? tempBg : background;
     img.onload = function () {
       backgroundImage = img;
-      setupCanvases(tempImage, img);
+      setupCanvases(fgImgs, img);
     }
 //
     
@@ -96,7 +103,7 @@
 
   function renderForeground(img) {
     if(img) paintSensors(fgContext, sensors, currSensor, img);
-    else paintSensors(fgContext, sensors, currSensor, sensorImage);
+    else paintSensors(fgContext, sensors, currSensor, sensorImages);
   }
 
   function resizeCanvas() {
@@ -156,8 +163,10 @@
 
   function handleClick() {
     const clickedSensor = sensors.find(sensor =>
-      mouseX > sensor.x_pos * (xMax) - 10 && mouseX < sensor.x_pos * (xMax - 10)+ 10 &&
-      (mouseY > sensor.y_pos * (yMax - 10) && mouseY < sensor.y_pos * (yMax - 10) + 10)
+      (sensor.group === "" && mouseX > sensor.x_pos * xMax - 5 && mouseX < sensor.x_pos * xMax + 5  &&
+       mouseY > sensor.y_pos * yMax - 5 && mouseY < sensor.y_pos * yMax + 5) ||
+       (sensor.group !== "" && mouseX > sensor.x_pos * xMax - 25 && mouseX < sensor.x_pos * xMax + 25  &&
+       mouseY > sensor.y_pos * yMax - 25 && mouseY < sensor.y_pos * yMax + 25)
     ) || null;
     if (clickedSensor) {
       if (currSensor) {
@@ -196,7 +205,10 @@
     <div class="mt-5 flex">
       <form method="dialog">
         <button class="btn btn-primary">No</button>
-        <button class="btn btn-error ml-5" onclick={ queuedSensor ? currSensor = queuedSensor: currSensor = null }>Yes</button>
+        <button class="btn btn-error ml-5" onclick={ () => {
+          queuedSensor ? currSensor = queuedSensor : currSensor = null;
+          queuedSensor = null;
+        }}>Yes</button>
       </form>
     </div>
   </div>
