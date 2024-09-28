@@ -163,8 +163,10 @@
 
   function handleClick() {
     const clickedSensor = sensors.find(sensor =>
-      mouseX > sensor.x_pos * (xMax) - 10 && mouseX < sensor.x_pos * (xMax - 10)+ 10 &&
-      (mouseY > sensor.y_pos * (yMax - 10) && mouseY < sensor.y_pos * (yMax - 10) + 10)
+      (sensor.group == "" && mouseX > sensor.x_pos * xMax - 5 && mouseX < sensor.x_pos * xMax + 5  &&
+       mouseY > sensor.y_pos * yMax - 5 && mouseY < sensor.y_pos * yMax + 5) ||
+       (mouseX > sensor.x_pos * xMax - 25 && mouseX < sensor.x_pos * xMax + 25  &&
+       mouseY > sensor.y_pos * yMax - 25 && mouseY < sensor.y_pos * yMax + 25)
     ) || null;
     if (clickedSensor) {
       if (currSensor) {
@@ -203,7 +205,10 @@
     <div class="mt-5 flex">
       <form method="dialog">
         <button class="btn btn-primary">No</button>
-        <button class="btn btn-error ml-5" onclick={ queuedSensor ? currSensor = queuedSensor: currSensor = null }>Yes</button>
+        <button class="btn btn-error ml-5" onclick={ () => {
+          queuedSensor ? currSensor = queuedSensor : currSensor = null;
+          queuedSensor = null;
+        }}>Yes</button>
       </form>
     </div>
   </div>
