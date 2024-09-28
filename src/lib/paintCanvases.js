@@ -39,12 +39,12 @@ export function paintSensors(context, sensors, currSensor, imgs) {
       
     } else {
       let img = sensor.group === 'temperature' ? imgs[0] : imgs[1]; 
-      let scale = sensor.group === 'temperature' ? 0.6 : 0.4
-      context.drawImage(img, x * width - img.width / 2, y * height - img.height / 2, img.width * scale, img.height * scale);
+      let scale = 0.5
+      context.drawImage(img, x * width - (img.width * scale ) / 2, y * height - (img.height * scale) / 2, img.width * scale, img.height * scale);
 
       context.globalCompositeOperation = 'source-atop';
       context.fillStyle = sensor.color;
-      context.fillRect(x * width - img.width / 2, y * height - img.height / 2, img.width * scale, img.height * scale);
+      context.fillRect(x * width - (img.width * scale) / 2, y * height - (img.height * scale) / 2, img.width * scale, img.height * scale);
 
       context.globalCompositeOperation = 'source-over';
     }
