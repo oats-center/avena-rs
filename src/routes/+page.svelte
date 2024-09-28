@@ -163,9 +163,9 @@
 
   function handleClick() {
     const clickedSensor = sensors.find(sensor =>
-      (sensor.group == "" && mouseX > sensor.x_pos * xMax - 5 && mouseX < sensor.x_pos * xMax + 5  &&
+      (sensor.group === "" && mouseX > sensor.x_pos * xMax - 5 && mouseX < sensor.x_pos * xMax + 5  &&
        mouseY > sensor.y_pos * yMax - 5 && mouseY < sensor.y_pos * yMax + 5) ||
-       (mouseX > sensor.x_pos * xMax - 25 && mouseX < sensor.x_pos * xMax + 25  &&
+       (sensor.group !== "" && mouseX > sensor.x_pos * xMax - 25 && mouseX < sensor.x_pos * xMax + 25  &&
        mouseY > sensor.y_pos * yMax - 25 && mouseY < sensor.y_pos * yMax + 25)
     ) || null;
     if (clickedSensor) {
