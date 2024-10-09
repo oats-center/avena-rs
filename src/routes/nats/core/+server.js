@@ -13,11 +13,11 @@ export async function GET() {
           break;
         }
       })();
-
-      nc.publish("hello", "This is a cool message");
     });
 
     const message = await messagePromise;
+    
+    await nc.drain();
 
     return new Response(JSON.stringify({ message }), {
       headers: { "Content-Type": "application/json" },
@@ -36,6 +36,7 @@ export async function POST({request}) {
     const { message } = await request.json();
     nc.publish("hello", message);
 
+    await nc.drain();
 
     return new Response(JSON.stringify({status: "Message sent"}, message), {
       headers: {"Content-Type": "application/json"},
