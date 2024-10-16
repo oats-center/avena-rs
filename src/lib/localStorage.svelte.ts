@@ -1,21 +1,24 @@
-import { browser } from '$app/environment'
+import { browser } from '$app/environment';
 
-export function useLocalStorage(key, value) {
-  let storage = $state({ value });
-  
-  if(browser) {
+type Storage<T> = { value: T };
+
+export function useLocalStorage<T>(key: string, initialValue: T): Storage<T> {
+  let storage = $state({ value: initialValue });
+
+  if (browser) {
     const item = localStorage.getItem(key);
-    if(item) storage.value = JSON.parse(item);
+    if (item) storage.value = JSON.parse(item) as T;
   }
-
-  $effect (() => {
+  
+  $effect(() => {
+    
     localStorage.setItem(key, JSON.stringify(storage.value));
   });
 
   return storage;
 }
 
-export function getLocalImage(key, value) {
+export function getLocalImage(key: string, value: string) {
   let storage = $state({value});
 
   if(browser) {

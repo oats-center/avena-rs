@@ -1,29 +1,42 @@
-<script>
+<script lang='ts'>
   import { onMount } from 'svelte';
-  import { useLocalStorage, getLocalImage } from '$lib/localStorage.svelte.js';
-  import { Sensor } from '$lib/sensor.js'
-  import { paintBackground, paintSensors } from '$lib/paintCanvases.js';
+  import { useLocalStorage, getLocalImage } from '$lib/localStorage.svelte';
+  import { paintBackground, paintSensors } from '$lib/paintCanvases';
   import SensorControls from '$lib/SensorControls.svelte'
   import background from "$lib/images/background.png";
   import temp_sensor from "$lib/images/temp_sensor.png";
   import press_sensor from "$lib/images/press_sensor.png";
 
-  let sensors = useLocalStorage('sensors', []).value;
+  type Sensor = {
+    id: string;
+    x_pos: number;
+    y_pos: number;
+    color: string;
+    layer: number;
+    name: string;
+    group: string;
+  }
+
+  let sensors: Sensor[] = useLocalStorage<Sensor[]>('sensors', []).value;
   let sensorColors = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'grey', 'black'];
   let sensorGroups = ['', 'temperature', 'pressure']
-  let currSensor = $state(null);
-  let queuedSensor = $state(null);
-  let bgCanvas = $state(null);
-  let fgCanvas = $state(null);
-  let bgContext, fgContext;
+  let currSensor = $state<Sensor | null>(null);
+  let queuedSensor: Sensor | null = null;
+  let bgCanvas: HTMLCanvasElement;
+  let fgCanvas: HTMLCanvasElement; 
+  let bgContext: CanvasRenderingContext2D| null, fgContext: CanvasRenderingContext2D| null;
   let mouseX = 0;
   let mouseY = 0;
   let xMax = $state(0);
   let yMax = $state(0);
-  let resizeTimeout;
-  let animationFrameId;
-  let backgroundImage = $state(null);
-  let sensorImages = $state([]);
+  let resizeTimeout: number;
+  let animationFrameId: number;
+  let backgroundImage: HTMLImageElement;
+  let sensorImages: HTMLImageElement[] = [];
+  let cancel_modal = $state<HTMLDialogElement>();
+  let delete_modal = $state<HTMLDialogElement>();
+  let save_modal = $state<HTMLDialogElement>();
+  
 
   onMount(() => {
     let tempBg = getLocalImage('background', "").value;
@@ -52,19 +65,19 @@
     })
   });
   
-  function animateForeground() {
+  function animateForeground(): void {
     if (currSensor) {
-      renderForeground();
+      renderForeground(null);
       // Keep requesting animation frames as long as currSensor is not null
       animationFrameId = requestAnimationFrame(animateForeground);
     } else {
       // Stop the animation when currSensor is null
       cancelAnimationFrame(animationFrameId);
-      renderForeground();
+      renderForeground(null);
     }
   }
 
-  function setupCanvases(fgImage, bgImage) {
+  function setupCanvases(fgImages: HTMLImageElement[], bgImage: HTMLImageElement): void {
     xMax = window.innerWidth * 0.60;
     yMax = window.innerHeight * 0.80;
     
@@ -92,34 +105,37 @@
     fgCanvas.width = xMax;
     fgCanvas.height = yMax;
 
-    renderBackground(bgImage);
-    renderForeground(fgImage);
+    renderBackground(bgImage ?? backgroundImage);
+    renderForeground(fgImages);
   }
 
-  function renderBackground(img) {
-    if(img) paintBackground(bgContext, img);
-    else paintBackground(bgContext, backgroundImage);
+  function renderBackground(img: HTMLImageElement | null): void  {
+    if(bgContext !== null) {
+      paintBackground(bgContext, img ?? backgroundImage);
+    }
+    
   }
 
-  function renderForeground(img) {
-    if(img) paintSensors(fgContext, sensors, currSensor, img);
-    else paintSensors(fgContext, sensors, currSensor, sensorImages);
+  function renderForeground(img: HTMLImageElement[] | null): void {
+    if(fgContext !== null) {
+      paintSensors(fgContext, sensors, currSensor, img ?? sensorImages);
+    }
   }
 
-  function resizeCanvas() {
+  function resizeCanvas(): void {
     clearTimeout(resizeTimeout);
     resizeTimeout = setTimeout(() => {
-      setupCanvases();
+      setupCanvases(sensorImages, backgroundImage);
     }, 200);
   }
   
-  function handleMouseMove(event) {
+  function handleMouseMove(event : MouseEvent): void {
     const rect = fgCanvas.getBoundingClientRect();
     mouseX = event.clientX - rect.left;
     mouseY = event.clientY - rect.top;
   }
 
-  function generateRandomId() {
+  function generateRandomId(): string{
     const length = 5;
     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     let result = '';
@@ -129,39 +145,52 @@
     return result;
   }
 
-  function addSensor() {
-    sensors.push(new Sensor(generateRandomId(), 0, 0, 'red', 1, 'New Sensor', ""));
+  function addSensor(): void {
+    const newSensor: Sensor = {
+      id: generateRandomId(),
+      x_pos: 0,
+      y_pos: 0,
+      color: "red",
+      layer: 1,
+      name: "New Sensor",
+      group: ""
+    };
+    sensors = [...sensors, newSensor];
     currSensor = JSON.parse(JSON.stringify(sensors[sensors.length - 1]));
     animateForeground();
   }
   
-  function updateSensors() {
-    const index = sensors.findIndex(sensor => sensor.id === currSensor.id);
-    if (index !== -1) {
-      sensors[index] = new Sensor(
-        currSensor.id,
-        currSensor.x_pos,
-        currSensor.y_pos,
-        currSensor.color,
-        currSensor.layer,
-        currSensor.name,
-        currSensor.group
-      );
-    }
-    currSensor = null;
-    renderForeground();
+  function updateSensors(): void {
+    if(currSensor !== null){
+      const index = sensors.findIndex(sensor => sensor.id === currSensor!.id);
+      if (index !== -1) {
+        sensors = [
+          ...sensors.slice(0, index),
+          currSensor,
+          ...sensors.slice(index + 1)
+        ];
+      }
+      currSensor = null;
+      renderForeground(null);
+    } 
   }
 
-  function deleteSensor() {
-    const index = sensors.findIndex(sensor => sensor.id === currSensor.id);
-    if (index !== -1) {
-      sensors.splice(index, 1);
-      renderForeground();
+  function deleteSensor(): void {
+    if(currSensor !== null){
+      const index = sensors.findIndex(sensor => sensor.id === currSensor!.id);
+      if (index !== -1) {
+        sensors = [
+          ...sensors.slice(0, index),
+          ...sensors.slice(index + 1)
+        ];
+        renderForeground(null);
+      }
+      currSensor = null;
     }
-    currSensor = null;
+    
   }
 
-  function handleClick() {
+  function handleClick(): void {
     const clickedSensor = sensors.find(sensor =>
       (sensor.group === "" && mouseX > sensor.x_pos * xMax - 5 && mouseX < sensor.x_pos * xMax + 5  &&
        mouseY > sensor.y_pos * yMax - 5 && mouseY < sensor.y_pos * yMax + 5) ||
@@ -171,7 +200,7 @@
     if (clickedSensor) {
       if (currSensor) {
         queuedSensor = { ...clickedSensor };
-        cancel_modal.showModal();
+        cancel_modal?.showModal();
       } else {
         queuedSensor = null;
         currSensor = { ...clickedSensor };
@@ -193,12 +222,13 @@
     {sensorColors}
     {sensorGroups}
     onAddSensor={addSensor}
-    onSaveSensor={updateSensors}
-    onDeleteSensor={deleteSensor}
+    {cancel_modal}
+    {delete_modal}
+    {save_modal}
   />
 </div>
 
-<dialog id="cancel_modal" class='modal'>
+<dialog id="cancel_modal" class='modal' bind:this={cancel_modal}>
   <div class="modal-box">
     <h3 class="text-lg font-bold">Cancel Changes?</h3>
     <h6>Pressing 'Yes' will delete all changes made without saving</h6>
@@ -217,7 +247,7 @@
   </form>
 </dialog>
 
-<dialog id="delete_modal" class='modal'>
+<dialog id="delete_modal" class='modal' bind:this={delete_modal}>
   <div class="modal-box">
     <h3 class="text-lg font-bold">Delete Sensor?</h3>
     <h6>Pressing 'Yes' will delete the currently selected sensor and that data will be unrecoverable</h6>
@@ -233,7 +263,7 @@
   </form>
 </dialog>
 
-<dialog id="save_modal" class='modal'>
+<dialog id="save_modal" class='modal' bind:this={save_modal}>
   <div class="modal-box">
     <h3 class="text-lg font-bold">Save Changes?</h3>
     <h6>Pressing 'Yes' will override the already saved data with the new data.</h6>
