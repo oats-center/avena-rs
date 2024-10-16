@@ -1,11 +1,21 @@
-export function paintBackground(context, img) {
+type Sensor = {
+  id: string;
+  x_pos: number;
+  y_pos: number;
+  color: string;
+  layer: number;
+  name: string;
+  group: string;
+}
+
+export function paintBackground(context: CanvasRenderingContext2D, img: HTMLImageElement) {
   const { width, height } = context.canvas;
 
   context.drawImage(img, 0, 0, width, height);
   console.log('Background Drawn');
 }
 
-export function paintSensors(context, sensors, currSensor, imgs) {
+export function paintSensors(context: CanvasRenderingContext2D, sensors: Sensor[], currSensor: Sensor | null, imgs: HTMLImageElement[]) {
   const { width, height } = context.canvas;
 
   context.clearRect(0, 0, width, height);

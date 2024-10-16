@@ -1,39 +1,32 @@
-<script>
+<script lang='ts'>
   export let currSensor;
   export let sensorColors;
   export let sensorGroups;
   export let onAddSensor;
-  export let onSaveSensor;
-  export let onDeleteSensor;
+  export let cancel_modal;
+  export let delete_modal;
+  export let save_modal;
 
-  let fileInput;
-
-  function saveChanges() {
-    onSaveSensor();
-  }
-
-  function deleteChanges() {
-    onDeleteSensor();
-  }
+  let fileInput: HTMLInputElement;
 
   function readFile() {
-    const file = fileInput.files[0];
-
-    if(!file){
-      console.log("No file input");
-    }
-
-    const reader = new FileReader();
+    if(fileInput !== null && fileInput.files){
+      const file = fileInput.files[0];
+      const reader = new FileReader();
     
-    reader.addEventListener("load", () => {
-      localStorage.setItem("background", reader.result);
-    })
+      reader.addEventListener("load", () => {
+        if(typeof reader.result === "string"){
+          localStorage.setItem("background", reader.result);
+        }
+      });
+      reader.readAsDataURL(file);
+      reader.onloadend = () => {
+        window.location.reload();
+      }
 
-    reader.readAsDataURL(file);
-    reader.onloadend = () => {
-      window.location.reload();
-    }
-    
+    } else {
+      console.log("No file input")
+    }  
   }
 </script>
 
