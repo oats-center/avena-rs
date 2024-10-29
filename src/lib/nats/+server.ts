@@ -15,11 +15,10 @@ export class NatsService {
     public bucketList: string[], 
     public currentValues: Sensor[] | null = null
   ){}
-
 }
 
-export async function setupNats(): Promise<NatsService> {
-  const nc = await connect({servers: "demo.nats.io:4222"});
+export async function setupNats(serverName: string): Promise<NatsService> {
+  const nc = await connect({servers: serverName});
   const kvm = new Kvm(nc);
   const kv = await kvm.open("sensorList");
   const bucketList = await getKeysList(kv);
@@ -72,18 +71,16 @@ export async function watchValues(kvm: Kvm, sensorsList: string[], sensorValues:
     try {
       for await (const e of watch) {
         if (stopSignal.stopped) {
-          console.log(`Stopping watch for sensor ${i}`);
           break; // Stop watching if another watcher has resolved
         }
-
-        console.log(`watch: ${e.key}: ${e.operation} ${e.value ? e.string() : ""}`);
+        console.log(`/nats line 76: watch: ${e.key}: ${e.operation} ${e.value ? e.string() : ""}`);
+        console.log(`/nats line 77: past value: ${sensorValues[i][e.key as keyof Sensor]}`);
         sensorValues[i][e.key as keyof Sensor] = e.string();
-
         stopSignal.stopped = true; // Set the signal to stop all watches
         break;
       }
     } catch (error) {
-      console.error("Error Watching Values: ", error)
+      console.error("/nats line 86: Error Watching Values: ", error)
     }
   }
 
@@ -93,3 +90,28 @@ export async function watchValues(kvm: Kvm, sensorsList: string[], sensorValues:
 
   return sensorValues;
 } 
+
+
+/*
+
+data format client -> nats:
+road1.labjack1_config
+{
+  "cabinet_id": "road1",
+  "labjack_ip": "111.111.11.1",
+  "labjack_name": "cabinet1_t71",
+  "sensor_settings": {
+    "sampling_rate": 100000,
+    "channels_enabled": [0, 2, 3, 4, 5, 7],
+    "gains": 10,
+    "data_formats": ["float32", "float32", "float32", "float32", "float32", "float32"],
+    "measurement_units": ["mV", "mV", "mV", "mV", "mV", "mV", "mV", "mV"],
+    “publish_raw_data": [true, true, true, true, true, true, true, true],
+     "measure_peaks": [true, true, true, true, true, true, true, true],
+     “measure_perm_log” : [true, true, true, true, true, true, true, true],
+     “publish_summary_peaks” : true
+     "labjack_reset": false
+  }
+}
+
+*/

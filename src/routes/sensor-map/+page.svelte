@@ -212,6 +212,10 @@
   }
 </script>
 
+<div class="flex justify-center p-10 space-x-16">
+  <a href="/sensor-map" class="btn btn-outline btn-primary btn-lg">Sensor Map</a>
+  <a href="/lj-config" class="btn btn-outline btn-primary btn-lg">Sensor Config</a>
+</div>
 <div class="flex">
   <div class="canvas_container">
     <canvas class="background" bind:this={bgCanvas}></canvas>
@@ -227,7 +231,6 @@
     {save_modal}
   />
 </div>
-
 <dialog id="cancel_modal" class='modal' bind:this={cancel_modal}>
   <div class="modal-box">
     <h3 class="text-lg font-bold">Cancel Changes?</h3>
