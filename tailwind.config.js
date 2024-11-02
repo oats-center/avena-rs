@@ -14,7 +14,7 @@ export default {
           "neutral": "#1f1f1f",   //background black      
           "base-100": "#1f1f1f",         
           "info": "#FFFFFF",         
-          "success": "#218234",         
+          "success": "#1f1f1f",         
           "warning": "#FFFFFF",         
           "error": "#a32634",
           

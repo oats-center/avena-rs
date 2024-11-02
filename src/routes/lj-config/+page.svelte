@@ -1,36 +1,46 @@
 <script lang="ts">
-    import { connect } from "@nats-io/transport-node";
   import { onMount, onDestroy } from "svelte";
-    import { formatDiagnosticsWithColorAndContext } from "typescript";
+  import { NatsService, connect, getKeys, getKeyValues, putKeyValue } from "$lib/nats";
+  
+  type LabJack = {
+    cabinet_id: string;
+    labjack_name: string;
+    sensor_settings: {
+      sampling_rate: number;
+      channels_enabled: number[];
+      gains: number;
+      data_formats: string[];
+      measurement_units: string[];
+      publish_raw_data: boolean[];
+      measure_peaks: boolean[];
+      publish_summary_peaks: boolean;
+      labjack_reset: boolean;
+    }
+  }
 
+  let serverName: string | null = null;
+  let nats: NatsService | null = null;
+  let selectedCabinet: string | null = null;
+  
+  onMount(() => {
+    serverName = sessionStorage.getItem("serverName");
+    selectedCabinet = sessionStorage.getItem("selectedCabinet");
+    console.log(`Server Name: ${serverName}, Selected Cabinet: ${selectedCabinet}`);
+  });
+    /*import type { LabJack } from "$lib/nats/+server.js"
+ 
   type KeyValueResponse = {
     sensorsList: string[];
-    sensorValues: Sensor[];
-  }
-  type Sensor = {
-    id: string;
-    name: string;
-    type: string;
-    value: string;
+    sensorValues: LabJack[];
   }
 
   let sensorsList = $state<string[] | null>(null); 
-  let sensorValues = $state<Sensor[] | null>(null);
-  let updatedSensors = $state<Sensor[] | null>(null);
-  let sensorKeys = ["name", "type", "value"];
+  let sensorValues = $state<LabJack[] | null>(null);
+  let updatedSensors = $state<LabJack[] | null>(null);
+  let sensorKeys = ["cabinet_id", "labjack_name", "sensor_settings"];
   let currSaving = $state<number>(-1);
-  let connectionId: string | null;//replace with code to pull from session storage;
-  let serverName: string | null; //replace with code to pull from session storage;
-
-  function generateRandomId(): string{
-    const length = 5;
-    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    let result = '';
-    for (let i = 0; i < length; i++) {
-      result += characters.charAt(Math.floor(Math.random() * characters.length));
-    }
-    return result;
-  }
+  let connectionId: string | null;
+  let serverName: string | null;
 
   async function getSensorValues(): Promise<void> {
     try {
@@ -41,6 +51,7 @@
         const result: KeyValueResponse = await response.json();
         sensorsList = result.sensorsList;
         sensorValues = result.sensorValues;
+        console.log(sensorValues);
         updatedSensors = JSON.parse(JSON.stringify(result.sensorValues)); // Make a deep copy for tracking changes
       } else {
         let result = await response.json()
@@ -60,14 +71,14 @@
         try {
           let key;
           for(key in currentSensor){
-            if(currentSensor[key as keyof Sensor] != updatedSensor[key as keyof Sensor]){
+            if(currentSensor[key as keyof LabJack] != updatedSensor[key as keyof LabJack]){
               break;
             }
           }
           const response = await fetch("/nats/kv", {
             headers: { "Content-Type" : "application/json"},
             method: "PUT",
-            body: JSON.stringify({ connectionId, serverName, bucket: updatedSensor.id, key, newValue: updatedSensor[key as keyof Sensor]})
+            body: JSON.stringify({ connectionId, serverName, bucket: updatedSensor.labjack_name, key, newValue: updatedSensor[key as keyof LabJack]})
           });
           const result = await response.json();
           if (response.ok) {
@@ -106,8 +117,9 @@
 
   onMount(() => {
     const initialize = async () => {
+      console.log("hello")
       await getSensorValues();
-      await watchValues();
+      //await watchValues();
     }
     
     connectionId = sessionStorage.getItem("connectionId");
@@ -125,12 +137,11 @@
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     }
-  });
+  });*/
 
   
-  
 </script>
-<div class="flex justify-center p-10 space-x-16">
+<!--<div class="flex justify-center p-10 space-x-16">
   <a href="/sensor-map" class="btn btn-outline btn-primary btn-lg">Sensor Map</a>
   <a href="/lj-config" class="btn btn-outline btn-primary btn-lg">Sensor Config</a>
 </div>
@@ -143,13 +154,13 @@
           <div class="card bg-primary shadow-xl text-neutral w-[15vw] min-w-60">
             <div class="card-body">
               <div class="flex justify-center">
-                <h2 class="card-title">{sensorValues[index].name}</h2>
+                <h2 class="card-title">{sensorValues[index].labjack_name}</h2>
               </div>
               {#each sensorKeys as key}
-                <p class="pl-2">Sensor {key}:</p>
+                <p class="pl-2">LabJack {key}:</p>
                 <input 
                   type="text" 
-                  bind:value={sensor[key as keyof Sensor]} 
+                  bind:value={sensor[key as keyof LabJack]} 
                   class="input input-bordered input-accent w-full bg-primary max-w-xs text-accent placeholder-accent"
                 />  
               {/each}
@@ -175,6 +186,7 @@
 </div>
 
 
+
 <style>
   .loading-overlay {
     position: fixed;
@@ -188,3 +200,4 @@
     align-items: center;
   }
 </style>
+-->
