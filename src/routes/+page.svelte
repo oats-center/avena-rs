@@ -1,38 +1,16 @@
 <script lang="ts">
   import { browser } from '$app/environment';
+  import { NatsService } from '$lib/nats';
+  import { wsconnect } from "@nats-io/nats-core";
+  import { setContext } from 'svelte';
  //use session storage to save the connection ID, which will be used when in the config and map pages
-  const connectionId = generateRandomId(); //replace with generateRandomId();
   let serverName = $state<string>("");
   let password = $state<string>("");
+  let nats = $state<NatsService | null>(null)
 
   async function connect() {
-    console.log(`Connecting to server: ${serverName} of password ${password}`);
-    
-    try {
-      const url = `./nats/kv?type=initConnection&connectionId=${connectionId}&serverName=${serverName}`;
-      const response = await fetch(url);
-      if(response.ok && browser){
-        const result = await response.json();
-        sessionStorage.setItem("connectionId", connectionId);
-        sessionStorage.setItem("serverName", serverName);
-        location.href = "/lj-config"
-      } else {
-        let result = await response.json()
-        console.log(result.error);
-      }
-    } catch(error) {
-      console.error("Error fetching key value: ", error);
-    }
-  }
-
-  function generateRandomId(): string{
-    const length = 5;
-    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    let result = '';
-    for (let i = 0; i < length; i++) {
-      result += characters.charAt(Math.floor(Math.random() * characters.length));
-    }
-    return result;
+    sessionStorage.setItem("serverName", serverName)
+    location.href = "/cabinet-select";
   }
 </script>
 
