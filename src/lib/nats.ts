@@ -71,23 +71,6 @@ export async function getKeyValue(nats: NatsService, bucket: string, key: string
   return valStr;
 }
 
-export async function getCabinet(nats: NatsService, bucket: string, keys: string[]): Promise<Cabinet>{
-  if(!nats) throw new Error("Nats connection is not initialized");
-  const kv = await nats.kvm.open(bucket);
-  let cabinet: Cabinet = {id: bucket, labjacks: [], status: ""};
-  for await(const key of keys){
-    let val = await getKeyValue(nats, bucket, key)
-    if(key === "labjacks"){
-      cabinet["labjacks"] = JSON.parse(val);
-    } else if (key === "status") {
-      cabinet["status"] = val;
-    } else {
-      console.log("Not valid key");
-    }
-  } 
-  return cabinet;
-}
-
 export async function getKeyValues(nats: NatsService, bucket: string, keys: string[]): Promise<string[]>{
   if (!nats) throw new Error("Nats connection is not initialized");
   const kv = await nats.kvm.open(bucket);

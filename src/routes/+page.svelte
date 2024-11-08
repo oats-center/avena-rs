@@ -1,16 +1,13 @@
 <script lang="ts">
   import { browser } from '$app/environment';
-  import { NatsService } from '$lib/nats';
   import { wsconnect } from "@nats-io/nats-core";
-  import { setContext } from 'svelte';
  //use session storage to save the connection ID, which will be used when in the config and map pages
   let serverName = $state<string>("");
   let password = $state<string>("");
-  let nats = $state<NatsService | null>(null)
 
   async function connect() {
     sessionStorage.setItem("serverName", serverName)
-    location.href = "/cabinet-select";
+    location.href = "/config/cabinet-select";
   }
 </script>
 
