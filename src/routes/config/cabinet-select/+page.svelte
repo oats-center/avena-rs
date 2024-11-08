@@ -1,14 +1,33 @@
 <script lang="ts">
-  import { onMount, getContext } from "svelte";
-  import { NatsService, connect, getKeys, getCabinet, putKeyValue, type Cabinet } from "$lib/nats";
+  import { onMount } from "svelte";
+  import { NatsService, connect, getKeys, getKeyValue, type Cabinet } from "$lib/nats";
 
   let serverName: string | null;
   let nats: NatsService | null;
   let cabinetKeys = $state<string[]>([])
   let cabinets = $state<Cabinet[]>([]);
-  let loading = $state<number>(-1);
+  let loading = $state<boolean>(true);
 
-  
+  async function getCabinet(nats: NatsService, bucket: string, keys: string[]): Promise<Cabinet>{
+    if(!nats) throw new Error("Nats connection is not initialized");
+    let cabinet = {
+                    id: bucket,
+                    labjacks: [],
+                    status: ""
+                  };
+    for await(const key of keys){
+      let val = await getKeyValue(nats, bucket, key)
+      if(key === "labjacks"){
+        cabinet["labjacks"] = JSON.parse(val);
+      } else if (key === "status") {
+        cabinet["status"] = val;
+      } else {
+        console.log("Not valid key");
+      }
+    } 
+    return cabinet;
+  }
+
   async function initialize() {
     if(serverName) nats = await connect(serverName)
     if(nats) {
@@ -18,15 +37,15 @@
         let values = await getCabinet(nats, key, cabinetKeys);
         cabinets.push(values);
       }
-      loading = 0;
+      loading = false;
     } else {
       console.log('No Nats Connection');
     }
   }
   
   function selectConfig(selectedCabinet: string) {
-    sessionStorage.setItem("cabinet", selectedCabinet)
-    location.href = "/lj-config";
+    sessionStorage.setItem("selectedCabinet", selectedCabinet)
+    location.href = "/config/lj-config";
   }
 
   onMount(() => {
@@ -35,7 +54,7 @@
   })
 </script>
 
-{#if loading === -1}
+{#if loading}
   <div class="loading-overlay">
     <span class="loading loading-spinner loading-lg"></span>  
   </div>
