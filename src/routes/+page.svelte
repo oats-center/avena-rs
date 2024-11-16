@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { browser } from '$app/environment';
   import { wsconnect } from "@nats-io/nats-core";
  //use session storage to save the connection ID, which will be used when in the config and map pages
   let serverName = $state<string>("");
