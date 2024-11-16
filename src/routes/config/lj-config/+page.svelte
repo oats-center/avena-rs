@@ -145,6 +145,30 @@
     }
   }
 
+  async function watchCabinet() {
+    if(!nats || !selectedCabinet) throw new Error("NATS is not initialized");
+    const kv = await nats.kvm.open(selectedCabinet);
+    const watch = await kv.watch({
+      "include": KvWatchInclude.UpdatesOnly
+    })
+    for await(const e of watch) {
+      let exists = false;
+      const key = e.key;
+      const serialNumber = key.split(".").pop();
+      for(const labjack of labjacks){
+        if(labjack.serial === serialNumber){
+          exists = true;
+          break;
+        }
+      }
+      if(!exists) {
+        let newVal = await getLabjack(selectedCabinet, e.key)
+        labjacks.push(newVal);
+        alert = "New LabJack Added"
+      }
+    }
+  }
+
   //handles creating a new labjack
   async function createLabjack(event: Event) {
     event.preventDefault();
@@ -161,9 +185,9 @@
     const kv = await nats.kvm.open(selectedCabinet);
     newVals.cabinet_id = selectedCabinet;
     newVals.labjack_name = `Labjack ${newVals.serial}`;
-    kv.create(`labjackd.config.${newVals.serial}`, JSON.stringify(newVals));
     labjacks.push(newVals);
-    watchVal(selectedCabinet, `labjackd.config.${newVals.serial}`, labjacks.length - 1)
+    kv.create(`labjackd.config.${newVals.serial}`, JSON.stringify(newVals));
+    watchVal(selectedCabinet, `labjackd.config.${newVals.serial}`, labjacks.length - 1);
     new_modal?.close();
   }
 
@@ -172,7 +196,7 @@
     serverName = sessionStorage.getItem("serverName");
     selectedCabinet = sessionStorage.getItem("selectedCabinet");
     console.log(`Server Name: ${serverName}, Selected Cabinet: ${selectedCabinet}`);
-    initialize();
+    initialize().then(()=>watchCabinet());
 
   });
 
