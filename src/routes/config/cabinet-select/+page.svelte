@@ -1,6 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { NatsService, connect, getKeys, getKeyValue, type Cabinet } from "$lib/nats";
+  import { NatsService, connect, getKeys, getKeyValue } from "$lib/nats";
+
+  type Cabinet = {
+  "id": string
+  "status": string
+  };
 
   let serverName: string | null;
   let nats: NatsService | null;
@@ -8,46 +13,41 @@
   let cabinets = $state<Cabinet[]>([]);
   let loading = $state<boolean>(true);
 
-  async function getCabinet(nats: NatsService, bucket: string, keys: string[]): Promise<Cabinet>{
-    if(!nats) throw new Error("Nats connection is not initialized");
-    let cabinet = {
-                    id: bucket,
-                    labjacks: [],
-                    status: ""
-                  };
-    for await(const key of keys){
-      let val = await getKeyValue(nats, bucket, key)
-      if(key === "labjacks"){
-        cabinet["labjacks"] = JSON.parse(val);
-      } else if (key === "status") {
-        cabinet["status"] = val;
-      } else {
-        console.log("Not valid key");
-      }
-    } 
-    return cabinet;
-  }
-
+  //initializes the nats connection and gets all cabinet vals
   async function initialize() {
     if(serverName) nats = await connect(serverName)
     if(nats) {
       let keys = await getKeys(nats, "all_cabinets");
       for (const key of keys) {
-        cabinetKeys = await getKeys(nats, key);
-        let values = await getCabinet(nats, key, cabinetKeys);
+        let values = await getCabinet("all_cabinets", key);
         cabinets.push(values);
+        console.log(values);
       }
       loading = false;
     } else {
       console.log('No Nats Connection');
     }
   }
-  
+
+  //gets the value of one cabinet
+  async function getCabinet(bucket: string, key: string): Promise<Cabinet>{
+    if(!nats) throw new Error("Nats connection is not initialized");
+    let cabinet = {
+      "id": key,
+      "status": ""
+    };
+    let status = await getKeyValue(nats, bucket, key);
+    cabinet.status = JSON.parse(status).status
+    return cabinet;
+  }
+
+  //once selected, sets the selectedCabinet to session storage and redirects to labjack config page
   function selectConfig(selectedCabinet: string) {
     sessionStorage.setItem("selectedCabinet", selectedCabinet)
     location.href = "/config/lj-config";
   }
 
+  //gets the server name from session storage & initalizes
   onMount(() => {
     serverName = sessionStorage.getItem("serverName")
     initialize();
@@ -68,11 +68,7 @@
           <div class="flex justify-center">
             <h2 class="card-title">{cabinet["id"]}</h2>
           </div>
-          {#each cabinetKeys as key}
-            {#if key !== "labjacks"}
-              <p class="pl-2 mt-2">{key}: {cabinet[key as keyof Cabinet]}</p>
-            {/if}
-          {/each}
+              <p class="pl-2 mt-2">Status: {cabinet.status}</p>
           <div class="mt-3 flex justify-center">
             <button class="btn btn-outline btn-success" onclick={() =>selectConfig(cabinet.id)}>
               Select Cabinet

@@ -1,90 +1,190 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
-  import { NatsService, connect, getKeys, getKeyValues, putKeyValue, getKeyValue} from "$lib/nats";
-    import SensorControls from "$lib/SensorControls.svelte";
+  import { onMount } from "svelte";
+  import { NatsService, connect,  putKeyValue, getKeyValue, getKeys} from "$lib/nats";
+  import { KvWatchInclude } from "@nats-io/kv"
   
   type LabJack = {
-    cabinet_id: string;
-    labjack_name: string;
-    sensor_settings: SensorSettings
+    "cabinet_id": string;
+    "labjack_name": string;
+    "serial" : string;
+    "sensor_settings": SensorSettings
   }
   type SensorSettings = {
-    sampling_rate: number;
-    channels_enabled: number[];
-    gains: number;
-    data_formats: string[];
-    measurement_units: string[];
-    publish_raw_data: boolean[];
-    measure_peaks: boolean[];
-    publish_summary_peaks: boolean;
-    labjack_reset: boolean;
+    "sampling_rate": number;
+    "channels_enabled": number[];
+    "gains": number;
+    "data_formats": string[];
+    "measurement_units": string[];
+    "publish_raw_data": boolean[];
+    "measure_peaks": boolean[];
+    "publish_summary_peaks": boolean;
+    "labjack_reset": boolean;
   }
-  let defaultSensorSettings = {
-    sampling_rate: 0,
-    channels_enabled: [0],
-    gains: 0,
-    data_formats: [""],
-    measurement_units: [""],
-    publish_raw_data: [false],
-    measure_peaks: [false],
-    publish_summary_peaks: false,
-    labjack_reset: false,
-  }
-  let defaultLabjack: LabJack = {
-    cabinet_id: "",
-    labjack_name: "",
-    sensor_settings: defaultSensorSettings
-  }
-
   type FormattedLabJack = {
-    cabinet_id: string;
-    labjack_name: string;
-    sensor_settings: FormattedSensorSettings;
+    "cabinet_id": string;
+    "labjack_name": string;
+    "serial": string;
+    "sensor_settings": FormattedSensorSettings;
   }
   type FormattedSensorSettings = {
-    sampling_rate: number;
-    channels_enabled: boolean[];
-    gains: number;
-    data_formats: string[];
-    measurement_units: string[];
-    publish_raw_data: boolean[];
-    measure_peaks: boolean[];
-    publish_summary_peaks: boolean;
-    labjack_reset: boolean;
-  }
-  let defaultFormatted: FormattedSensorSettings = {
-      sampling_rate: 0,
-      channels_enabled: [false],
-      gains: 0,
-      data_formats: [""],
-      measurement_units: [""],
-      publish_raw_data: [false],
-      measure_peaks: [false],
-      publish_summary_peaks: false,
-      labjack_reset: false,
+    "sampling_rate": number;
+    "channels_enabled": boolean[];
+    "gains": number;
+    "data_formats": string[];
+    "measurement_units": string[];
+    "publish_raw_data": boolean[];
+    "measure_peaks": boolean[];
+    "publish_summary_peaks": boolean;
+    "labjack_reset": boolean;
   }
 
+  const defaultSensorSettings = {
+    "sampling_rate": 0,
+    "channels_enabled": [0],
+    "gains": 0,
+    "data_formats": [""],
+    "measurement_units": [""],
+    "publish_raw_data": [false],
+    "measure_peaks": [false],
+    "publish_summary_peaks": false,
+    "labjack_reset": false,
+  }
+  const defaultFormattedSettings: FormattedSensorSettings = {
+    "sampling_rate": 0,
+    "channels_enabled": [false],
+    "gains": 0,
+    "data_formats": [""],
+    "measurement_units": [""],
+    "publish_raw_data": [false],
+    "measure_peaks": [false],
+    "publish_summary_peaks": false,
+    "labjack_reset": false,
+  }
+  const defaultLabjack: LabJack = {
+    "cabinet_id": "",
+    "labjack_name": "",
+    "serial": "",
+    "sensor_settings": defaultSensorSettings
+  }
+  const defaultFormattedLabjack: FormattedLabJack = {
+    "cabinet_id": "",
+    "labjack_name": "",
+    "serial": "",
+    "sensor_settings": defaultFormattedSettings
+  }
+ 
   const natsKey = "config";
-  const singleKeys = ["cabinet_id", "labjack_name", "sampling_rate", "gains", "channels_enabled"]
-  const arraydKeys = ["data_formats", "measurement_units", "publish_raw_data", "measure_peaks", "publish_summary_peaks", "labjack_reset"];
-
   let serverName: string | null = null;
   let nats: NatsService | null = null;
   let selectedCabinet: string | null = null;
+  
   let labjacks = $state<LabJack[]>([]);
   let loading = $state<boolean>(true);
   let labjackEdit = $state<FormattedLabJack | null>(null);
   let editingIndex = -1;
   let edit_modal = $state<HTMLDialogElement>();
+  let new_modal = $state<HTMLDialogElement>();
+  let alert = $state<string | null>(null);
+  let newLabjack = $state<FormattedLabJack>(defaultFormattedLabjack)
   
-  
+  //initializes new connection with the serverName given, gets all of the labjacks 
+  //for the selected cabinet, and watches those vals also
+  async function initialize() {
+    if(serverName) nats = await connect(serverName)
+    if(nats && selectedCabinet) {
+      let labjacksList = await getKeys(nats, selectedCabinet);
+      for(let labjack of labjacksList){
+        let values = await getLabjack(selectedCabinet, labjack);
+        labjacks.push(values);
+      }
+      loading = false;
+      watchLabJacks()
+    } else {
+      console.log('No Nats Connection');
+    }
+  }
+
+  //gets & formats the data for one labjack
+  async function getLabjack(bucket: string, key: string): Promise<LabJack> {
+    if(!nats) throw new Error("Nats connection is not initialized");
+    let val = await getKeyValue(nats, bucket, key);
+    let ljVal = JSON.parse(val) as LabJack;
+    return ljVal;
+  }
+
+  //saves changes made to a labjack
+  function saveChanges() {
+    if(labjackEdit){
+      labjacks[editingIndex] = unformatData(labjackEdit)
+    }
+    if(nats && selectedCabinet) putKeyValue(nats, selectedCabinet, `labjackd.config.${labjacks[editingIndex].serial}`, JSON.stringify(labjacks[editingIndex]));
+    editingIndex = -1;
+    labjackEdit = null;
+  }
+
+  //watches the values of one key
+  async function watchVal(bucket: string, key: string, index: number) {
+    if(!nats) throw new Error("NATS is not initialized");
+    const kv = await nats.kvm.open(bucket); //bucket will need to be changed to the done bucket once trying to actually implement
+    const watch = await kv.watch({
+      "include": KvWatchInclude.UpdatesOnly,
+      "key": key,
+    })
+    for await (const e of watch) {
+      //console.log(`watch: ${e.key}: ${e.operation} ${e.value ? e.string() : ""}`);
+      if(e.value) labjacks[index] = JSON.parse(e.string());
+      alert = `Changes were made to ${labjacks[index].labjack_name}`;
+    }
+  }
+
+  //watches the values of all labjacks
+  function watchLabJacks() {
+    if (!nats || !selectedCabinet) throw new Error("NATS is not initialized");
+    for(let i = 0; i < labjacks.length; i++){
+      watchVal(selectedCabinet, `labjackd.config.${labjacks[i].serial}`,i);
+    }
+  }
+
+  //handles creating a new labjack
+  async function createLabjack(event: Event) {
+    event.preventDefault();
+    if (!nats || !selectedCabinet) throw new Error("NATS is not initialized");
+        for(let labjack of labjacks){
+      if(labjack.serial == newLabjack.serial){
+        alert = "Serial Number Already Exists";
+        new_modal?.close();
+        return;
+      }
+    }
+    let newVals = unformatData(newLabjack);
+    newLabjack = defaultFormattedLabjack;
+    const kv = await nats.kvm.open(selectedCabinet);
+    newVals.cabinet_id = selectedCabinet;
+    newVals.labjack_name = `Labjack ${newVals.serial}`;
+    kv.create(`labjackd.config.${newVals.serial}`, JSON.stringify(newVals));
+    labjacks.push(newVals);
+    watchVal(selectedCabinet, `labjackd.config.${newVals.serial}`, labjacks.length - 1)
+    new_modal?.close();
+  }
+
+  //gets the selected cabinet and server name from session storage
+  onMount(() => {
+    serverName = sessionStorage.getItem("serverName");
+    selectedCabinet = sessionStorage.getItem("selectedCabinet");
+    console.log(`Server Name: ${serverName}, Selected Cabinet: ${selectedCabinet}`);
+    initialize();
+
+  });
+
+  //formats the data to fit in the table properly
   function formatData(labjack: LabJack): FormattedLabJack {
     let formattedLJ = {
       cabinet_id: labjack.cabinet_id,
       labjack_name: labjack.labjack_name,
-      sensor_settings: defaultFormatted
+      serial: labjack.serial,
+      sensor_settings: defaultFormattedSettings
     }
-    let formattedSettings: FormattedSensorSettings = defaultFormatted;
+    let formattedSettings: FormattedSensorSettings = defaultFormattedSettings;
     const settings = labjack.sensor_settings;
 
     
@@ -112,15 +212,16 @@
     return formattedLJ;
   }
 
+  //unformats data from the table to its proper labjack type
   function unformatData(formattedLJ: FormattedLabJack): LabJack {
     let labjack: LabJack = {
       cabinet_id: formattedLJ.cabinet_id,
       labjack_name: formattedLJ.labjack_name,
+      serial: formattedLJ.serial,
       sensor_settings: defaultSensorSettings
     }
     const settings = formattedLJ.sensor_settings;
     let activeChannel = -1;
-
 
     labjack.sensor_settings.sampling_rate = settings.sampling_rate;
     labjack.sensor_settings.gains = settings.gains;
@@ -136,100 +237,57 @@
         labjack.sensor_settings.measure_peaks[activeChannel] = settings.measure_peaks[i];
       }
     }
-    console.log(labjack)
     return labjack;
   }
 
-  async function getLabjack(bucket: string, key: string): Promise<LabJack> {
-    if(!nats) throw new Error("Nats connection is not initialized");
-    let labjack = defaultLabjack;
-    let val = await getKeyValue(nats, bucket, key);
-    let ljVal = JSON.parse(val) as LabJack;
-    labjack = ljVal;
-    return labjack;
-  }
-
-  async function initialize() {
-    if(serverName) nats = await connect(serverName)
-    if(nats && selectedCabinet) {
-      let labjackBuckets = await getKeyValue(nats, selectedCabinet, "labjacks");
-      labjackBuckets = JSON.parse(labjackBuckets)
-      for(let labjack of labjackBuckets){
-        let values = await getLabjack(`${selectedCabinet}_${labjack}`, natsKey);
-        labjacks.push(values);
-      }
-      loading = false;
-    } else {
-      console.log('No Nats Connection');
-    }
-  }
-
-  function putLabjackVals(bucket: string, key: string, newValue: string) {
-    if(!nats) throw new Error("Nats connection is not initialized");
-    putKeyValue(nats, bucket, key, newValue);
-  }
-
+  //opens the edit modal
   function openEdit(labjack: LabJack, index: number) {
     labjackEdit = formatData(labjack);
     editingIndex = index;
-    console.log(labjacks[editingIndex])
     edit_modal?.showModal();
   }
-
-  function saveChanges() {
-    if(labjackEdit){
-      labjacks[editingIndex] = unformatData(labjackEdit)
-    }
-    console.log(labjacks[editingIndex]);
-    console.log(labjackEdit)
-    if(nats) putKeyValue(nats, `${labjacks[editingIndex].cabinet_id}_${labjacks[editingIndex].labjack_name}`, natsKey, JSON.stringify(labjacks[editingIndex]));
-    editingIndex = -1;
-    labjackEdit = null;
-  }
-
-  onMount(() => {
-    serverName = sessionStorage.getItem("serverName");
-    selectedCabinet = sessionStorage.getItem("selectedCabinet");
-    console.log(`Server Name: ${serverName}, Selected Cabinet: ${selectedCabinet}`);
-    initialize();
-    console.log(labjacks)
-  });
-
 </script>
 
 {#if loading}
   <div class="loading-overlay">
     <span class="loading loading-spinner loading-lg"></span>  
   </div>
-{:else if labjacks !== null} 
-  <div class="flex flex-col justify-center items-center">
-    <h1 class="my-10 text-4xl">Select Labjack to Edit</h1>
-    <div class="flex space-x-5">
-      {#each labjacks as labjack, index}
-      <div class="card bg-stone-200 shadow-xl text-neutral w-[20vw] min-w-60">
-        <div class="card-body">
-          <div class="flex justify-center">
-            <h2 class="card-title">{labjack["labjack_name"]}</h2>
-          </div>
-          {#each singleKeys as key}
-            {#if key !== "cabinet_id" && key !== "labjack_name"}
-              <p class="pl-2 mt-2"><strong>{key}:</strong> {labjack.sensor_settings[key as keyof SensorSettings]}</p>
-            {/if}
-          {/each}
-          <div class="mt-3 flex justify-center">
-            <button class="btn btn-outline btn-success" onclick={() => openEdit(labjack, index)}>
-              Edit Config
-            </button>
-          </div>
-        </div>
+{:else}
+  <div class="flex flex-col items-center w-full px-4">
+    
+    <h1 class="my-8 text-3xl sm:text-4xl text-center">Select LabJack to Edit</h1>
+    <div class="flex mb-8">
+      <div class="flex w-64 mx-10 justify-center">
+        <button class="btn btn-primary" onclick={() => location.href = "/config/cabinet-select"}>{"<--"}Back to Cabinet Select</button>
       </div>
-      {/each}
+      <div class="flex w-64 mx-10 justify-center">
+        <button class="btn btn-primary" onclick={() => new_modal?.showModal()}>New LabJack</button>
+      </div>
     </div>
+    {#if labjacks !== null} 
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 w-full max-w-7xl">
+        {#each labjacks as labjack, index}
+          <div class="card bg-primary shadow-lg text-neutral p-4">
+            <div class="card-body space-y-4">
+              <h2 class="card-title text-center">{labjack["labjack_name"]}</h2>
+              <p><strong>Sampling Rate:</strong> {labjack.sensor_settings["sampling_rate"]}</p>
+              <p><strong>Gain:</strong> {labjack.sensor_settings["gains"]}</p>
+              <p><strong>Serial:</strong> {labjack.serial}</p>
+              <div class="flex justify-center">
+                <button class="btn btn-outline btn-success" onclick={() => openEdit(labjack, index)}>
+                  Edit Config
+                </button>
+              </div>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/if}
   </div>
 {/if}
 
 <dialog id="edit_modal" class="modal" bind:this={edit_modal}>
-  <div class="modal-box bg-stone-200 max-w-[75vw] p-6 rounded-lg shadow-lg relative">
+  <div class="modal-box bg-primary max-w-[75vw] p-6 rounded-lg shadow-lg relative">
     <form method="dialog">
       <button class="btn btn-sm btn-circle absolute right-2 top-2">✕</button>
     </form>
@@ -283,17 +341,93 @@
         </table>
       </div>
     {/if}
-
     <form method="dialog" class="modal-backdrop mt-4">
       <div class="flex justify-center">
-        <button class="btn btn-primary w-1/4 mr-5">Cancel</button>
-        <button class="btn btn-primary w-1/4 ml-5" onclick={saveChanges}>Save Changes</button>
+        <button class="btn btn-outline btn-success w-1/4 mr-5">Cancel</button>
+        <button class="btn btn-outline btn-success w-1/4 ml-5" onclick={saveChanges}>Save Changes</button>
       </div>
     </form>
   </div>
 </dialog>
 
+<dialog id="new_modal" class="modal" bind:this={new_modal}>
+  <div class="modal-box bg-primary max-w-[75vw] p-6 rounded-lg shadow-lg relative">
+    <form method="dialog">
+      <button class="btn btn-sm btn-circle absolute right-2 top-2">✕</button>
+    </form>
+    
+    <h3 class="text-lg font-semibold text-black text-center mb-6">
+      Add New LabJack
+    </h3>
+    <form onsubmit={createLabjack}>
+      <div class="flex items-center my-4">
+        <p class="text-black font-medium mr-10">Serial Number:</p>
+        <input type="text" name="serialNumber" class='input modal_input mr-auto' bind:value={newLabjack.serial} required/>
+        <p class="text-black font-medium mr-10" >Sampling Rate:</p>
+        <input type="text" class="input modal_input mr-auto" bind:value={newLabjack.sensor_settings.sampling_rate}/>
+        <p class=" text-black font-medium mr-10">Gain:</p>
+        <input type="text" class="input modal_input mr-auto" bind:value={newLabjack.sensor_settings.gains}/>
+      </div>
+      <table class="table w-full border-collapse">
+        <thead class="text-black border-b-2">
+          <tr>
+            <th>Channel #</th>
+            <th>Enabled</th>
+            <th>Data Format</th>
+            <th>Units</th>
+            <th>Publish Raw Data</th>
+            <th>Measure Peaks</th>
+          </tr>
+        </thead>
+        <tbody class="text-black">
+          {#each Array.from({length: 8}, (_, i) => i + 1) as index}
+            <tr class="border-t">
+              <td class="text-center">{index}</td>
+                <td class="text-center">
+                  <input type="checkbox" bind:checked={newLabjack.sensor_settings.channels_enabled[index - 1]} class="checkbox border-black"/>
+                </td>
+                <td>
+                  <input type="text" class="input modal_input" bind:value={newLabjack.sensor_settings.data_formats[index - 1]} disabled={!newLabjack.sensor_settings.channels_enabled[index - 1]}/>
+                </td>
+                <td>
+                  <input type="text" class="input modal_input" bind:value={newLabjack.sensor_settings.measurement_units[index - 1]} disabled={!newLabjack.sensor_settings.channels_enabled[index - 1]}/>                      
+                </td>
+                <td class="text-center">
+                  <input type="checkbox" bind:checked={newLabjack.sensor_settings.publish_raw_data[index - 1]} class="checkbox border-black" disabled={!newLabjack.sensor_settings.channels_enabled[index - 1]}/>                             
+                </td>
+                <td class="text-center">
+                  <input type="checkbox" bind:checked={newLabjack.sensor_settings.measure_peaks[index - 1]} class="checkbox border-black" disabled={!newLabjack.sensor_settings.channels_enabled[index - 1]}/>                             
+                </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+      <button type="submit" class="btn btn-outline btn-success">Add LabJack</button>
+    </form>
+  </div>
+</dialog>
 
+{#if alert}
+  <div class="toast toast-top toast-center">
+    <div role="alert" class="alert">
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+        class="stroke-info h-6 w-6 shrink-0">
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+      </svg>
+      <span>{alert}</span>
+      <div>
+        <button class="btn btn-sm btn-primary" onclick={() => {alert=null;}}>Close</button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 
 <style>
