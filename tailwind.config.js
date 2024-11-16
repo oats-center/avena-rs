@@ -8,10 +8,10 @@ export default {
     themes: [
       {
         mytheme: {
-          "primary": "#bababa",   //grey for sensor boxes    
+          "primary": "#e7e5e4",   //grey background for sensor boxes    
           "secondary": "#FFFFFF", //white
           "accent": "#1f1f1f",    //background grey    
-          "neutral": "#1f1f1f",   //background black      
+          "neutral": "#1f1f1f",      
           "base-100": "#1f1f1f",         
           "info": "#FFFFFF",         
           "success": "#1f1f1f",         
