@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { NatsService, connect, getKeys, getKeyValue } from "$lib/nats";
+  import { NatsService, connect, getKeys, getKeyValue } from "$lib/nats.svelte";
 
   type Cabinet = {
   "id": string
