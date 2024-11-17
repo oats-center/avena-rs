@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { NatsService, connect,  putKeyValue, getKeyValue, getKeys} from "$lib/nats";
+  import { NatsService, connect,  putKeyValue, getKeyValue, getKeys} from "$lib/nats.svelte";
   import { KvWatchInclude } from "@nats-io/kv"
   
   type LabJack = {
