@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { NatsService, connect,  putKeyValue, getKeyValue, getKeys} from "$lib/nats.svelte";
   import { KvWatchInclude } from "@nats-io/kv"
+    import { goto } from "$app/navigation";
   
   type LabJack = {
     "cabinet_id": string;
@@ -92,7 +93,8 @@
   async function initialize() {
     if(serverName) nats = await connect(serverName)
     if(nats && selectedCabinet) {
-      let labjacksList = await getKeys(nats, selectedCabinet);
+      let labjacksList = await getKeys(nats, selectedCabinet, "labjackd.config.*");
+      console.log(labjacksList);
       for(let labjack of labjacksList){
         let values = await getLabjack(selectedCabinet, labjack);
         labjacks.push(values);
@@ -123,7 +125,7 @@
   }
 
   //watches the values of one key
-  async function watchVal(bucket: string, key: string, index: number) {
+  async function watchVal(bucket: string, key: string, index: number): Promise<void> {
     if(!nats) throw new Error("NATS is not initialized");
     const kv = await nats.kvm.open(bucket); //bucket will need to be changed to the done bucket once trying to actually implement
     const watch = await kv.watch({
@@ -131,9 +133,10 @@
       "key": key,
     })
     for await (const e of watch) {
-      //console.log(`watch: ${e.key}: ${e.operation} ${e.value ? e.string() : ""}`);
-      if(e.value) labjacks[index] = JSON.parse(e.string());
-      alert = `Changes were made to ${labjacks[index].labjack_name}`;
+      if(e.operation == "PUT"){
+        if(e.value) labjacks[index] = JSON.parse(e.string());
+        alert = `Changes were made to ${labjacks[index].labjack_name}`;
+      }
     }
   }
 
@@ -152,19 +155,22 @@
       "include": KvWatchInclude.UpdatesOnly
     })
     for await(const e of watch) {
-      let exists = false;
+      let exists = -1;
       const key = e.key;
       const serialNumber = key.split(".").pop();
-      for(const labjack of labjacks){
-        if(labjack.serial === serialNumber){
-          exists = true;
+      for(let i = 0; i < labjacks.length; i++){
+        if(labjacks[i].serial === serialNumber){
+          exists = i;
           break;
         }
       }
-      if(!exists) {
+      if(exists == -1) {
         let newVal = await getLabjack(selectedCabinet, e.key)
         labjacks.push(newVal);
-        alert = "New LabJack Added"
+        alert = "New LabJack Added";
+      } else if(exists && (e.operation == "DEL" || e.operation == "PURGE")){
+        labjacks.splice(exists, 1);
+        alert = `Labjack Deleted`;
       }
     }
   }
@@ -278,14 +284,16 @@
   </div>
 {:else}
   <div class="flex flex-col items-center w-full px-4">
-    
-    <h1 class="my-8 text-3xl sm:text-4xl text-center">Select LabJack to Edit</h1>
+    <h1 class="my-8 text-3xl sm:text-4xl text-center">Labjack Configuration</h1>
     <div class="flex mb-8">
       <div class="flex w-64 mx-10 justify-center">
-        <button class="btn btn-primary" onclick={() => location.href = "/config/cabinet-select"}>{"<--"}Back to Cabinet Select</button>
+        <button class="btn btn-primary" onclick={() => goto("/config/cabinet-select")}>{"<--"}Back to Cabinet Select</button>
       </div>
       <div class="flex w-64 mx-10 justify-center">
         <button class="btn btn-primary" onclick={() => new_modal?.showModal()}>New LabJack</button>
+      </div>
+      <div class="flex w-64 mx-10 justify-center">
+        <button class="btn btn-primary" onclick={() => goto("sensor-map")}>Map View</button>
       </div>
     </div>
     {#if labjacks !== null} 

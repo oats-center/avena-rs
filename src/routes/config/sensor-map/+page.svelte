@@ -4,8 +4,8 @@
   import { paintBackground, paintSensors } from '$lib/paintCanvases';
   import SensorControls from '$lib/SensorControls.svelte'
   import background from "$lib/images/background.png";
-  import temp_sensor from "$lib/images/temp_sensor.png";
-  import press_sensor from "$lib/images/press_sensor.png";
+  import temperature_sensor from "$lib/images/temperature_sensor.png";
+  import pressure_sensor from "$lib/images/pressure_sensor.png";
 
   type Sensor = {
     id: string;
@@ -41,12 +41,12 @@
   onMount(() => {
     let tempBg = getLocalImage('background', "").value;
     const tempImage = new Image();
-    tempImage.src = temp_sensor;
+    tempImage.src = temperature_sensor;
     tempImage.onload = function() {
       sensorImages.push(tempImage);
     }
     const pressImage = new Image();
-    pressImage.src = press_sensor;
+    pressImage.src = pressure_sensor;
     pressImage.onload = function() { 
       sensorImages.push(pressImage);
     }
