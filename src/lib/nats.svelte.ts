@@ -33,11 +33,11 @@ export async function connect(serverName: string): Promise<NatsService | null> {
 }
 
 //gets entire list of keys that bucket contains
-export async function getKeys(nats: NatsService, bucket: string): Promise<string[]> {
+export async function getKeys(nats: NatsService, bucket: string, filter?: string): Promise<string[]> {
   if (!nats) throw new Error("NATS connection is not initialized");
   const kv = await nats.kvm.open(bucket);
   const keysList: string[] = [];
-  const keys = await kv.keys();
+  const keys = await kv.keys(filter);
   for await (const key of keys ) {
     keysList.push(key);
   }

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
   import { wsconnect } from "@nats-io/nats-core";
  //use session storage to save the connection ID, which will be used when in the config and map pages
   let serverName = $state<string>("");
@@ -12,7 +13,7 @@
       if(server){
         server.close()
         sessionStorage.setItem("serverName", serverName)
-        location.href = "/config/cabinet-select";
+        goto("/config/cabinet-select");
       }
       loading = false;
     } catch (error) {

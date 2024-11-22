@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { NatsService, connect, getKeys, getKeyValue } from "$lib/nats.svelte";
+    import { goto } from "$app/navigation";
 
   type Cabinet = {
   "id": string
@@ -44,7 +45,7 @@
   //once selected, sets the selectedCabinet to session storage and redirects to labjack config page
   function selectConfig(selectedCabinet: string) {
     sessionStorage.setItem("selectedCabinet", selectedCabinet)
-    location.href = "/config/lj-config";
+    goto("/config/lj-config");
   }
 
   //gets the server name from session storage & initalizes
