@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { NatsService, connect,  putKeyValue, getKeyValue, getKeys} from "$lib/nats.svelte";
   import { KvWatchInclude } from "@nats-io/kv"
-    import { goto } from "$app/navigation";
+  import { goto } from "$app/navigation";
   
   type LabJack = {
     "cabinet_id": string;
@@ -38,7 +38,8 @@
     "publish_summary_peaks": boolean;
     "labjack_reset": boolean;
   }
-
+  
+  //default values for above types
   const defaultSensorSettings = {
     "sampling_rate": 0,
     "channels_enabled": [0],
@@ -61,12 +62,6 @@
     "publish_summary_peaks": false,
     "labjack_reset": false,
   }
-  const defaultLabjack: LabJack = {
-    "cabinet_id": "",
-    "labjack_name": "",
-    "serial": "",
-    "sensor_settings": defaultSensorSettings
-  }
   const defaultFormattedLabjack: FormattedLabJack = {
     "cabinet_id": "",
     "labjack_name": "",
@@ -74,17 +69,17 @@
     "sensor_settings": defaultFormattedSettings
   }
  
-  const natsKey = "config";
   let serverName: string | null = null;
   let nats: NatsService | null = null;
   let selectedCabinet: string | null = null;
-  
+  let edit_modal = $state<HTMLDialogElement>();
+  let new_modal = $state<HTMLDialogElement>();
+  let verify_modal = $state<HTMLDialogElement>();
+
   let labjacks = $state<LabJack[]>([]);
   let loading = $state<boolean>(true);
   let labjackEdit = $state<FormattedLabJack | null>(null);
   let editingIndex = -1;
-  let edit_modal = $state<HTMLDialogElement>();
-  let new_modal = $state<HTMLDialogElement>();
   let alert = $state<string | null>(null);
   let newLabjack = $state<FormattedLabJack>(defaultFormattedLabjack)
   
@@ -100,7 +95,8 @@
         labjacks.push(values);
       }
       loading = false;
-      watchLabJacks()
+      watchLabJacks();
+      watchCabinet();
     } else {
       console.log('No Nats Connection');
     }
@@ -127,7 +123,7 @@
   //watches the values of one key
   async function watchVal(bucket: string, key: string, index: number): Promise<void> {
     if(!nats) throw new Error("NATS is not initialized");
-    const kv = await nats.kvm.open(bucket); //bucket will need to be changed to the done bucket once trying to actually implement
+    const kv = await nats.kvm.open(bucket);
     const watch = await kv.watch({
       "include": KvWatchInclude.UpdatesOnly,
       "key": key,
@@ -179,7 +175,8 @@
   async function createLabjack(event: Event) {
     event.preventDefault();
     if (!nats || !selectedCabinet) throw new Error("NATS is not initialized");
-        for(let labjack of labjacks){
+    
+    for(let labjack of labjacks){
       if(labjack.serial == newLabjack.serial){
         alert = "Serial Number Already Exists";
         new_modal?.close();
@@ -197,13 +194,20 @@
     new_modal?.close();
   }
 
+  async function deleteLabjack() {
+    if (!nats || !selectedCabinet) throw new Error("NATS is not initialized");
+    const kv = await nats.kvm.open(selectedCabinet);
+    await kv.delete(`labjackd.config.${labjacks[editingIndex].serial}`);
+    editingIndex = -1;
+    edit_modal?.close();
+  }
+
   //gets the selected cabinet and server name from session storage
   onMount(() => {
     serverName = sessionStorage.getItem("serverName");
+    if (!serverName) goto("/")
     selectedCabinet = sessionStorage.getItem("selectedCabinet");
-    console.log(`Server Name: ${serverName}, Selected Cabinet: ${selectedCabinet}`);
-    initialize().then(()=>watchCabinet());
-
+    initialize();
   });
 
   //formats the data to fit in the table properly
@@ -377,6 +381,7 @@
       <div class="flex justify-center">
         <button class="btn btn-outline btn-success w-1/4 mr-5">Cancel</button>
         <button class="btn btn-outline btn-success w-1/4 ml-5" onclick={saveChanges}>Save Changes</button>
+        <button class="btn btn-outline btn-error  w-1/4 ml-5" onclick={() => verify_modal?.showModal()}>Delete Labjack</button>
       </div>
     </form>
   </div>
@@ -439,6 +444,21 @@
   </div>
 </dialog>
 
+<dialog id="verify_modal" class='modal' bind:this={verify_modal}>
+  <div class="modal-box">
+    <h3 class="text-lg font-bold">Save Changes?</h3>
+    <h6>Pressing 'Yes' will delete the current selected LabJack.</h6>
+    <div class="mt-5 flex">
+      <form method="dialog">
+        <button class="btn btn-primary" onclick={() => edit_modal?.showModal()}>No</button>
+        <button class="btn btn-success ml-5" onclick={ () => deleteLabjack() }>Yes</button>
+      </form>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button>close</button>
+  </form>
+</dialog>
 {#if alert}
   <div class="toast toast-top toast-center">
     <div role="alert" class="alert">
