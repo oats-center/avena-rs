@@ -1,8 +1,7 @@
 <script lang='ts'>
-  export let currSensor;
+  export let editingSensor;
   export let sensorColors;
   export let sensorGroups;
-  export let onAddSensor;
   export let cancel_modal;
   export let delete_modal;
   export let save_modal;
@@ -32,34 +31,34 @@
 
 <div id="sensorControls" class="w-2/5 h-3/5">
   <h1 class="text-center text-2xl">Sensor Control Area</h1>
-  {#if currSensor}
+  {#if editingSensor}
     <div class="mt-5">
       <div class="justify-center flex flex-col items-center">
         <label for="nameInput">Name:</label>
-        <input type="text" bind:value={currSensor.name} id="nameInput" class="input input-bordered w-full max-w-xs mt-2"/>
+        <input type="text" bind:value={editingSensor.name} id="nameInput" class="input input-bordered w-full max-w-xs mt-2"/>
         <label for="xPosInput" class="block mt-5">Sensor X Position:</label>
-        <input type="text" bind:value={currSensor.x_pos} id="xPosInput" class="input input-bordered w-full max-w-xs"/>
-        <input type="range" step="0.01" min="0" max='1' bind:value={currSensor.x_pos} class="w-full  max-w-xs mt-2"/>
+        <input type="text" bind:value={editingSensor.x_pos} id="xPosInput" class="input input-bordered w-full max-w-xs"/>
+        <input type="range" step="0.01" min="0" max='1' bind:value={editingSensor.x_pos} class="w-full  max-w-xs mt-2"/>
 
         <label for="yPosInput" class="block mt-5">Sensor Y Position:</label>
-        <input type="text" bind:value={currSensor.y_pos} id="yPosInput" class="input input-bordered max-w-xs w-full"/>
-        <input type="range" step="0.01" min="0.0" max='1.0' bind:value={currSensor.y_pos} class="w-full max-w-xs mt-2"/>
+        <input type="text" bind:value={editingSensor.y_pos} id="yPosInput" class="input input-bordered max-w-xs w-full"/>
+        <input type="range" step="0.01" min="0.0" max='1.0' bind:value={editingSensor.y_pos} class="w-full max-w-xs mt-2"/>
         
         <label for="groupSelect" class="block mt-5">Sensor Group:</label>
-        <select id="groupSelect" class="select select-bordered w-full max-w-xs mt-2" bind:value={currSensor.group}>
+        <select id="groupSelect" class="select select-bordered w-full max-w-xs mt-2" bind:value={editingSensor.group}>
           {#each sensorGroups as group}
             <option value={group}>{group}</option>
           {/each}
         </select>
         <label for="colorSelect" class="block mt-5">Sensor Color:</label>
-        <select id="colorSelect" class="select select-bordered w-full max-w-xs mt-2" bind:value={currSensor.color}>
+        <select id="colorSelect" class="select select-bordered w-full max-w-xs mt-2" bind:value={editingSensor.color}>
           {#each sensorColors as color}
             <option value={color}>{color}</option>
           {/each}
         </select>
 
         <label for="layerSelect" class="block mt-5">Sensor Layer:</label>
-        <select id="layerSelect" class="select select-bordered w-full max-w-xs mt-2" bind:value={currSensor.layer}>
+        <select id="layerSelect" class="select select-bordered w-full max-w-xs mt-2" bind:value={editingSensor.layer}>
           {#each [1, 2, 3] as num}
             <option value={num}>{num}</option>
           {/each}
@@ -74,7 +73,7 @@
   
     {:else}
     <div class="flex flex-col justify-center items-center mt-5">
-      <button class="btn btn-neutral w-full max-w-xs" onclick={onAddSensor}>Add Sensor</button>
+      <button class="btn btn-neutral w-full max-w-xs">Add Sensor</button>
       <h2 class="mt-5">Change Background</h2>
       <input type="file" class="file-input file-input-bordered mt-2" accept="image/png, image/jpg" bind:this={fileInput}/>
       <div class="flex">
