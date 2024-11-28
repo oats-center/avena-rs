@@ -179,59 +179,6 @@
     {save_modal}
   />
 </div>
-
-<dialog id="cancel_modal" class='modal' bind:this={cancel_modal}>
-  <div class="modal-box">
-    <h3 class="text-lg font-bold">Cancel Changes?</h3>
-    <h6>Pressing 'Yes' will delete all changes made without saving</h6>
-    <div class="mt-5 flex">
-      <form method="dialog">
-        <button class="btn btn-primary">No</button>
-        <button class="btn btn-error ml-5" onclick={ () => {
-          queuedSensor ? currSensor = queuedSensor : currSensor = null;
-          queuedSensor = null;
-        }}>Yes</button>
-      </form>
-    </div>
-  </div>
-  <form method="dialog" class="modal-backdrop">
-    <button>close</button>
-  </form>
-</dialog>
-
-<dialog id="delete_modal" class='modal' bind:this={delete_modal}>
-  <div class="modal-box">
-    <h3 class="text-lg font-bold">Delete Sensor?</h3>
-    <h6>Pressing 'Yes' will delete the currently selected sensor and that data will be unrecoverable</h6>
-    <div class="mt-5 flex">
-      <form method="dialog">
-        <button class="btn btn-primary">No</button>
-        <button class="btn btn-error ml-5" onclick={ () => deleteSensor() }>Yes</button>
-      </form>
-    </div>
-  </div>
-  <form method="dialog" class="modal-backdrop">
-    <button>close</button>
-  </form>
-</dialog>
-
-<dialog id="save_modal" class='modal' bind:this={save_modal}>
-  <div class="modal-box">
-    <h3 class="text-lg font-bold">Save Changes?</h3>
-    <h6>Pressing 'Yes' will override the already saved data with the new data.</h6>
-    <div class="mt-5 flex">
-      <form method="dialog">
-        <button class="btn btn-primary">No</button>
-        <button class="btn btn-success ml-5" onclick={ () => updateSensors() }>Yes</button>
-      </form>
-    </div>
-  </div>
-  <form method="dialog" class="modal-backdrop">
-    <button>close</button>
-  </form>
-</dialog>
-
-
 <style>
   .canvas_container {
     position: relative;
