@@ -1,14 +1,25 @@
 <script lang='ts'>
-  export let editingSensor;
-  export let sensorColors;
-  export let sensorGroups;
+  interface Sensor {
+    "cabinet_id" : string;
+    "labjack_serial" : string;
+    "connected_channel": number 
+    "sensor_name" : string; 
+    "sensor_type" : string; 
+    "x_pos" : number; 
+    "y_pos" : number; 
+    "color" : string; 
+  }
+
+  export let editingSensor: Sensor | null;
+  export let sensorColors: string[];
+  export let sensorGroups: string[];
   export let cancel_modal;
   export let delete_modal;
   export let save_modal;
-
+  
   let fileInput: HTMLInputElement;
 
-  function readFile() {
+  function readFile(): void {
     if(fileInput !== null && fileInput.files){
       const file = fileInput.files[0];
       const reader = new FileReader();
@@ -29,13 +40,13 @@
   }
 </script>
 
-<div id="sensorControls" class="w-2/5 h-3/5">
+<div id="sensorControls" class="mb-20">
   <h1 class="text-center text-2xl">Sensor Control Area</h1>
   {#if editingSensor}
     <div class="mt-5">
       <div class="justify-center flex flex-col items-center">
         <label for="nameInput">Name:</label>
-        <input type="text" bind:value={editingSensor.name} id="nameInput" class="input input-bordered w-full max-w-xs mt-2"/>
+        <input type="text" bind:value={editingSensor.sensor_name} id="nameInput" class="input input-bordered w-full max-w-xs mt-2"/>
         <label for="xPosInput" class="block mt-5">Sensor X Position:</label>
         <input type="text" bind:value={editingSensor.x_pos} id="xPosInput" class="input input-bordered w-full max-w-xs"/>
         <input type="range" step="0.01" min="0" max='1' bind:value={editingSensor.x_pos} class="w-full  max-w-xs mt-2"/>
@@ -45,7 +56,7 @@
         <input type="range" step="0.01" min="0.0" max='1.0' bind:value={editingSensor.y_pos} class="w-full max-w-xs mt-2"/>
         
         <label for="groupSelect" class="block mt-5">Sensor Group:</label>
-        <select id="groupSelect" class="select select-bordered w-full max-w-xs mt-2" bind:value={editingSensor.group}>
+        <select id="groupSelect" class="select select-bordered w-full max-w-xs mt-2" bind:value={editingSensor.sensor_type}>
           {#each sensorGroups as group}
             <option value={group}>{group}</option>
           {/each}
@@ -56,18 +67,11 @@
             <option value={color}>{color}</option>
           {/each}
         </select>
-
-        <label for="layerSelect" class="block mt-5">Sensor Layer:</label>
-        <select id="layerSelect" class="select select-bordered w-full max-w-xs mt-2" bind:value={editingSensor.layer}>
-          {#each [1, 2, 3] as num}
-            <option value={num}>{num}</option>
-          {/each}
-        </select>
       </div>
       <div class="mt-5 flex justify-between">
-        <button class="btn btn-primary w-1/4" onclick={ () => cancel_modal.showModal() }>Cancel</button>
-        <button class="btn btn-error w-1/4" onclick={ () => delete_modal.showModal() }>Delete</button>
-        <button class="btn btn-primary w-1/4" onclick={ () => save_modal.showModal() }>Save</button>
+        <button class="btn btn-primary w-1/4" onclick={ () => cancel_modal?.showModal() }>Cancel</button>
+        <button class="btn btn-error w-1/4" onclick={ () => delete_modal?.showModal() }>Delete</button>
+        <button class="btn btn-primary w-1/4" onclick={ () => save_modal?.showModal() }>Save</button>
       </div>
     </div>
   
