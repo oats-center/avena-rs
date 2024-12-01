@@ -18,7 +18,7 @@
   }
 
   interface MapConfig {
-    "background_image": string;
+    "backgroundImage": string;
     [key: `labjackd.${string}.ch${number}`]: Sensor;
   }
 
@@ -26,18 +26,20 @@
   let selectedCabinet: string | null;
   let nats: NatsService | null;
   const sensorColors = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'grey', 'black'];
-  const sensorGroups = ['', 'Temperature', 'Pressure']
+  const sensorGroups = ['Temperature', 'Pressure']
   let cancel_modal = $state<HTMLDialogElement>();
   let delete_modal = $state<HTMLDialogElement>();
   let save_modal = $state<HTMLDialogElement>();
 
 
   let sensors = $state<Sensor[]>([]);
-  let mapconfig: any;
+  let mapconfig: MapConfig;
   let editingSensor = $state<Sensor | null>(null);
   let backgroundImage = $state<string | null>(null);
   let editingIndex= $state<number>(-1);
+  let queuedIndex = -1;
   let sensorSize= $state<number>(40);
+  
 
   async function initialize(): Promise<void> {
     if(serverName) nats = await connect(serverName);
@@ -69,9 +71,9 @@
       //gets the values from NATS   
       let tempConfig = await getKeyValue(nats, selectedCabinet, "mapconfig");
       mapconfig = JSON.parse(tempConfig) as MapConfig
-      for (const key in mapconfig) {
-        if(key !== "backgroundImage") sensors.push(mapconfig[key] as Sensor)
-      }
+      sensors = Object.entries(mapconfig)
+        .filter(([key]) => key !== "backgroundImage")
+        .map(([, value]) => value as Sensor);
       backgroundImage = mapconfig.backgroundImage
     }
   }
@@ -96,11 +98,23 @@
       editingIndex = index;
       console.log("no editing sensor")
       return;
+    //no changes had been made to currently selected sensor
+    } else if (index && JSON.stringify(editingSensor) === JSON.stringify(sensors[editingIndex])){
+      editingSensor = JSON.parse(JSON.stringify(sensor));
+      editingIndex = index;
+      return;
     //option: editingSensor !== null and a new sensor was clicked
-    } else if (index !== undefined && editingSensor !== null && editingIndex !== index) {
+    } else if (index && editingSensor !== null && editingIndex !== index) {
       cancel_modal?.showModal();
+      queuedIndex = index;
+      return;
     //option: editingSensor !== null the same sensor was clicked  
     } else if (index !== undefined && editingIndex === index){
+      return;
+    } else if (queuedIndex) {
+      editingSensor = JSON.parse(JSON.stringify(sensors[queuedIndex]));
+      editingIndex = queuedIndex;
+      queuedIndex = -1;
       return;
     }
     //option: editingSensor !== null and the changes were canceled
@@ -113,7 +127,7 @@
     let newSensor: Sensor = {
       "cabinet_id" : selectedCabinet,
       "labjack_serial" : "0",
-      "connected_channel": 0 ,
+      "connected_channel": 0,
       "sensor_name" : "New Sensor", 
       "sensor_type" : "Temperature",
       "x_pos" : 0,
@@ -134,6 +148,13 @@
     putKeyValue(nats, selectedCabinet, "mapconfig", JSON.stringify(mapconfig));
   }
 
+  function saveBackgroundChanges(background: string): void {
+    if (!nats || !selectedCabinet) throw new Error("NATS is not initialized");
+    mapconfig.backgroundImage = background;
+    backgroundImage = background;
+    putKeyValue(nats, selectedCabinet, "mapconfig", JSON.stringify(mapconfig));
+  }
+
   onMount(() => {
     serverName = sessionStorage.getItem("serverName");
     selectedCabinet = sessionStorage.getItem("selectedCabinet");
@@ -142,7 +163,7 @@
 
   function formatToNats(): MapConfig {
     if(!backgroundImage || !sensors) throw new Error("Something went wrong with formatting");
-    let formattedData: MapConfig = {"background_image" : backgroundImage};
+    let formattedData: MapConfig = {"backgroundImage" : backgroundImage};
     sensors.forEach((sensor) => {
       formattedData[`labjackd.${sensor.labjack_serial}.ch${sensor.connected_channel}`] = sensor
     })
@@ -201,6 +222,7 @@
     {delete_modal}
     {save_modal}
     {addSensor}
+    {saveBackgroundChanges}
   />
 </div>
 

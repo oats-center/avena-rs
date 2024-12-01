@@ -328,15 +328,15 @@
       <button class="btn btn-sm btn-circle absolute right-2 top-2">✕</button>
     </form>
     
-    <h3 class="text-lg font-semibold text-black text-center mb-6">
+    <h3>
       Edit {labjackEdit?.labjack_name}
     </h3>
     
     {#if labjackEdit}
       <div class="flex items-center my-4">
-        <p class="text-black font-medium mr-10" >Sampling Rate:</p>
+        <h6>Sampling Rate:</h6>
         <input type="text" class="input modal_input mr-auto" bind:value={labjackEdit.sensor_settings.sampling_rate}/>
-        <p class=" text-black font-medium mr-10">Gain:</p>
+        <h6>Gain:</h6>
         <input type="text" class="input modal_input mr-auto" bind:value={labjackEdit.sensor_settings.gains}/>
       </div>
 
@@ -393,16 +393,16 @@
       <button class="btn btn-sm btn-circle absolute right-2 top-2">✕</button>
     </form>
     
-    <h3 class="text-lg font-semibold text-black text-center mb-6">
+    <h3>
       Add New LabJack
     </h3>
     <form onsubmit={createLabjack}>
       <div class="flex items-center my-4">
-        <p class="text-black font-medium mr-10">Serial Number:</p>
+        <h6>Serial Number:</h6>
         <input type="text" name="serialNumber" class='input modal_input mr-auto' bind:value={newLabjack.serial} required/>
-        <p class="text-black font-medium mr-10" >Sampling Rate:</p>
+        <h6>Sampling Rate:</h6>
         <input type="text" class="input modal_input mr-auto" bind:value={newLabjack.sensor_settings.sampling_rate}/>
-        <p class=" text-black font-medium mr-10">Gain:</p>
+        <h6>Gain: </h6>
         <input type="text" class="input modal_input mr-auto" bind:value={newLabjack.sensor_settings.gains}/>
       </div>
       <table class="table w-full border-collapse">
@@ -445,13 +445,13 @@
 </dialog>
 
 <dialog id="verify_modal" class='modal' bind:this={verify_modal}>
-  <div class="modal-box">
-    <h3 class="text-lg font-bold">Save Changes?</h3>
+  <div class="modal-box bg-primary">
+    <h3>Save Changes?</h3>
     <h6>Pressing 'Yes' will delete the current selected LabJack.</h6>
     <div class="mt-5 flex">
       <form method="dialog">
-        <button class="btn btn-primary" onclick={() => edit_modal?.showModal()}>No</button>
-        <button class="btn btn-success ml-5" onclick={ () => deleteLabjack() }>Yes</button>
+        <button class="btn btn-outline btn-success" onclick={() => edit_modal?.showModal()}>No</button>
+        <button class="btn btn-outline btn-error ml-5" onclick={ () => deleteLabjack() }>Yes</button>
       </form>
     </div>
   </div>
@@ -459,6 +459,7 @@
     <button>close</button>
   </form>
 </dialog>
+
 {#if alert}
   <div class="toast toast-top toast-center">
     <div role="alert" class="alert">
@@ -494,6 +495,7 @@
     justify-content: center;
     align-items: center;
   }
+  
   .modal_input {
     width: 1/2;
     max-width: "xs";
