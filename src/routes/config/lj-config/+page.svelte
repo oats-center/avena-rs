@@ -3,6 +3,7 @@
   import { NatsService, connect,  putKeyValue, getKeyValue, getKeys} from "$lib/nats.svelte";
   import { KvWatchInclude } from "@nats-io/kv"
   import { goto } from "$app/navigation";
+  import Alert from "$lib/components/Alert.svelte";
   
   type LabJack = {
     "cabinet_id": string;
@@ -460,47 +461,5 @@
   </form>
 </dialog>
 
-{#if alert}
-  <div class="toast toast-top toast-center">
-    <div role="alert" class="alert">
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        fill="none"
-        viewBox="0 0 24 24"
-        class="stroke-info h-6 w-6 shrink-0">
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="2"
-          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-      </svg>
-      <span>{alert}</span>
-      <div>
-        <button class="btn btn-sm btn-primary" onclick={() => {alert=null;}}>Close</button>
-      </div>
-    </div>
-  </div>
-{/if}
+<Alert bind:alert={alert}/>
 
-
-<style>
-  .loading-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-  }
-  
-  .modal_input {
-    width: 1/2;
-    max-width: "xs";
-    background-color: rgb(231 229 228);
-    border-color: black;
-    color: black; 
-  }
-</style>

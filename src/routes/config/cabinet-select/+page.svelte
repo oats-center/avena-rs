@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { NatsService, connect, getKeys, getKeyValue } from "$lib/nats.svelte";
-    import { goto } from "$app/navigation";
+  import { goto } from "$app/navigation";
 
   type Cabinet = {
   "id": string
@@ -81,17 +81,3 @@
     </div>
   </div>
 {/if}
-
-<style>
-  .loading-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-  }
-</style>

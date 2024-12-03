@@ -5,11 +5,12 @@
   import SaveModal from "$lib/components/SaveModal.svelte";
   import CancelModal from "$lib/components/CancelModal.svelte";
   import DeleteModal from "$lib/components/DeleteModal.svelte";
+  import Alert from "$lib/components/Alert.svelte";
   
   interface Sensor {
     "cabinet_id" : string;
     "labjack_serial" : string;
-    "connected_channel": number 
+    "connected_channel": string; 
     "sensor_name" : string; 
     "sensor_type" : string; 
     "x_pos" : number; 
@@ -19,9 +20,10 @@
 
   interface MapConfig {
     "backgroundImage": string;
-    [key: `labjackd.${string}.ch${number}`]: Sensor;
+    [key: `labjackd.${string}.ch${string}`]: Sensor;
   }
 
+  //varianles that shouldn't change within this file
   let serverName: string | null;
   let selectedCabinet: string | null;
   let nats: NatsService | null;
@@ -31,16 +33,18 @@
   let delete_modal = $state<HTMLDialogElement>();
   let save_modal = $state<HTMLDialogElement>();
 
-
+  //variables that will change within the file  
   let sensors = $state<Sensor[]>([]);
+  let loading = $state<boolean>(true);
   let mapconfig: MapConfig;
   let editingSensor = $state<Sensor | null>(null);
   let backgroundImage = $state<string | null>(null);
   let editingIndex= $state<number>(-1);
   let queuedIndex = -1;
   let sensorSize= $state<number>(40);
+  let alert = $state<string | null>(null);
   
-
+  //gets values from nats and parses
   async function initialize(): Promise<void> {
     if(serverName) nats = await connect(serverName);
     if(nats && selectedCabinet) {
@@ -69,15 +73,17 @@
       // }))
       
       //gets the values from NATS   
-      let tempConfig = await getKeyValue(nats, selectedCabinet, "mapconfig");
-      mapconfig = JSON.parse(tempConfig) as MapConfig
+      let tempMapConfig = await getKeyValue(nats, selectedCabinet, "mapconfig");
+      mapconfig = JSON.parse(tempMapConfig) as MapConfig
       sensors = Object.entries(mapconfig)
         .filter(([key]) => key !== "backgroundImage")
         .map(([, value]) => value as Sensor);
       backgroundImage = mapconfig.backgroundImage
+      loading = false;
     }
   }
 
+  //saves sensor changes to nats
   function saveSensorChanges(): void {
     if(!nats || !selectedCabinet || !editingSensor || editingIndex === -1) throw new Error("Something went wrong with saving changes");
     
@@ -91,43 +97,47 @@
     save_modal?.close();
   }
   
+  //cancels changes depending on the state of the editing sensor
   function cancelSensorChanges(sensor?: Sensor, index?: number): void {
-    //option: editingSensor === null and a new sensor was clicked
-    if(index !== undefined && editingSensor === null && sensor !== null && index !== -1) {
+    // option: used cancel button
+    if((index === undefined || sensor === undefined) && queuedIndex === -1) { 
+      editingSensor = null;
+      editingIndex = -1;
+      console.log("Used Cancel Button");
+    
+      // option: initial selection
+    } else if(index !== undefined && editingSensor === null && sensor !== null && index !== -1) {
       editingSensor = JSON.parse(JSON.stringify(sensor));
       editingIndex = index;
-      console.log("no editing sensor")
-      return;
-    //no changes had been made to currently selected sensor
-    } else if (index && JSON.stringify(editingSensor) === JSON.stringify(sensors[editingIndex])){
+      console.log("Initial Selection");
+    
+      //option: selected new sensor with no change to currently editing sensor
+    } else if (index !== undefined  && editingIndex !== index && JSON.stringify(editingSensor) === JSON.stringify(sensors[editingIndex])){
       editingSensor = JSON.parse(JSON.stringify(sensor));
       editingIndex = index;
-      return;
-    //option: editingSensor !== null and a new sensor was clicked
-    } else if (index && editingSensor !== null && editingIndex !== index) {
+      console.log("Selected new sensor with no change to currently editing sensor");
+    
+      //option: selected new sensor with changes to currently editing sensor
+    } else if (index !== undefined  && editingSensor !== null && editingIndex !== index) {
       cancel_modal?.showModal();
       queuedIndex = index;
-      return;
-    //option: editingSensor !== null the same sensor was clicked  
-    } else if (index !== undefined && editingIndex === index){
-      return;
-    } else if (queuedIndex) {
+      console.log(queuedIndex);
+      console.log("New sensor clicked on")
+    //option: cancel modal confirm from new sensor selection 
+    } else if (queuedIndex !== -1) {
       editingSensor = JSON.parse(JSON.stringify(sensors[queuedIndex]));
       editingIndex = queuedIndex;
       queuedIndex = -1;
-      return;
     }
-    //option: editingSensor !== null and the changes were canceled
-    editingSensor = null;
-    editingIndex = -1;
   }
 
+  //handles adding a sensor, doesn't get updated in nats until updated
   function addSensor(): void {
     if(!selectedCabinet || !nats) throw new Error("Page not properly loaded");
     let newSensor: Sensor = {
       "cabinet_id" : selectedCabinet,
       "labjack_serial" : "0",
-      "connected_channel": 0,
+      "connected_channel": "0",
       "sensor_name" : "New Sensor", 
       "sensor_type" : "Temperature",
       "x_pos" : 0,
@@ -139,6 +149,7 @@
     editingIndex = sensors.length - 1;
   }
 
+  //deletes a sensor from the sensors array and nats
   function deleteSensor(): void {
     if(!nats || !selectedCabinet || !editingSensor || editingIndex === -1) throw new Error("Something went wrong with saving changes");
     sensors.splice(editingIndex, 1);
@@ -148,6 +159,7 @@
     putKeyValue(nats, selectedCabinet, "mapconfig", JSON.stringify(mapconfig));
   }
 
+  //saves changes to the background to nats 
   function saveBackgroundChanges(background: string): void {
     if (!nats || !selectedCabinet) throw new Error("NATS is not initialized");
     mapconfig.backgroundImage = background;
@@ -155,12 +167,14 @@
     putKeyValue(nats, selectedCabinet, "mapconfig", JSON.stringify(mapconfig));
   }
 
+  //sets up the page
   onMount(() => {
     serverName = sessionStorage.getItem("serverName");
     selectedCabinet = sessionStorage.getItem("selectedCabinet");
     initialize();
   })
 
+  //formats backgroundImage and sensor to how it should go into nats
   function formatToNats(): MapConfig {
     if(!backgroundImage || !sensors) throw new Error("Something went wrong with formatting");
     let formattedData: MapConfig = {"backgroundImage" : backgroundImage};
@@ -172,6 +186,11 @@
 
 </script>
 
+{#if loading} 
+<div class="loading-overlay">
+  <span class="loading loading-spinner loading-lg"></span>  
+</div>
+{:else}
 <div class="flex items-center h-screen">
   <div class="mx-40" style="position:relative; overflow: hidden;">
     <img 
@@ -213,22 +232,26 @@
       </svg>
     {/each}
   </div>
-  <SensorControls
-    bind:editingSensor={editingSensor}
-    bind:sensorSize={sensorSize}
-    {sensorColors}
-    {sensorGroups}
-    {cancel_modal}
-    {delete_modal}
-    {save_modal}
-    {addSensor}
-    {saveBackgroundChanges}
-  />
+  {#if save_modal && cancel_modal && delete_modal}
+    <SensorControls
+      {sensors}
+      {editingIndex}
+      bind:editingSensor={editingSensor}
+      bind:sensorSize={sensorSize}
+      bind:alert={alert}
+      {sensorColors}
+      {sensorGroups}
+      {cancel_modal}
+      {delete_modal}
+      {save_modal}
+      {addSensor}
+      {saveBackgroundChanges}
+    />
+  {/if}
 </div>
+{/if}
 
 <SaveModal bind:save_modal={save_modal} {saveSensorChanges}/>
 <CancelModal bind:cancel_modal={cancel_modal} {cancelSensorChanges}/>
 <DeleteModal bind:delete_modal={delete_modal} {deleteSensor}/>
-
-<style>
-</style>
+<Alert bind:alert={alert}/>
