@@ -2,26 +2,33 @@
   interface Sensor {
     "cabinet_id" : string;
     "labjack_serial" : string;
-    "connected_channel": number 
+    "connected_channel": string; 
     "sensor_name" : string; 
     "sensor_type" : string; 
     "x_pos" : number; 
     "y_pos" : number; 
     "color" : string; 
   }
-
-  export let editingSensor: Sensor | null;
+  //variables that will not change in this file
   export let sensorColors: string[];
   export let sensorGroups: string[];
+  export let cancel_modal: HTMLDialogElement;
+  export let delete_modal: HTMLDialogElement;
+  export let save_modal: HTMLDialogElement;
+  export let sensors: Sensor[];
+  export let editingIndex: number;
+
+  //variables that will change in the file
+  export let editingSensor: Sensor | null;
   export let sensorSize: number;
-  export let cancel_modal;
-  export let delete_modal;
-  export let save_modal;
   export let addSensor: Function;
   export let saveBackgroundChanges: Function;
+  export let alert: string | null;
   
+  //variables just for in this file
   let fileInput: HTMLInputElement;
 
+  //reads the input background files
   function readFile(): void {
     if(fileInput !== null && fileInput.files){
       const file = fileInput.files[0];
@@ -39,50 +46,73 @@
       console.log("No file input")
     }  
   }
+
+  //form validation for mapconfig controls
+  function handleSave(): void {
+    if(!editingSensor) throw new Error ("No editing sensor with save confirmation?")
+    if(editingSensor.labjack_serial === '0' || editingSensor.connected_channel === '0'){
+      alert = "Serial number & connected channel cannot be 0";
+      return;
+    }
+    if(editingSensor.x_pos < 0 || editingSensor.x_pos > 1) {
+      alert = "X Position must be between 0 and 1";
+      return;
+    }
+    if (editingSensor.y_pos < 0 || editingSensor.y_pos > 1) {
+      alert = "Y Position must be between 0 and 1";
+      return;
+    }
+    for(let i = 0; i < sensors.length; i++) {
+      if(sensors[i].connected_channel == editingSensor.connected_channel && sensors[i].labjack_serial == editingSensor.labjack_serial && editingIndex !== i){
+        alert = "Sensor with corresponding channel and labjack already exists"
+        return;
+      }
+    }
+    save_modal?.showModal();
+  }
+
 </script>
 
 <div id="sensorControls" class="mb-20">
   <h1 class="text-center text-2xl">Sensor Control Area</h1>
   {#if editingSensor}
     <div class="mt-5">
-      <form onsubmit={save_modal?.showModal()}>
-        <div class="justify-center flex flex-col items-center">
-          <label for="nameInput">Name:</label>
-          <input id="nameInput" type="text" bind:value={editingSensor.sensor_name} class="input input-bordered w-full max-w-xs mt-2"/>
+      <div class="justify-center flex flex-col items-center">
+        <label for="nameInput">Name:</label>
+        <input id="nameInput" type="text" bind:value={editingSensor.sensor_name} class="input input-bordered w-full max-w-xs mt-2"/>
 
-          <label for="serialNumber">LabJack Serial No.:</label>
-          <input id="serialNumber" type="number" bind:value={editingSensor.labjack_serial} class="input input-bordered w-full max-w-xs mt-2" min=1/>
+        <label for="serialNumber">LabJack Serial No.:</label>
+        <input id="serialNumber" type="text" bind:value={editingSensor.labjack_serial} class="input input-bordered w-full max-w-xs mt-2" min=1/>
 
-          <label for="channelNumber">Connect Channel:</label>
-          <input id="channelNumber" type="number" bind:value={editingSensor.connected_channel} class="input input-bordered w-full max-w-xs mt-2" min=1/>
+        <label for="channelNumber">Connect Channel:</label>
+        <input id="channelNumber" type="text" bind:value={editingSensor.connected_channel} class="input input-bordered w-full max-w-xs mt-2" min=1/>
 
-          <label for="xPosInput" class="block mt-5">Sensor X Position:</label>
-          <input type="number" bind:value={editingSensor.x_pos} id="xPosInput" class="input input-bordered w-full max-w-xs" min=0 step=0.01 max=1/>
-          <input type="range" step="0.01" min="0" max='1' bind:value={editingSensor.x_pos} class="w-full  max-w-xs mt-2"/>
+        <label for="xPosInput" class="block mt-5">Sensor X Position:</label>
+        <input type="number" bind:value={editingSensor.x_pos} id="xPosInput" class="input input-bordered w-full max-w-xs" step=0.01/>
+        <input type="range" step="0.01" min="0" max='1' bind:value={editingSensor.x_pos} class="w-full  max-w-xs mt-2"/>
 
-          <label for="yPosInput" class="block mt-5">Sensor Y Position:</label>
-          <input type="number" bind:value={editingSensor.y_pos} id="yPosInput" class="input input-bordered max-w-xs w-full" min=0 step=0.01 max=1/>
-          <input type="range" step="0.01" min="0.0" max='1.0' bind:value={editingSensor.y_pos} class="w-full max-w-xs mt-2"/>
-          
-          <label for="groupSelect" class="block mt-5">Sensor Group:</label>
-          <select id="groupSelect" class="select select-bordered w-full max-w-xs mt-2" bind:value={editingSensor.sensor_type}>
-            {#each sensorGroups as group}
-              <option value={group}>{group}</option>
-            {/each}
-          </select>
-          <label for="colorSelect" class="block mt-5">Sensor Color:</label>
-          <select id="colorSelect" class="select select-bordered w-full max-w-xs mt-2" bind:value={editingSensor.color}>
-            {#each sensorColors as color}
-              <option value={color}>{color}</option>
-            {/each}
-          </select>
-        </div>
-        <div class="mt-5 flex justify-between">
-          <button class="btn btn-primary w-1/4" onclick={ () => cancel_modal?.showModal() }>Cancel</button>
-          <button class="btn btn-error w-1/4" onclick={ () => delete_modal?.showModal() }>Delete</button>
-          <button type="submit" class="btn btn-primary w-1/4">Save</button>
-        </div>
-      </form>
+        <label for="yPosInput" class="block mt-5">Sensor Y Position:</label>
+        <input type="number" bind:value={editingSensor.y_pos} id="yPosInput" class="input input-bordered max-w-xs w-full" step=0.01/>
+        <input type="range" step="0.01" min="0.0" max='1.0' bind:value={editingSensor.y_pos} class="w-full max-w-xs mt-2"/>
+        
+        <label for="groupSelect" class="block mt-5">Sensor Group:</label>
+        <select id="groupSelect" class="select select-bordered w-full max-w-xs mt-2" bind:value={editingSensor.sensor_type}>
+          {#each sensorGroups as group}
+            <option value={group}>{group}</option>
+          {/each}
+        </select>
+        <label for="colorSelect" class="block mt-5">Sensor Color:</label>
+        <select id="colorSelect" class="select select-bordered w-full max-w-xs mt-2" bind:value={editingSensor.color}>
+          {#each sensorColors as color}
+            <option value={color}>{color}</option>
+          {/each}
+        </select>
+      </div>
+      <div class="mt-5 flex justify-between">
+        <button class="btn btn-primary w-1/4" onclick={ () => cancel_modal?.showModal() }>Cancel</button>
+        <button class="btn btn-error w-1/4" onclick={ () => delete_modal?.showModal() }>Delete</button>
+        <button class="btn btn-primary w-1/4" onclick={ handleSave }>Save</button>
+      </div>
     </div>
   
     {:else}
