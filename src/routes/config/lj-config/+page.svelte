@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { NatsService, connect,  putKeyValue, getKeyValue, getKeys} from "$lib/nats.svelte";
   import { KvWatchInclude } from "@nats-io/kv"
   import { goto } from "$app/navigation";
+
+  import { NatsService, connect,  putKeyValue, getKeyValue, getKeys} from "$lib/nats.svelte";
   import Alert from "$lib/components/Alert.svelte";
   
   type LabJack = {
@@ -288,16 +289,16 @@
     <span class="loading loading-spinner loading-lg"></span>  
   </div>
 {:else}
-  <div class="flex flex-col items-center w-full px-4">
-    <h1 class="my-8 text-3xl sm:text-4xl text-center">Labjack Configuration</h1>
+  <div class="flex flex-col items-center w-full px-10">
+    <h1>Labjack Configuration</h1>
     <div class="flex mb-8">
-      <div class="flex w-64 mx-10 justify-center">
+      <div class="flex mx-10 justify-center">
         <button class="btn btn-primary" onclick={() => goto("/config/cabinet-select")}>{"<--"}Back to Cabinet Select</button>
       </div>
-      <div class="flex w-64 mx-10 justify-center">
+      <div class="flex mx-10 justify-center">
         <button class="btn btn-primary" onclick={() => new_modal?.showModal()}>New LabJack</button>
       </div>
-      <div class="flex w-64 mx-10 justify-center">
+      <div class="flex mx-10 justify-center">
         <button class="btn btn-primary" onclick={() => goto("sensor-map")}>Map View</button>
       </div>
     </div>
@@ -326,7 +327,7 @@
 <dialog id="edit_modal" class="modal" bind:this={edit_modal}>
   <div class="modal-box bg-primary max-w-[75vw] p-6 rounded-lg shadow-lg relative">
     <form method="dialog">
-      <button class="btn btn-sm btn-circle absolute right-2 top-2">✕</button>
+      <button class="btn btn-sm btn-circle modal_close">✕</button>
     </form>
     
     <h3>
@@ -379,10 +380,10 @@
       </div>
     {/if}
     <form method="dialog" class="modal-backdrop mt-4">
-      <div class="flex justify-center">
-        <button class="btn btn-outline btn-success w-1/4 mr-5">Cancel</button>
-        <button class="btn btn-outline btn-success w-1/4 ml-5" onclick={saveChanges}>Save Changes</button>
-        <button class="btn btn-outline btn-error  w-1/4 ml-5" onclick={() => verify_modal?.showModal()}>Delete Labjack</button>
+      <div class="flex justify-center space-x-5">
+        <button class="btn btn-outline btn-success w-1/4">Cancel</button>
+        <button class="btn btn-outline btn-success w-1/4" onclick={saveChanges}>Save Changes</button>
+        <button class="btn btn-outline btn-error  w-1/4" onclick={() => verify_modal?.showModal()}>Delete Labjack</button>
       </div>
     </form>
   </div>
@@ -462,4 +463,3 @@
 </dialog>
 
 <Alert bind:alert={alert}/>
-
