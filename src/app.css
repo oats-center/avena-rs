@@ -2,10 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+h1 {
+  font-size: 2.25rem; 
+  line-height: 2.5rem; 
+  margin-top: 2.5rem; 
+  margin-bottom: 2.5rem; 
+}
+
 h3 {
   color: rgb(0 0 0);
   font-weight: 400;
-  font-size: 1.125rem;
+  font-size: 24px;
   line-height: 1.75rem;
   text-align: center;
   margin-bottom: 2rem;
@@ -29,9 +36,19 @@ h6 {
   align-items: center;
 }
 
-.modal_input {
-  width: 1/2;
-  max-width: "xs";
+.modal_close, 
+.modal_close:hover {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background-color: rgb(231 229 228);
+  border: none;
+  box-shadow: none;
+  color: black;
+}
+
+.modal_input,
+.modal_input:disabled {
   background-color: rgb(231 229 228);
   border-color: black;
   color: black; 

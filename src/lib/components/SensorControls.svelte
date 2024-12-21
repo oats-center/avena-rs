@@ -21,7 +21,6 @@
   //variables that will change in the file
   export let editingSensor: Sensor | null;
   export let sensorSize: number;
-  export let addSensor: Function;
   export let saveBackgroundChanges: Function;
   export let alert: string | null;
   
@@ -73,10 +72,10 @@
 
 </script>
 
-<div id="sensorControls" class="mb-20">
-  <h1 class="text-center text-2xl">Sensor Control Area</h1>
+<div class="h-full w-80 flex flex-col justify-center item-center">
+  <h3 class="mb-0 text-white">Sensor Control Area</h3>
   {#if editingSensor}
-    <div class="mt-5">
+    <div class="m-5">
       <div class="justify-center flex flex-col items-center">
         <label for="nameInput">Name:</label>
         <input id="nameInput" type="text" bind:value={editingSensor.sensor_name} class="input input-bordered w-full max-w-xs mt-2"/>
@@ -116,11 +115,12 @@
     </div>
   
     {:else}
-    <div class="flex flex-col justify-center items-center mt-5">
-      <button class="btn btn-primary w-full max-w-xs" onclick={() => addSensor()}>Add Sensor</button>
-      <input type="text" bind:value={sensorSize} id="yPosInput" class="input input-bordered max-w-xs w-full"/>
-      <input type="range" min="30" max='80' bind:value={sensorSize} class="w-full max-w-xs mt-2"/>
-      <h2 class="mt-5">Change Background</h2>
+    <div class="flex flex-col justify-center items-center">
+      <label for="iconHeight" class="block mt-5">Sensor Color</label>
+      <input type="number" bind:value={sensorSize} id="iconHeight" class="input input-bordered max-w-xs w-full" min=30 max=80/>
+      <input type="range" min=30 max=80 bind:value={sensorSize} class="w-full max-w-xs mt-2"/>
+      
+      <label for="backgroundInput" class="block mt-5">Change Background Image</label>
       <input type="file" class="file-input file-input-bordered mt-2" accept="image/png, image/jpg" bind:this={fileInput}/>
       <div class="flex">
         <button class="btn btn-primary mt-2 mr-2" onclick={() => fileInput.value = ""}>Cancel</button>
@@ -131,11 +131,3 @@
     </div>
   {/if}    
 </div>
-
-<style>
-  #sensorControls {
-    margin-right: 5vw;
-    height: 60vh;
-    width: 20vw;
-  }
-</style>

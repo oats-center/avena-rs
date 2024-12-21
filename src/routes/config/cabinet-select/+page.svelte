@@ -60,16 +60,14 @@
     <span class="loading loading-spinner loading-lg"></span>  
   </div>
 {:else if cabinets !== null && cabinetKeys !== null}
-  <div class="flex flex-col justify-center items-center">
-    <h1 class="my-10 text-4xl">Select Roadside Cabinet</h1>
-    <div class="flex space-x-5">
+  <div class="flex flex-col items-center w-full px-10">
+    <h1>Select Roadside Cabinet</h1>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 w-full max-w-[80%]">
       {#each cabinets as cabinet}
-      <div class="card bg-primary shadow-xl text-neutral w-[15vw] min-w-60">
-        <div class="card-body">
-          <div class="flex justify-center">
-            <h2 class="card-title">{cabinet["id"]}</h2>
-          </div>
-              <p class="pl-2 mt-2">Status: {cabinet.status}</p>
+      <div class="card bg-primary shadow-xl text-neutral p-4">
+        <div class="card-body space-y-4">
+          <h2 class="card-title text-center">{cabinet["id"]}</h2>
+          <p class="pl-2 mt-2"><strong>Status:</strong> {cabinet.status}</p>
           <div class="mt-3 flex justify-center">
             <button class="btn btn-outline btn-success" onclick={() =>selectConfig(cabinet.id)}>
               Select Cabinet
