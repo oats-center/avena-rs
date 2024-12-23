@@ -53,12 +53,12 @@
       alert = "Serial number & connected channel cannot be 0";
       return;
     }
-    if(editingSensor.x_pos < 0 || editingSensor.x_pos > 1) {
-      alert = "X Position must be between 0 and 1";
+    if(editingSensor.x_pos < 0 || editingSensor.x_pos > 100) {
+      alert = "X Position must be between 0 and 100";
       return;
     }
-    if (editingSensor.y_pos < 0 || editingSensor.y_pos > 1) {
-      alert = "Y Position must be between 0 and 1";
+    if (editingSensor.y_pos < 0 || editingSensor.y_pos > 100) {
+      alert = "Y Position must be between 0 and 100";
       return;
     }
     for(let i = 0; i < sensors.length; i++) {
@@ -87,14 +87,14 @@
         <input id="channelNumber" type="text" bind:value={editingSensor.connected_channel} class="input input-bordered w-full max-w-xs mt-2" min=1/>
 
         <label for="xPosInput" class="block mt-5">Sensor X Position:</label>
-        <input type="number" bind:value={editingSensor.x_pos} id="xPosInput" class="input input-bordered w-full max-w-xs" step=0.01/>
-        <input type="range" step="0.01" min="0" max='1' bind:value={editingSensor.x_pos} class="w-full  max-w-xs mt-2"/>
+        <input type="number" bind:value={editingSensor.x_pos} id="xPosInput" class="input input-bordered w-full max-w-xs"/>
+        <input type="range" min="0" max='100' bind:value={editingSensor.x_pos} class="w-full  max-w-xs mt-2"/>
 
         <label for="yPosInput" class="block mt-5">Sensor Y Position:</label>
-        <input type="number" bind:value={editingSensor.y_pos} id="yPosInput" class="input input-bordered max-w-xs w-full" step=0.01/>
-        <input type="range" step="0.01" min="0.0" max='1.0' bind:value={editingSensor.y_pos} class="w-full max-w-xs mt-2"/>
+        <input type="number" bind:value={editingSensor.y_pos} id="yPosInput" class="input input-bordered max-w-xs w-full"/>
+        <input type="range" min="0" max='100' bind:value={editingSensor.y_pos} class="w-full max-w-xs mt-2"/>
         
-        <label for="groupSelect" class="block mt-5">Sensor Group:</label>
+        <label for="groupSelect" class="block mt-5">Sensor Type:</label>
         <select id="groupSelect" class="select select-bordered w-full max-w-xs mt-2" bind:value={editingSensor.sensor_type}>
           {#each sensorGroups as group}
             <option value={group}>{group}</option>
@@ -116,7 +116,7 @@
   
     {:else}
     <div class="flex flex-col justify-center items-center">
-      <label for="iconHeight" class="block mt-5">Sensor Color</label>
+      <label for="iconHeight" class="block mt-5">Sensor Size: </label>
       <input type="number" bind:value={sensorSize} id="iconHeight" class="input input-bordered max-w-xs w-full" min=30 max=80/>
       <input type="range" min=30 max=80 bind:value={sensorSize} class="w-full max-w-xs mt-2"/>
       
