@@ -50,29 +50,29 @@
   async function initialize(): Promise<void> {
     if(serverName) nats = await connect(serverName);
     if(nats && selectedCabinet) {
-      // putKeyValue(nats, "road1_cabinet1", "mapconfig", JSON.stringify({
-      //    "backgroundImage" : ""
-      //    "labjackd.1.ch1" : {
-      //     "cabinet_id" : "road1_cabinet1",
-      //     "color" :  "red", 
-      //     "connected_channel" : "1",
-      //     "labjack_serial" : "1",
-      //     "sensor_name" : "Sensor 1",
-      //     "sensor_type" : "Temperature",
-      //     "x_pos" : 0.5,
-      //     "y_pos" : 0.5
-      //   },
-      //   "labjackd.1.ch2" : {
-      //     "cabinet_id" : "road1_cabinet1",
-      //     "color" :  "red", 
-      //     "connected_channel" : "2",
-      //     "labjack_serial" : "1",
-      //     "sensor_name" : "Sensor 2",
-      //     "sensor_type" : "Temperature",
-      //     "x_pos" : 0.75,
-      //     "y_pos" : 0.75
-      //   }
-      // }))
+      /* putKeyValue(nats, "road1_cabinet1", "mapconfig", JSON.stringify({
+         "backgroundImage" : "",
+         "labjackd.1.ch1" : {
+          "cabinet_id" : "road1_cabinet1",
+          "color" :  "red", 
+          "connected_channel" : "1",
+          "labjack_serial" : "1",
+          "sensor_name" : "Sensor 1",
+          "sensor_type" : "Temperature",
+          "x_pos" : 0.5,
+          "y_pos" : 0.5
+        },
+        "labjackd.1.ch2" : {
+          "cabinet_id" : "road1_cabinet1",
+          "color" :  "red", 
+          "connected_channel" : "2",
+          "labjack_serial" : "1",
+          "sensor_name" : "Sensor 2",
+          "sensor_type" : "Temperature",
+          "x_pos" : 0.75,
+          "y_pos" : 0.75
+        }
+      })) */
       
       //gets the values from NATS   
       let tempMapConfig = await getKeyValue(nats, selectedCabinet, "mapconfig");
@@ -100,7 +100,7 @@
   }
   
   //cancels changes depending on the state of the editing sensor
-  function cancelSensorChanges(sensor?: Sensor, index?: number): void {
+  function handleSensorChanges(sensor?: Sensor, index?: number): void {
     // option: used cancel button
     if((index === undefined || sensor === undefined) && queuedIndex === -1) { 
       editingSensor = null;
@@ -185,7 +185,6 @@
     })
     return formattedData;
   }
-
 </script>
 
 {#if loading} 
@@ -200,7 +199,7 @@
         <button class="btn btn-primary" onclick={() => goto("/config/cabinet-select")}>{"<--"}Back to Cabinet Select</button>
       </div>
       <div class="flex mx-10 justify-center">
-        <button class="btn btn-primary" onclick={() => addSensor()}>New LabJack</button>
+        <button class="btn btn-primary" onclick={() => addSensor()}>New Sensor</button>
       </div>
       <div class="flex mx-10 justify-center">
         <button class="btn btn-primary" onclick={() => goto("lj-config")}>Card View</button>
@@ -215,22 +214,22 @@
       />
       {#each sensors as sensor, index}
         <svg
-        width={`${sensorSize}px`}
-        height={`${sensorSize}px`}
-        version="1.1"
-        viewBox="0 0 100 100"
-        xmlns="http://www.w3.org/2000/svg"
-        style={`
-                position: absolute; 
-                top: calc(${(index === editingIndex && editingSensor ? editingSensor.x_pos : sensor.x_pos) * 100}% - ${sensorSize / 2}px);
-                left: calc(${(index === editingIndex && editingSensor ? editingSensor.y_pos : sensor.y_pos) * 100}% - ${sensorSize / 2}px);
-                border-radius: 8px; 
-                outline: ${index === editingIndex ? "2px solid black" : "none"}; 
-              `}
-        onclick={() => {cancelSensorChanges(sensor, index)}}
-        onkeydown={() => {cancelSensorChanges(sensor, index)}}
-        role="button"
-        tabindex=0
+          width={`${sensorSize}px`}
+          height={`${sensorSize}px`}
+          version="1.1"
+          viewBox="0 0 100 100"
+          xmlns="http://www.w3.org/2000/svg"
+          style={`
+                  position: absolute; 
+                  top: calc(${(index === editingIndex && editingSensor ? editingSensor.x_pos : sensor.x_pos)}% - ${sensorSize / 2}px);
+                  left: calc(${(index === editingIndex && editingSensor ? editingSensor.y_pos : sensor.y_pos)}% - ${sensorSize / 2}px);
+                  border-radius: 8px; 
+                  outline: ${index === editingIndex ? "2px solid black" : "none"}; 
+                `}
+          onmousedown={() => {handleSensorChanges(sensor, index)}}
+          onkeydown={() => {handleSensorChanges(sensor, index)}}
+          role="button"
+          tabindex=0
         >
           {#if (sensor.sensor_type === "Temperature" && editingIndex !== index) || (editingIndex === index && editingSensor?.sensor_type === "Temperature")}
             <path
@@ -267,6 +266,6 @@
 {/if}
 
 <SaveModal bind:save_modal={save_modal} {saveSensorChanges}/>
-<CancelModal bind:cancel_modal={cancel_modal} {cancelSensorChanges}/>
+<CancelModal bind:cancel_modal={cancel_modal} {handleSensorChanges}/>
 <DeleteModal bind:delete_modal={delete_modal} {deleteSensor}/>
 <Alert bind:alert={alert}/>

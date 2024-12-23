@@ -1,6 +1,6 @@
 <script lang='ts'>
   export let cancel_modal;
-  export let cancelSensorChanges;
+  export let handleSensorChanges;
 </script>
 
 <dialog id="cancel_modal" class='modal' bind:this={cancel_modal}>
@@ -10,7 +10,7 @@
     <div class="mt-5 flex">
       <form method="dialog">
         <button class="btn btn-outline btn-success">No</button>
-        <button class="btn btn-outline btn-error ml-5" onclick={cancelSensorChanges}>Yes</button>
+        <button class="btn btn-outline btn-error ml-5" onclick={handleSensorChanges}>Yes</button>
       </form>
     </div>
   </div>
