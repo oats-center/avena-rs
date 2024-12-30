@@ -44,8 +44,13 @@
   let editingIndex= $state<number>(-1);
   let queuedIndex = -1;
   let sensorSize= $state<number>(40);
+  let dragging = $state<boolean>(false)
   let alert = $state<string | null>(null);
   
+
+  let background = $state<HTMLImageElement | null>();
+  let origX = -1;
+  let origY = -1;
   //gets values from nats and parses
   async function initialize(): Promise<void> {
     if(serverName) nats = await connect(serverName);
@@ -159,6 +164,7 @@
     editingIndex = -1;
     editingSensor = null;
     putKeyValue(nats, selectedCabinet, "mapconfig", JSON.stringify(mapconfig));
+    
   }
 
   //saves changes to the background to nats 
@@ -175,6 +181,32 @@
     selectedCabinet = sessionStorage.getItem("selectedCabinet");
     initialize();
   })
+
+  function handleDragStart(e: MouseEvent, sensor: Sensor): void {
+    console.log("dragging")
+    dragging = true;
+    if(background !== null){
+      origX = e.clientX;
+      origY = e.clientY;
+    }
+  }
+
+  function continueDrag(e: MouseEvent, sensor: Sensor): void {
+    if(background && editingSensor && dragging && background !== null ){
+      editingSensor.x_pos += ((e.clientX - origX) / background.width) * 100;
+      editingSensor.y_pos += ((e.clientY - origY) / background.height) * 100;
+      origX = e.clientX;
+      origY = e.clientY;
+    }
+  }
+
+  function stopDrag(e: MouseEvent, sensor: Sensor, index: number): void {
+    dragging = false;
+    if(editingSensor){
+      editingSensor.x_pos = Math.round(editingSensor.x_pos)
+      editingSensor.y_pos = Math.round(editingSensor.y_pos)
+    }
+  }
 
   //formats backgroundImage and sensor to how it should go into nats
   function formatToNats(): MapConfig {
@@ -195,21 +227,22 @@
 <div class="flex flex-col items-center w-full h-screen mb-10">
   <h1>Map Configuration</h1>
   <div class="flex mb-8">
-      <div class="flex mx-10 justify-center">
-        <button class="btn btn-primary" onclick={() => goto("/config/cabinet-select")}>{"<--"}Back to Cabinet Select</button>
-      </div>
-      <div class="flex mx-10 justify-center">
-        <button class="btn btn-primary" onclick={() => addSensor()}>New Sensor</button>
-      </div>
-      <div class="flex mx-10 justify-center">
-        <button class="btn btn-primary" onclick={() => goto("lj-config")}>Card View</button>
-      </div>
+    <div class="flex mx-10 justify-center">
+      <button class="btn btn-primary" onclick={() => goto("/config/cabinet-select")}>{"<-- "}Back to Cabinet Select</button>
     </div>
+    <div class="flex mx-10 justify-center">
+      <button class="btn btn-primary" onclick={() => addSensor()}>New Sensor</button>
+    </div>
+    <div class="flex mx-10 justify-center">
+      <button class="btn btn-primary" onclick={() => goto("lj-config")}>Card View</button>
+    </div>
+  </div>
   <div class='flex justify-center items-center'>
     <div class="mx-40 relative h-fit">
       <img 
         alt="Background for Map" 
         src={backgroundImage}
+        bind:this={background}
         style="z-index: -1; height: 75vh; z-index: -1; position: relative;"
       />
       {#each sensors as sensor, index}
@@ -221,15 +254,19 @@
           xmlns="http://www.w3.org/2000/svg"
           style={`
                   position: absolute; 
-                  top: calc(${(index === editingIndex && editingSensor ? editingSensor.x_pos : sensor.x_pos)}% - ${sensorSize / 2}px);
-                  left: calc(${(index === editingIndex && editingSensor ? editingSensor.y_pos : sensor.y_pos)}% - ${sensorSize / 2}px);
+                  top: calc(${(index === editingIndex && editingSensor ? editingSensor.y_pos : sensor.y_pos)}% - ${sensorSize / 2}px);
+                  left: calc(${(index === editingIndex && editingSensor ? editingSensor.x_pos : sensor.x_pos)}% - ${sensorSize / 2}px);
                   border-radius: 8px; 
                   outline: ${index === editingIndex ? "2px solid black" : "none"}; 
                 `}
-          onmousedown={() => {handleSensorChanges(sensor, index)}}
-          onkeydown={() => {handleSensorChanges(sensor, index)}}
           role="button"
           tabindex=0
+          onmousedown={(event) => {if(editingIndex === index) handleDragStart(event, sensor)}}
+          onmousemove={(event) => {if(editingIndex === index)continueDrag(event, sensor)}}
+          onmouseup={(event) => {if(editingIndex === index) stopDrag(event, sensor, index)}}
+          onmouseleave={(event) => {if (editingIndex === index)stopDrag(event, sensor, index)}} 
+          onclick={() => handleSensorChanges(sensor, index)}
+          onkeydown={() => handleSensorChanges(sensor, index)}
         >
           {#if (sensor.sensor_type === "Temperature" && editingIndex !== index) || (editingIndex === index && editingSensor?.sensor_type === "Temperature")}
             <path
@@ -267,5 +304,5 @@
 
 <SaveModal bind:save_modal={save_modal} {saveSensorChanges}/>
 <CancelModal bind:cancel_modal={cancel_modal} {handleSensorChanges}/>
-<DeleteModal bind:delete_modal={delete_modal} {deleteSensor}/>
+<DeleteModal bind:delete_modal={delete_modal} deleteFunction={deleteSensor} delete_string="sensor" confirmation_string={editingSensor?.sensor_name}/>
 <Alert bind:alert={alert}/>
