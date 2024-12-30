@@ -5,6 +5,7 @@
 
   import { NatsService, connect,  putKeyValue, getKeyValue, getKeys} from "$lib/nats.svelte";
   import Alert from "$lib/components/Alert.svelte";
+    import DeleteModal from "$lib/components/DeleteModal.svelte";
   
   type LabJack = {
     "cabinet_id": string;
@@ -76,7 +77,7 @@
   let selectedCabinet: string | null = null;
   let edit_modal = $state<HTMLDialogElement>();
   let new_modal = $state<HTMLDialogElement>();
-  let verify_modal = $state<HTMLDialogElement>();
+  let delete_modal = $state<HTMLDialogElement>();
 
   let labjacks = $state<LabJack[]>([]);
   let loading = $state<boolean>(true);
@@ -383,7 +384,7 @@
       <div class="flex justify-center space-x-5">
         <button class="btn btn-outline btn-success w-1/4">Cancel</button>
         <button class="btn btn-outline btn-success w-1/4" onclick={saveChanges}>Save Changes</button>
-        <button class="btn btn-outline btn-error  w-1/4" onclick={() => verify_modal?.showModal()}>Delete Labjack</button>
+        <button class="btn btn-outline btn-error  w-1/4" onclick={() => delete_modal?.showModal()}>Delete Labjack</button>
       </div>
     </form>
   </div>
@@ -446,20 +447,6 @@
   </div>
 </dialog>
 
-<dialog id="verify_modal" class='modal' bind:this={verify_modal}>
-  <div class="modal-box bg-primary">
-    <h3>Save Changes?</h3>
-    <h6>Pressing 'Yes' will delete the current selected LabJack.</h6>
-    <div class="mt-5 flex">
-      <form method="dialog">
-        <button class="btn btn-outline btn-success" onclick={() => edit_modal?.showModal()}>No</button>
-        <button class="btn btn-outline btn-error ml-5" onclick={ () => deleteLabjack() }>Yes</button>
-      </form>
-    </div>
-  </div>
-  <form method="dialog" class="modal-backdrop">
-    <button>close</button>
-  </form>
-</dialog>
+<DeleteModal bind:delete_modal={delete_modal} deleteFunction={deleteLabjack} delete_string="labjack" confirmation_string={labjackEdit?.labjack_name}/>
 
 <Alert bind:alert={alert}/>
