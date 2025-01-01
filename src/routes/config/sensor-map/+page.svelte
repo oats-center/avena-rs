@@ -8,6 +8,7 @@
   import CancelModal from "$lib/components/CancelModal.svelte";
   import DeleteModal from "$lib/components/DeleteModal.svelte";
   import Alert from "$lib/components/Alert.svelte";
+  import { slide } from "svelte/transition";
   
   interface Sensor {
     "cabinet_id" : string;
@@ -182,7 +183,7 @@
     initialize();
   })
 
-  function handleDragStart(e: MouseEvent, sensor: Sensor): void {
+  function handleDragStart(e: MouseEvent): void {
     console.log("dragging")
     dragging = true;
     if(background !== null){
@@ -191,21 +192,30 @@
     }
   }
 
-  function continueDrag(e: MouseEvent, sensor: Sensor): void {
-    if(background && editingSensor && dragging && background !== null ){
-      editingSensor.x_pos += ((e.clientX - origX) / background.width) * 100;
-      editingSensor.y_pos += ((e.clientY - origY) / background.height) * 100;
-      origX = e.clientX;
-      origY = e.clientY;
-    }
+  function continueDrag(e: MouseEvent): void {
+    if (!background || !editingSensor || !dragging) return;
+
+    const scaleX = 100 / background.width;
+    const scaleY = 100 / background.height;
+    editingSensor.x_pos += (e.clientX - origX) * scaleX;
+    editingSensor.y_pos += (e.clientY - origY) * scaleY;
+
+    origX = e.clientX;
+    origY = e.clientY;
+
+    editingSensor.x_pos = Math.min(100, Math.max(0, editingSensor.x_pos));
+    editingSensor.y_pos = Math.min(100, Math.max(0, editingSensor.y_pos));
   }
 
-  function stopDrag(e: MouseEvent, sensor: Sensor, index: number): void {
+  function stopDrag(): void {
     dragging = false;
-    if(editingSensor){
-      editingSensor.x_pos = Math.round(editingSensor.x_pos)
-      editingSensor.y_pos = Math.round(editingSensor.y_pos)
-    }
+    if (!editingSensor) return;
+
+    editingSensor.x_pos = Math.round(editingSensor.x_pos)
+    editingSensor.y_pos = Math.round(editingSensor.y_pos)
+    
+    editingSensor.x_pos = Math.min(100, Math.max(0, editingSensor.x_pos));
+    editingSensor.y_pos = Math.min(100, Math.max(0, editingSensor.y_pos));
   }
 
   //formats backgroundImage and sensor to how it should go into nats
@@ -224,26 +234,19 @@
   <span class="loading loading-spinner loading-lg"></span>  
 </div>
 {:else}
-<div class="flex flex-col items-center w-full h-screen mb-10">
-  <h1>Map Configuration</h1>
-  <div class="flex mb-8">
-    <div class="flex mx-10 justify-center">
-      <button class="btn btn-primary" onclick={() => goto("/config/cabinet-select")}>{"<-- "}Back to Cabinet Select</button>
-    </div>
-    <div class="flex mx-10 justify-center">
-      <button class="btn btn-primary" onclick={() => addSensor()}>New Sensor</button>
-    </div>
-    <div class="flex mx-10 justify-center">
-      <button class="btn btn-primary" onclick={() => goto("lj-config")}>Card View</button>
-    </div>
-  </div>
-  <div class='flex justify-center items-center'>
-    <div class="mx-40 relative h-fit">
+<div class='flex justify-center items-center h-screen'>
+  <!--Map Area-->
+  <div class="flex justify-center relative w-3/4 h-screen items-center">
+    <div 
+      role="none"
+      class="relative"
+      onmousemove={continueDrag}
+    >
       <img 
         alt="Background for Map" 
         src={backgroundImage}
         bind:this={background}
-        style="z-index: -1; height: 75vh; z-index: -1; position: relative;"
+        style="z-index: -1; height: 90vh; position: relative;"
       />
       {#each sensors as sensor, index}
         <svg
@@ -261,10 +264,9 @@
                 `}
           role="button"
           tabindex=0
-          onmousedown={(event) => {if(editingIndex === index) handleDragStart(event, sensor)}}
-          onmousemove={(event) => {if(editingIndex === index)continueDrag(event, sensor)}}
-          onmouseup={(event) => {if(editingIndex === index) stopDrag(event, sensor, index)}}
-          onmouseleave={(event) => {if (editingIndex === index)stopDrag(event, sensor, index)}} 
+          onmousedown={(event) => {if(editingIndex === index) handleDragStart(event)}}
+          onmouseup={() => {if(editingIndex === index) stopDrag()}}
+          onmousemove={(event) => {if(editingIndex != -1) continueDrag(event)}}
           onclick={() => handleSensorChanges(sensor, index)}
           onkeydown={() => handleSensorChanges(sensor, index)}
         >
@@ -282,8 +284,24 @@
           {/if}
         </svg>
       {/each}
+    </div>    
+  </div>
+
+  <!--Configuration Area-->
+  <div class="relative w-1/4 border-l-2 h-screen">
+    <div class="flex mb-8">
+      <div class="mx-10 justify-center">
+        <button class="btn btn-primary" onclick={() => goto("/config/cabinet-select")}>{"<-- "}Back to Cabinet Select</button>
+      </div>
+      <div class="mx-10 justify-center">
+        <button class="btn btn-primary" onclick={() => goto("lj-config")}>Card View</button>
+      </div>
     </div>
-    {#if save_modal && cancel_modal && delete_modal}
+    <div class="mx-10 justify-center">
+      <button class="btn btn-primary" onclick={() => addSensor()}>New Sensor</button>
+    </div>
+    {#if editingIndex !== -1 && save_modal && cancel_modal && delete_modal}
+    <div style="position: absolute; right: 0; top: 0; background-color: #e7e5e4; height: 100vh; width: 100%;" transition:slide={{duration: 250, axis: "x"}}>
       <SensorControls
         {sensors}
         {editingIndex}
@@ -297,9 +315,11 @@
         {save_modal}
         {saveBackgroundChanges}
       />
+    </div>
     {/if}
   </div>
 </div>
+
 {/if}
 
 <SaveModal bind:save_modal={save_modal} {saveSensorChanges}/>
