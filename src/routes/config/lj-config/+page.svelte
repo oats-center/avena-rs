@@ -5,7 +5,7 @@
 
   import { NatsService, connect,  putKeyValue, getKeyValue, getKeys} from "$lib/nats.svelte";
   import Alert from "$lib/components/Alert.svelte";
-    import DeleteModal from "$lib/components/DeleteModal.svelte";
+  import DeleteModal from "$lib/components/modals/DeleteModal.svelte";
   
   type LabJack = {
     "cabinet_id": string;
