@@ -49,8 +49,10 @@ export async function getKeyValue(nats: NatsService, bucket: string, key: string
   if (!nats) throw new Error("Nats connection is not initialized");
   const kv = await nats.kvm.open(bucket);
   let val = await kv.get(key);
-  const valStr = val?.string() || "";
+  const valStr = val?.string() || "Key value does not exist";
   return valStr;
+  
+  
 }
 
 //gets multiple values in the given bucket at each of the given keys

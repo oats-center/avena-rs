@@ -8,7 +8,7 @@ export default {
     themes: [
       {
         mytheme: {
-          "primary": "#e7e5e4",   //grey background for sensor boxes    
+          "primary": "#FAF9F6",   //grey background for sensor boxes    
           "secondary": "#FFFFFF", //white
           "accent": "#1f1f1f",    //background grey    
           "neutral": "#1f1f1f",      

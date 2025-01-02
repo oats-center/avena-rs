@@ -10,41 +10,21 @@
     "color" : string; 
   }
   //variables that will not change in this file
-  export let sensorColors: string[];
-  export let sensorGroups: string[];
-  export let cancel_modal: HTMLDialogElement;
-  export let delete_modal: HTMLDialogElement;
-  export let save_modal: HTMLDialogElement;
-  export let sensors: Sensor[];
-  export let editingIndex: number;
-
-  //variables that will change in the file
-  export let editingSensor: Sensor | null;
-  export let sensorSize: number;
-  export let saveBackgroundChanges: Function;
-  export let alert: string | null;
+  let {sensorColors, sensorGroups, cancel_modal, delete_modal, save_modal, sensors, editingIndex, editingSensor, alert}:
+      {sensorColors: string[], 
+        sensorGroups: string[], 
+        cancel_modal: HTMLDialogElement, 
+        delete_modal: HTMLDialogElement, 
+        save_modal: HTMLDialogElement, 
+        sensors: Sensor[], 
+        editingIndex: number;
+        editingSensor: Sensor | null;
+        alert: string | null;
+      } = $props();
+    //variables that will change in the file
   
-  //variables just for in this file
-  let fileInput: HTMLInputElement;
+  let controls = $state<string>();
 
-  //reads the input background files
-  function readFile(): void {
-    if(fileInput !== null && fileInput.files){
-      const file = fileInput.files[0];
-      const reader = new FileReader();
-    
-      reader.addEventListener("load", () => {
-        if(typeof reader.result === "string"){
-          saveBackgroundChanges(reader.result);
-          console.log(reader.result);
-          fileInput.value = "";
-        }
-      });
-      reader.readAsDataURL(file);
-    } else {
-      console.log("No file input")
-    }  
-  }
 
   //form validation for mapconfig controls
   function handleSave(): void {
@@ -71,63 +51,38 @@
   }
 
 </script>
-
-<div class="h-full w-80 flex flex-col justify-center item-center">
-  <h3 class="mb-0 text-white">Sensor Control Area</h3>
+<div class="h-full flex flex-col">
+  <h3 class="text-accent my-5">Sensor Settings</h3>
   {#if editingSensor}
-    <div class="m-5">
-      <div class="justify-center flex flex-col items-center">
-        <label for="nameInput">Name:</label>
-        <input id="nameInput" type="text" bind:value={editingSensor.sensor_name} class="input input-bordered w-full max-w-xs mt-2"/>
+    <div></div>
+    <div class="grid grid-cols-2 gap-4 m-5 items-center">
+      <label for="nameInput" class="text-accent mr-4">Name:</label>
+      <input id="nameInput" type="text" bind:value={editingSensor.sensor_name} class="input modal_input w-full max-w-xs"/>
+    
+      <label for="serialNumber" class="text-accent">LabJack Serial Number:</label>
+      <input id="serialNumber" type="text" bind:value={editingSensor.labjack_serial} class="input modal_input w-full max-w-xs mt-2" min=1/>
+    
+      <label for="channelNumber" class="text-accent">Connect Channel:</label>
+      <input id="channelNumber" type="text" bind:value={editingSensor.connected_channel} class="input modal_input w-full max-w-xs mt-2" min=1/>
+    
+      <label for="groupSelect" class="text-accent">Sensor Type:</label>
+      <select id="groupSelect" class="select modal_input w-full max-w-xs mt-2" bind:value={editingSensor.sensor_type}>
+        {#each sensorGroups as group}
+          <option value={group}>{group}</option>
+        {/each}
+      </select>
 
-        <label for="serialNumber">LabJack Serial No.:</label>
-        <input id="serialNumber" type="text" bind:value={editingSensor.labjack_serial} class="input input-bordered w-full max-w-xs mt-2" min=1/>
-
-        <label for="channelNumber">Connect Channel:</label>
-        <input id="channelNumber" type="text" bind:value={editingSensor.connected_channel} class="input input-bordered w-full max-w-xs mt-2" min=1/>
-
-        <label for="xPosInput" class="block mt-5">Sensor X Position:</label>
-        <input type="number" bind:value={editingSensor.x_pos} id="xPosInput" class="input input-bordered w-full max-w-xs"/>
-        <input type="range" min="0" max='100' bind:value={editingSensor.x_pos} class="w-full  max-w-xs mt-2"/>
-
-        <label for="yPosInput" class="block mt-5">Sensor Y Position:</label>
-        <input type="number" bind:value={editingSensor.y_pos} id="yPosInput" class="input input-bordered max-w-xs w-full"/>
-        <input type="range" min="0" max='100' bind:value={editingSensor.y_pos} class="w-full max-w-xs mt-2"/>
-        
-        <label for="groupSelect" class="block mt-5">Sensor Type:</label>
-        <select id="groupSelect" class="select select-bordered w-full max-w-xs mt-2" bind:value={editingSensor.sensor_type}>
-          {#each sensorGroups as group}
-            <option value={group}>{group}</option>
-          {/each}
-        </select>
-        <label for="colorSelect" class="block mt-5">Sensor Color:</label>
-        <select id="colorSelect" class="select select-bordered w-full max-w-xs mt-2" bind:value={editingSensor.color}>
-          {#each sensorColors as color}
-            <option value={color}>{color}</option>
-          {/each}
-        </select>
-      </div>
-      <div class="mt-5 flex justify-between">
-        <button class="btn btn-primary w-1/4" onclick={ () => cancel_modal?.showModal() }>Cancel</button>
-        <button class="btn btn-error w-1/4" onclick={ () => delete_modal?.showModal() }>Delete</button>
-        <button class="btn btn-primary w-1/4" onclick={ handleSave }>Save</button>
-      </div>
+      <label for="colorSelect" class="text-accent">Sensor Color:</label>
+      <select id="colorSelect" class="select modal_input w-full max-w-xs mt-2" bind:value={editingSensor.color}>
+        {#each sensorColors as color}
+          <option value={color}>{color}</option>
+        {/each}
+      </select>
     </div>
-  
-    {:else}
-    <div class="flex flex-col justify-center items-center">
-      <label for="iconHeight" class="block mt-5">Sensor Size: </label>
-      <input type="number" bind:value={sensorSize} id="iconHeight" class="input input-bordered max-w-xs w-full" min=30 max=80/>
-      <input type="range" min=30 max=80 bind:value={sensorSize} class="w-full max-w-xs mt-2"/>
-      
-      <label for="backgroundInput" class="block mt-5">Change Background Image</label>
-      <input type="file" class="file-input file-input-bordered mt-2" accept="image/png, image/jpg" bind:this={fileInput}/>
-      <div class="flex">
-        <button class="btn btn-primary mt-2 mr-2" onclick={() => fileInput.value = ""}>Cancel</button>
-        <button class="btn btn-primary mt-2" onclick={readFile}>Save</button>
-        
-      </div>
-      
-    </div>
+    <div class="flex justify-between mt-auto mb-5 mx-5">
+      <button class="btn btn-outline btn-success w-1/4" onclick={ () => cancel_modal?.showModal() }>Cancel</button>
+      <button class="btn btn-outline btn-error w-1/4" onclick={ () => delete_modal?.showModal() }>Delete</button>
+      <button class="btn btn-outline btn-success w-1/4" onclick={ handleSave }>Save</button>
+    </div>  
   {/if}    
 </div>
