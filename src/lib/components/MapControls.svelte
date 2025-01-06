@@ -1,35 +1,45 @@
 <script lang='ts'>
   import { goto } from "$app/navigation";
-  import { slide } from "svelte/transition";
-
-  import SensorControls from './SensorControls.svelte';
+  import { onMount } from "svelte";
 
   interface Sensor {
-      "cabinet_id" : string;
-      "labjack_serial" : string;
-      "connected_channel": string; 
-      "sensor_name" : string; 
-      "sensor_type" : string; 
-      "x_pos" : number; 
-      "y_pos" : number; 
-      "color" : string; 
-    }
+    "cabinet_id" : string;
+    "labjack_serial" : string;
+    "connected_channel": string; 
+    "sensor_name" : string; 
+    "sensor_type" : string; 
+    "x_pos" : number; 
+    "y_pos" : number; 
+    "color" : string; 
+  }
 
-  let {selectedCabinet, sensors, editingSensor, editingIndex, sensorSize, backgroundImage, cancel_modal, delete_modal, save_modal, alert, saveBackgroundChanges} : {
+  let {selectedCabinet, sensors, editingSensor, editingIndex, sensorSize, saveBackgroundChanges, handleManualSelect} : 
+  {
     selectedCabinet: string | null,
     sensors: Sensor[],
     editingSensor: Sensor | null,
     editingIndex: number,
     sensorSize: number,
-    backgroundImage: string | null, 
-    cancel_modal: HTMLDialogElement,
-    delete_modal: HTMLDialogElement,
-    save_modal: HTMLDialogElement,
-    alert: string | null,
     saveBackgroundChanges: Function,
+    handleManualSelect: Function,
   } = $props()
+  let fileInput = $state<HTMLInputElement>();
+  let labjackArray = $derived.by(() => {
+    const uniqueLabjacks = sensors
+    .map(sensor => sensor.labjack_serial)
+    .filter((serial, index, self) => self.indexOf(serial) === index);
+    return uniqueLabjacks;
+  });
+  let channelArray = $derived.by(() => {
+    let channels = [];
+    channels = sensors.filter(sensor => sensor.labjack_serial === selectedLabjack)
+    .map(sensor => sensor.connected_channel);
+    return channels;
+  });
+  let selectedLabjack = $state<string>("Labjack");
+  let selectedChannel = $state<string>("Channel");
 
-  //main: handles adding a sensor, doesn't get updated in nats until updated
+  //handles adding a sensor, doesn't get updated in nats until updated
   function addSensor(): void {
     if(!selectedCabinet) throw new Error("Page not properly loaded");
     let newSensor: Sensor = {
@@ -48,8 +58,9 @@
     editingIndex = sensors.length - 1;
   }
 
-  //controls: reads the file from the file input
+  //reads the file from the file input
   function readFile(): void {
+
     if(!fileInput) return;
 
     if(fileInput !== null && fileInput.files){
@@ -69,9 +80,7 @@
     }  
   }
 
-  const sensorColors = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'grey', 'black'];
-  const sensorGroups = ['Temperature', 'Pressure'];
-  let fileInput = $state<HTMLInputElement>();
+  
 </script>
 
 <div class="relative flex flex-col items-center border-l-2 h-screen">
@@ -96,6 +105,31 @@
     </div>
   </div>
 
+  <!-- Manual Sensor Select -->
+  <div class="flex flex-col justify-center card bg-primary items-center z-0 mb-5 w-5/6">
+    <div class="card-body w-full">
+      <h4 class="text-center mb-2">Select Sensor</h4>
+      <div class="flex justify-center item-center w-full space-x-5">
+        <select class="select select-primary modal_input w-1/3" bind:value={selectedLabjack}>
+          <option disabled selected>Labjack</option>
+          {#each labjackArray as labjack}
+          <option>{labjack}</option>
+          {/each}
+        </select>
+        <select disabled={selectedLabjack === "Labjack"} class="select select-primary modal_input w-1/3" bind:value={selectedChannel}>
+          <option disabled selected>Channel</option>
+          {#each channelArray as channel}
+          <option>{channel}</option>
+          {/each}
+        </select>
+      </div>
+      <div class="flex justify-center items-center w-full space-x-5">
+        <button class="btn btn-outline btn-success" onclick={() => {selectedLabjack = "Labjack"; selectedChannel = "Channel"}}>Reset</button>
+        <button class="btn btn-outline btn-success" disabled={selectedLabjack === "Labjack" && selectedChannel === "Channel"} onclick={() => handleManualSelect(selectedLabjack, selectedChannel)}>Select</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Background Image Change -->
   <div class="flex flex-col justify-center card bg-primary items-center z-0 w-5/6">
     <!-- <label for="iconHeight" class="block mt-5">Sensor Size: </label>
@@ -110,21 +144,4 @@
       </div>
     </div>      
   </div>
-
-  <!-- Sensor Controls for Selected Sensor -->
-  {#if editingIndex !== -1 && save_modal && cancel_modal && delete_modal}
-  <div style="position: absolute; right: 0; top: 0; background-color: #FAF9F6; height: 100vh; width: 100%; z-index: 10;" transition:slide={{duration: 250, axis: "x"}}>
-    <SensorControls
-      {sensors}
-      {editingIndex}
-      {editingSensor}
-      {alert}
-      {sensorColors}
-      {sensorGroups}
-      {cancel_modal}
-      {delete_modal}
-      {save_modal}
-    />
-  </div>
-  {/if}
 </div>

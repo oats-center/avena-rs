@@ -5,7 +5,8 @@
 
   import { NatsService, connect,  putKeyValue, getKeyValue, getKeys} from "$lib/nats.svelte";
   import Alert from "$lib/components/Alert.svelte";
-  import DeleteModal from "$lib/components/modals/DeleteModal.svelte";
+  import DeleteModal from "$lib/components/basic_modals/DeleteModal.svelte";
+    import LabJackModal from "$lib/components/basic_modals/LabJackModal.svelte";
   
   type LabJack = {
     "cabinet_id": string;
@@ -84,7 +85,7 @@
   let labjackEdit = $state<FormattedLabJack | null>(null);
   let editingIndex = -1;
   let alert = $state<string | null>(null);
-  let newLabjack = $state<FormattedLabJack>(defaultFormattedLabjack)
+  let newLabjack = $state<boolean>(false);
   
   //initializes new connection with the serverName given, gets all of the labjacks 
   //for the selected cabinet, and watches those vals also
@@ -108,19 +109,23 @@
   //gets & formats the data for one labjack
   async function getLabjack(bucket: string, key: string): Promise<LabJack> {
     if(!nats) throw new Error("Nats connection is not initialized");
+
     let val = await getKeyValue(nats, bucket, key);
     let ljVal = JSON.parse(val) as LabJack;
+
     return ljVal;
   }
 
   //saves changes made to a labjack
   function saveChanges() {
+    console.log(labjackEdit)
     if(labjackEdit){
       labjacks[editingIndex] = unformatData(labjackEdit)
     }
     if(nats && selectedCabinet) putKeyValue(nats, selectedCabinet, `labjackd.config.${labjacks[editingIndex].serial}`, JSON.stringify(labjacks[editingIndex]));
     editingIndex = -1;
     labjackEdit = null;
+    edit_modal?.close()
   }
 
   //watches the values of one key
@@ -142,33 +147,32 @@
   //watches the values of all labjacks
   function watchLabJacks() {
     if (!nats || !selectedCabinet) throw new Error("NATS is not initialized");
-    for(let i = 0; i < labjacks.length; i++){
-      watchVal(selectedCabinet, `labjackd.config.${labjacks[i].serial}`,i);
-    }
+
+    labjacks.forEach((labjack, index) => {
+      watchVal(selectedCabinet!, `labjackd.config.${labjack.serial}`,index);
+    })
   }
 
   async function watchCabinet() {
     if(!nats || !selectedCabinet) throw new Error("NATS is not initialized");
+
     const kv = await nats.kvm.open(selectedCabinet);
     const watch = await kv.watch({
       "include": KvWatchInclude.UpdatesOnly
     })
+    
     for await(const e of watch) {
-      let exists = -1;
+      let changedIndex = -1;
       const key = e.key;
       const serialNumber = key.split(".").pop();
-      for(let i = 0; i < labjacks.length; i++){
-        if(labjacks[i].serial === serialNumber){
-          exists = i;
-          break;
-        }
-      }
-      if(exists == -1) {
+      changedIndex = labjacks.findIndex(labjack => labjack.serial === serialNumber);
+
+      if(changedIndex == -1) { //new labjack has been added
         let newVal = await getLabjack(selectedCabinet, e.key)
         labjacks.push(newVal);
         alert = "New LabJack Added";
-      } else if(exists && (e.operation == "DEL" || e.operation == "PURGE")){
-        labjacks.splice(exists, 1);
+      } else if(changedIndex && (e.operation == "DEL" || e.operation == "PURGE")){ //a labjack was deleted
+        labjacks.splice(changedIndex, 1);
         alert = `Labjack Deleted`;
       }
     }
@@ -176,18 +180,19 @@
 
   //handles creating a new labjack
   async function createLabjack(event: Event) {
-    event.preventDefault();
     if (!nats || !selectedCabinet) throw new Error("NATS is not initialized");
-    
+    if (!labjackEdit) return;
+
     for(let labjack of labjacks){
-      if(labjack.serial == newLabjack.serial){
+      if(labjack.serial == labjackEdit.serial){
         alert = "Serial Number Already Exists";
         new_modal?.close();
         return;
       }
     }
-    let newVals = unformatData(newLabjack);
-    newLabjack = defaultFormattedLabjack;
+
+    let newVals = unformatData(labjackEdit);
+    labjackEdit = defaultFormattedLabjack;
     const kv = await nats.kvm.open(selectedCabinet);
     newVals.cabinet_id = selectedCabinet;
     newVals.labjack_name = `Labjack ${newVals.serial}`;
@@ -281,6 +286,9 @@
   function openEdit(labjack: LabJack, index: number) {
     labjackEdit = formatData(labjack);
     editingIndex = index;
+    console.log("opening modal")
+    console.log(delete_modal);
+    console.log(edit_modal)
     edit_modal?.showModal();
   }
 </script>
@@ -297,7 +305,7 @@
         <button class="btn btn-primary" onclick={() => goto("/config/cabinet-select")}>{"<--"}Back to Cabinet Select</button>
       </div>
       <div class="flex mx-10 justify-center">
-        <button class="btn btn-primary" onclick={() => new_modal?.showModal()}>New LabJack</button>
+        <button class="btn btn-primary" onclick={() => {newLabjack = true; labjackEdit = defaultFormattedLabjack; edit_modal?.showModal()}}>New LabJack</button>
       </div>
       <div class="flex mx-10 justify-center">
         <button class="btn btn-primary" onclick={() => goto("sensor-map")}>Map View</button>
@@ -325,128 +333,19 @@
   </div>
 {/if}
 
+{#if delete_modal}
 <dialog id="edit_modal" class="modal" bind:this={edit_modal}>
-  <div class="modal-box bg-primary max-w-[75vw] p-6 rounded-lg shadow-lg relative">
-    <form method="dialog">
-      <button class="btn btn-sm btn-circle modal_close">✕</button>
-    </form>
-    
-    <h3>
-      Edit {labjackEdit?.labjack_name}
-    </h3>
-    
-    {#if labjackEdit}
-      <div class="flex items-center my-4">
-        <h6>Sampling Rate:</h6>
-        <input type="text" class="input modal_input mr-auto" bind:value={labjackEdit.sensor_settings.sampling_rate}/>
-        <h6>Gain:</h6>
-        <input type="text" class="input modal_input mr-auto" bind:value={labjackEdit.sensor_settings.gains}/>
-      </div>
-
-      <div class="overflow-x-auto my-6">
-        <table class="table w-full border-collapse">
-          <thead class="text-black border-b-2">
-            <tr>
-              <th>Channel #</th>
-              <th>Enabled</th>
-              <th>Data Format</th>
-              <th>Units</th>
-              <th>Publish Raw Data</th>
-              <th>Measure Peaks</th>
-            </tr>
-          </thead>
-          <tbody class="text-black">
-            {#each Array.from({length: 8}, (_, i) => i + 1) as index}
-              <tr class="border-t">
-                <td class="text-center">{index}</td>
-                  <td class="text-center">
-                    <input type="checkbox" bind:checked={labjackEdit.sensor_settings.channels_enabled[index - 1]} class="checkbox border-black"/>
-                  </td>
-                  <td>
-                    <input type="text" class="input modal_input" bind:value={labjackEdit.sensor_settings.data_formats[index - 1]} disabled={!labjackEdit.sensor_settings.channels_enabled[index - 1]}/>
-                  </td>
-                  <td>
-                    <input type="text" class="input modal_input" bind:value={labjackEdit.sensor_settings.measurement_units[index - 1]} disabled={!labjackEdit.sensor_settings.channels_enabled[index - 1]}/>                      
-                  </td>
-                  <td class="text-center">
-                    <input type="checkbox" bind:checked={labjackEdit.sensor_settings.publish_raw_data[index - 1]} class="checkbox border-black" disabled={!labjackEdit.sensor_settings.channels_enabled[index - 1]}/>                             
-                  </td>
-                  <td class="text-center">
-                    <input type="checkbox" bind:checked={labjackEdit.sensor_settings.measure_peaks[index - 1]} class="checkbox border-black" disabled={!labjackEdit.sensor_settings.channels_enabled[index - 1]}/>                             
-                  </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-    {/if}
-    <form method="dialog" class="modal-backdrop mt-4">
-      <div class="flex justify-center space-x-5">
-        <button class="btn btn-outline btn-success w-1/4">Cancel</button>
-        <button class="btn btn-outline btn-success w-1/4" onclick={saveChanges}>Save Changes</button>
-        <button class="btn btn-outline btn-error  w-1/4" onclick={() => delete_modal?.showModal()}>Delete Labjack</button>
-      </div>
-    </form>
-  </div>
-</dialog>
-
-<dialog id="new_modal" class="modal" bind:this={new_modal}>
-  <div class="modal-box bg-primary max-w-[75vw] p-6 rounded-lg shadow-lg relative">
-    <form method="dialog">
-      <button class="btn btn-sm btn-circle absolute right-2 top-2">✕</button>
-    </form>
-    
-    <h3>
-      Add New LabJack
-    </h3>
-    <form onsubmit={createLabjack}>
-      <div class="flex items-center my-4">
-        <h6>Serial Number:</h6>
-        <input type="text" name="serialNumber" class='input modal_input mr-auto' bind:value={newLabjack.serial} required/>
-        <h6>Sampling Rate:</h6>
-        <input type="text" class="input modal_input mr-auto" bind:value={newLabjack.sensor_settings.sampling_rate}/>
-        <h6>Gain: </h6>
-        <input type="text" class="input modal_input mr-auto" bind:value={newLabjack.sensor_settings.gains}/>
-      </div>
-      <table class="table w-full border-collapse">
-        <thead class="text-black border-b-2">
-          <tr>
-            <th>Channel #</th>
-            <th>Enabled</th>
-            <th>Data Format</th>
-            <th>Units</th>
-            <th>Publish Raw Data</th>
-            <th>Measure Peaks</th>
-          </tr>
-        </thead>
-        <tbody class="text-black">
-          {#each Array.from({length: 8}, (_, i) => i + 1) as index}
-            <tr class="border-t">
-              <td class="text-center">{index}</td>
-                <td class="text-center">
-                  <input type="checkbox" bind:checked={newLabjack.sensor_settings.channels_enabled[index - 1]} class="checkbox border-black"/>
-                </td>
-                <td>
-                  <input type="text" class="input modal_input" bind:value={newLabjack.sensor_settings.data_formats[index - 1]} disabled={!newLabjack.sensor_settings.channels_enabled[index - 1]}/>
-                </td>
-                <td>
-                  <input type="text" class="input modal_input" bind:value={newLabjack.sensor_settings.measurement_units[index - 1]} disabled={!newLabjack.sensor_settings.channels_enabled[index - 1]}/>                      
-                </td>
-                <td class="text-center">
-                  <input type="checkbox" bind:checked={newLabjack.sensor_settings.publish_raw_data[index - 1]} class="checkbox border-black" disabled={!newLabjack.sensor_settings.channels_enabled[index - 1]}/>                             
-                </td>
-                <td class="text-center">
-                  <input type="checkbox" bind:checked={newLabjack.sensor_settings.measure_peaks[index - 1]} class="checkbox border-black" disabled={!newLabjack.sensor_settings.channels_enabled[index - 1]}/>                             
-                </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-      <button type="submit" class="btn btn-outline btn-success">Add LabJack</button>
-    </form>
-  </div>
-</dialog>
+  <LabJackModal
+    {labjackEdit}
+    {newLabjack}
+    saveEditChanges={saveChanges}
+    saveNewChanges={createLabjack}
+    {delete_modal}
+  />
+</dialog>  
+{/if}
 
 <DeleteModal bind:delete_modal={delete_modal} deleteFunction={deleteLabjack} delete_string="labjack" confirmation_string={labjackEdit?.labjack_name}/>
 
 <Alert bind:alert={alert}/>
+
