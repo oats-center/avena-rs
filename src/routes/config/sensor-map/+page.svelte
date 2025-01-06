@@ -1,15 +1,14 @@
 <script lang='ts'>
   import { onMount } from "svelte";
-  
-
+  import { slide } from "svelte/transition";
   import { connect, getKeyValue, NatsService, putKeyValue } from '$lib/nats.svelte';
-  
-  import SaveModal from "$lib/components/modals/SaveModal.svelte";
-  import CancelModal from "$lib/components/modals/CancelModal.svelte";
-  import DeleteModal from "$lib/components/modals/DeleteModal.svelte";
-  import Alert from "$lib/components/Alert.svelte";
   import SensorMap from "$lib/components/SensorMap.svelte";
   import MapControls from "$lib/components/MapControls.svelte";
+  import SensorControls from "$lib/components/SensorControls.svelte";
+  import SaveModal from "$lib/components/basic_modals/SaveModal.svelte";
+  import CancelModal from "$lib/components/basic_modals/CancelModal.svelte";
+  import DeleteModal from "$lib/components/basic_modals/DeleteModal.svelte";
+  import Alert from "$lib/components/Alert.svelte";
 
   interface Sensor {
     "cabinet_id" : string;
@@ -21,22 +20,20 @@
     "y_pos" : number; 
     "color" : string; 
   }
-
   interface MapConfig {
     "backgroundImage": string;
     [key: `labjackd.${string}.ch${string}`]: Sensor;
   }
-
   interface SensorType {
     "size" : number;
     "svg" : string;
   }
-
   interface SensorTypes {
     [name: string]: SensorType
   }
 
-  //generals
+
+  //general variables
   // svelte-ignore non_reactive_update
   let selectedCabinet: string | null;
   let serverName: string | null; 
@@ -58,10 +55,7 @@
   let delete_modal = $state<HTMLDialogElement>();
   let save_modal = $state<HTMLDialogElement>();  
     
-  
-  
-  
-  //main: gets values from nats and parses
+  //gets values from nats and parses
   async function initialize(): Promise<void> {
     if(serverName) nats = await connect(serverName);
     if(nats && selectedCabinet) {
@@ -109,7 +103,7 @@
     }
   }
 
-  //main: saves sensor changes to nats
+  //saves sensor changes to nats
   function saveSensorChanges(): void {
     if(!nats || !selectedCabinet || !editingSensor || editingIndex === -1) throw new Error("Something went wrong with saving changes");
     
@@ -123,7 +117,7 @@
     save_modal?.close();
   }
   
-  //main: cancels changes depending on the state of the editing sensor
+  //cancels changes depending on the state of the editing sensor
   function handleSensorChanges(sensor?: Sensor, index?: number): void {
     // option: used cancel button
     if((index === undefined || sensor === undefined) && queuedIndex === -1) { 
@@ -161,7 +155,7 @@
     }
   }
 
-  //main: deletes a sensor from the sensors array and nats
+  //deletes a sensor from the sensors array and nats
   function deleteSensor(): void {
     if(!nats || !selectedCabinet || !editingSensor || editingIndex === -1) throw new Error("Something went wrong with saving changes");
     sensors.splice(editingIndex, 1);
@@ -172,7 +166,7 @@
     
   }
 
-  //main: saves changes to the background to nats 
+  //saves changes to the background to nats 
   function saveBackgroundChanges(background: string): void {
     if (!nats || !selectedCabinet) throw new Error("NATS is not initialized");
     mapconfig.backgroundImage = background;
@@ -186,6 +180,15 @@
     selectedCabinet = sessionStorage.getItem("selectedCabinet");
     initialize();
   })
+  
+  //selects the sensor based on its labjack and channel
+  function handleManualSelect(selectedLabjack: string, selectedChannel: string): void {
+    editingIndex = sensors.findIndex((sensor) => 
+      sensor.labjack_serial === selectedLabjack &&
+      sensor.connected_channel === selectedChannel
+    ) ?? null;
+    editingSensor = sensors[editingIndex];
+  }
 </script>
 
 {#if loading} <!-- While loading nats data -->
@@ -213,20 +216,29 @@
 
   <!--Configuration Area-->
   <div class="w-1/4">
-    {#if cancel_modal && delete_modal && save_modal} <!-- Typescript checking -->
-      <MapControls
-        {selectedCabinet}
+    <MapControls
+      {selectedCabinet}
+      {sensors}
+      {editingSensor}
+      {editingIndex}
+      {sensorSize}
+      {saveBackgroundChanges}
+      {handleManualSelect}
+    />
+    <!-- Sensor Controls for Selected Sensor -->
+    {#if editingIndex !== -1 && save_modal && cancel_modal && delete_modal}
+    <div style="position: absolute; right: 0; top: 0; background-color: #FAF9F6; height: 100vh; width: 25%; z-index: 10;" transition:slide={{duration: 250, axis: "x"}}>
+      <SensorControls
         {sensors}
-        {editingSensor}
         {editingIndex}
-        {sensorSize}
-        {backgroundImage}
+        {editingSensor}
+        {alert}
         {cancel_modal}
         {delete_modal}
         {save_modal}
-        {alert}
-        {saveBackgroundChanges}
+        {handleSensorChanges}
       />
+    </div>
     {/if}
   </div>
 </div>

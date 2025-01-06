@@ -9,22 +9,23 @@
     "y_pos" : number; 
     "color" : string; 
   }
+
   //variables that will not change in this file
-  let {sensorColors, sensorGroups, cancel_modal, delete_modal, save_modal, sensors, editingIndex, editingSensor, alert}:
-      {sensorColors: string[], 
-        sensorGroups: string[], 
+  let {cancel_modal, delete_modal, save_modal, sensors, editingIndex, editingSensor, alert, handleSensorChanges}:
+      {
         cancel_modal: HTMLDialogElement, 
         delete_modal: HTMLDialogElement, 
         save_modal: HTMLDialogElement, 
         sensors: Sensor[], 
-        editingIndex: number;
-        editingSensor: Sensor | null;
-        alert: string | null;
+        editingIndex: number,
+        editingSensor: Sensor | null,
+        alert: string | null,
+        handleSensorChanges: Function,
       } = $props();
-    //variables that will change in the file
-  
-  let controls = $state<string>();
-
+    
+  //variables that will change in the file
+  const sensorColors = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'grey', 'black'];
+  const sensorGroups = ['Temperature', 'Pressure'];
 
   //form validation for mapconfig controls
   function handleSave(): void {
@@ -48,6 +49,11 @@
       }
     }
     save_modal?.showModal();
+  }
+
+  function handleCancel(): void {
+    if(JSON.stringify(editingSensor) !== JSON.stringify(sensors[editingIndex])) cancel_modal?.showModal();
+    else handleSensorChanges();
   }
 
 </script>
@@ -80,7 +86,7 @@
       </select>
     </div>
     <div class="flex justify-between mt-auto mb-5 mx-5">
-      <button class="btn btn-outline btn-success w-1/4" onclick={ () => cancel_modal?.showModal() }>Cancel</button>
+      <button class="btn btn-outline btn-success w-1/4" onclick={ handleCancel }>Cancel</button>
       <button class="btn btn-outline btn-error w-1/4" onclick={ () => delete_modal?.showModal() }>Delete</button>
       <button class="btn btn-outline btn-success w-1/4" onclick={ handleSave }>Save</button>
     </div>  

@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
 h1 {
   font-size: 2.25rem; 
   line-height: 2.5rem; 
