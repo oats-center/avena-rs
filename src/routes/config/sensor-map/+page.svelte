@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { slide } from "svelte/transition";
   import { connect, getKeyValue, NatsService, putKeyValue } from '$lib/nats.svelte';
+  
   import SensorMap from "$lib/components/SensorMap.svelte";
   import MapControls from "$lib/components/MapControls.svelte";
   import SensorControls from "$lib/components/SensorControls.svelte";
@@ -24,19 +25,23 @@
     "backgroundImage": string;
     [key: `labjackd.${string}.ch${string}`]: Sensor;
   }
-  interface SensorType {
-    "size" : number;
-    "svg" : string;
-  }
   interface SensorTypes {
-    [name: string]: SensorType
+    [name: string]: {
+      "size_px": number
+      "icon": string
+    }
   }
-
+  interface SensorType {
+    "name": string
+    "size_px" : number;
+    "icon" : string;
+  }
 
   //general variables
   // svelte-ignore non_reactive_update
   let selectedCabinet: string | null;
   let serverName: string | null; 
+  // svelte-ignore non_reactive_update
   let nats: NatsService | null;   
   let loading = $state<boolean>(true);
     
@@ -44,50 +49,31 @@
   let mapconfig: MapConfig;
   let sensors = $state<Sensor[]>([]);
   let backgroundImage = $state<string | null>(null);
-  
+  let sensor_types = $state<SensorType[] | null>(null);
+
   let editingSensor = $state<Sensor | null>(null);
   let editingIndex= $state<number>(-1);
-  let sensorSize= $state<number>(40);
+  let sensorSize= 50
   let queuedIndex = -1;
           
   let alert = $state<string | null>(null);  
   let cancel_modal = $state<HTMLDialogElement>();
   let delete_modal = $state<HTMLDialogElement>();
   let save_modal = $state<HTMLDialogElement>();  
-    
   //gets values from nats and parses
   async function initialize(): Promise<void> {
     if(serverName) nats = await connect(serverName);
     if(nats && selectedCabinet) {
-      /* putKeyValue(nats, "road1_cabinet1", "mapconfig", JSON.stringify({
-         "backgroundImage" : "",
-         "labjackd.1.ch1" : {
-          "cabinet_id" : "road1_cabinet1",
-          "color" :  "red", 
-          "connected_channel" : "1",
-          "labjack_serial" : "1",
-          "sensor_name" : "Sensor 1",
-          "sensor_type" : "Temperature",
-          "x_pos" : 0.5,
-          "y_pos" : 0.5
-        },
-        "labjackd.1.ch2" : {
-          "cabinet_id" : "road1_cabinet1",
-          "color" :  "red", 
-          "connected_channel" : "2",
-          "labjack_serial" : "1",
-          "sensor_name" : "Sensor 2",
-          "sensor_type" : "Temperature",
-          "x_pos" : 0.75,
-          "y_pos" : 0.75
+       /* putKeyValue(nats, "road1_cabinet1", "sensor_types", JSON.stringify({
+          "pressure" : {
+          "icon" : "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4NCjxzdmcgd2lkdGg9IjEwMHB0IiBoZWlnaHQ9IjEwMHB0IiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPg0KIDxwYXRoIGQ9Im01MCAyMi44MDFjMTYuNjk1IDAgMzAuMjI3IDEzLjUzNSAzMC4yMjcgMzAuMjI3IDAgOS44ODI4LTQuNzQyMiAxOC42NTYtMTIuMDcgMjQuMTcybC01LjMwODYtNy4yODEyIDIuMTcxOS0xLjg2NzIgMy42MzY3IDQuOTg4M2M1LjM1OTQtNSA4LjcxODgtMTIuMTE3IDguNzE4OC0yMC4wMTIgMC0xNS4wOTQtMTIuMjgxLTI3LjM3MS0yNy4zNzUtMjcuMzcxcy0yNy4zNzUgMTIuMjc3LTI3LjM3NSAyNy4zNzFjMCA3Ljg3ODkgMy4zNTE2IDE0Ljk4OCA4LjY5NTMgMTkuOTg0bDMuNjI4OS00Ljk5NjEgMi4xNjQxIDEuODc1LTUuMjg5MSA3LjI5M2MtNy4zMjAzLTUuNTE5NS0xMi4wNTUtMTQuMjgxLTEyLjA1NS0yNC4xNTYgMC0xNi42OTEgMTMuNTM1LTMwLjIyNyAzMC4yMy0zMC4yMjd6bS03Ljg1NTUgMTEuMzI0IDguNjcxOSAxNC45MDJjMS44NjMzIDAuMzc4OTEgMy4yNjk1IDIuMDI3MyAzLjI2OTUgNCAwIDIuMjU3OC0xLjgyODEgNC4wODU5LTQuMDg1OSA0LjA4NTktMi4yNTM5IDAtNC4wODU5LTEuODI4MS00LjA4NTktNC4wODU5IDAtMC42NTYyNSAwLjE3MTg4LTEuMjY5NSAwLjQ0OTIyLTEuODIwM2wtNi45Mjk3LTE1LjcwM3oiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPg0KPC9zdmc+DQo=",
+          "size_px" : 50
         }
       })) */
       
       //gets the values from NATS   
       let tempMapConfig = await getKeyValue(nats, selectedCabinet, "mapconfig");
       if(tempMapConfig !== "Key value does not exist"){
-        console.log(tempMapConfig)
-        console.log("MapConfig Exists")
         mapconfig = JSON.parse(tempMapConfig) as MapConfig
         sensors = Object.entries(mapconfig)
           .filter(([key]) => key !== "backgroundImage")
@@ -98,6 +84,18 @@
         mapconfig = {
           backgroundImage: ""
         }
+      }
+
+      let tempSensorTypes = await getKeyValue(nats, selectedCabinet, "sensor_types");
+      if(tempSensorTypes !== "Key value does not exist"){
+        let types_json = JSON.parse(tempSensorTypes) as SensorTypes
+        sensor_types = Object.entries(types_json).map(([name, data]) => ({
+            name, 
+            ...data, 
+        }));
+        console.log(types_json)
+      } else {
+        //figure out what to put into this else statement 
       }
       loading = false
     }
@@ -196,9 +194,9 @@
   <span class="loading loading-spinner loading-lg"></span>  
 </div>
 {:else}
-<div class='flex justify-center items-center h-screen'>
+<div class='h-screen flex justify-center items-center '>
   <!--Map Area-->
-  <div class="relative flex justify-center items-center w-3/4 h-screen ">
+  <div class="relative w-3/4 h-screen flex justify-center items-center">
     {#if backgroundImage && sensors} <!-- Checks for valid mapconfig -->
       <SensorMap
         {sensors}
@@ -215,19 +213,21 @@
   </div>
 
   <!--Configuration Area-->
+  
   <div class="w-1/4">
     <MapControls
+      {nats}
       {selectedCabinet}
       {sensors}
       {editingSensor}
       {editingIndex}
-      {sensorSize}
+      {sensor_types}
       {saveBackgroundChanges}
       {handleManualSelect}
     />
     <!-- Sensor Controls for Selected Sensor -->
     {#if editingIndex !== -1 && save_modal && cancel_modal && delete_modal}
-    <div style="position: absolute; right: 0; top: 0; background-color: #FAF9F6; height: 100vh; width: 25%; z-index: 10;" transition:slide={{duration: 250, axis: "x"}}>
+    <div class="sensor_controls" transition:slide={{duration: 250, axis: "x"}}>
       <SensorControls
         {sensors}
         {editingIndex}
@@ -241,6 +241,7 @@
     </div>
     {/if}
   </div>
+  
 </div>
 
 {/if}
@@ -249,3 +250,19 @@
 <CancelModal bind:cancel_modal={cancel_modal} {handleSensorChanges}/>
 <DeleteModal bind:delete_modal={delete_modal} deleteFunction={deleteSensor} delete_string="sensor" confirmation_string={editingSensor?.sensor_name}/>
 <Alert bind:alert={alert}/>
+
+
+
+
+
+<style>
+  .sensor_controls {
+    position: absolute; 
+    right: 0; 
+    top: 0; 
+    background-color:#FAF9F6; 
+    width: 25%; 
+    height: 100vh; 
+    z-index: 10;
+  }
+</style>

@@ -62,7 +62,8 @@ h6 {
 }
 
 .modal_input,
-.modal_input:disabled {
+.modal_input:disabled,
+.modal_input:focus {
   background-color: rgb(250, 249, 246);
   border-color: black;
   color: black; 

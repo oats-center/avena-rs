@@ -1,6 +1,9 @@
 <script lang='ts'>
   import { goto } from "$app/navigation";
-  import { onMount } from "svelte";
+  import { NatsService, putKeyValue } from "$lib/nats.svelte";
+
+  import TypeModal from "./basic_modals/TypeModal.svelte";
+    import ContextMenu from "./ContextMenu.svelte";
 
   interface Sensor {
     "cabinet_id" : string;
@@ -13,16 +16,30 @@
     "color" : string; 
   }
 
-  let {selectedCabinet, sensors, editingSensor, editingIndex, sensorSize, saveBackgroundChanges, handleManualSelect} : 
+  interface SensorType {
+    "name": string
+    "size_px" : number;
+    "icon" : string;
+  }
+  interface SensorTypes {
+    [name: string]: {
+      "size_px": number
+      "icon": string
+    }
+  }
+
+  let {nats, selectedCabinet, sensors, editingSensor, editingIndex, sensor_types, saveBackgroundChanges, handleManualSelect} : 
   {
+    nats: NatsService | null,
     selectedCabinet: string | null,
     sensors: Sensor[],
     editingSensor: Sensor | null,
     editingIndex: number,
-    sensorSize: number,
+    sensor_types: SensorType[] | null,
     saveBackgroundChanges: Function,
     handleManualSelect: Function,
   } = $props()
+
   let fileInput = $state<HTMLInputElement>();
   let labjackArray = $derived.by(() => {
     const uniqueLabjacks = sensors
@@ -38,6 +55,11 @@
   });
   let selectedLabjack = $state<string>("Labjack");
   let selectedChannel = $state<string>("Channel");
+  
+  
+  let context_position = $state<[number, number]>([-1000, -1000]);
+  let type_modal = $state<HTMLDialogElement>();
+  let editing_type = $state<SensorType>({"name": "", "icon": "", "size_px": 0});
 
   //handles adding a sensor, doesn't get updated in nats until updated
   function addSensor(): void {
@@ -80,9 +102,32 @@
     }  
   }
 
-  
-</script>
+  function addSensorType(sensor_type: SensorType): void { //add code to check for duplicate sensor types and differentiate adding vs editing
+    if(!nats || !selectedCabinet) throw new Error("Something went wrong with saving changes");
 
+    if(sensor_types) sensor_types.push(sensor_type)
+    else sensor_types = [sensor_type] //might have to be bindable @ props()??
+    
+    putKeyValue(nats, selectedCabinet, "sensor_types", JSON.stringify(formatSensorTypes()));
+    
+    editing_type = {"name": "", "icon": "", "size_px": 0}
+    type_modal?.close()
+  }
+
+  function formatSensorTypes(): SensorTypes  {
+    let formatted_types: SensorTypes = {}
+    sensor_types?.forEach((type) => {
+      formatted_types[type.name] = {
+        "icon": type.icon,
+        "size_px": type.size_px
+      }
+    })
+
+    console.log(formatted_types)
+    return formatted_types;
+  }
+
+</script>
 <div class="relative flex flex-col items-center border-l-2 h-screen">
   <!-- NavBar -->
   <h1>Map Configuration</h1>
@@ -99,11 +144,24 @@
   </div>
 
   <!-- New Sensors -->
+  {#if sensor_types}
   <div class="flex flex-col justify-center card bg-primary items-center z-0 mb-5 w-5/6">
     <div class="card-body flex">
-      <h4 class="text-center mb-2">New Sensor</h4>
+      <div class='flex justify-center items-center space-x-5'>
+        <h4 class="text-center mb-2">New Sensor</h4>
+        <button class="btn btn-outline btn-success" onclick={() => type_modal?.showModal()}>New Type</button>
+      </div>
+      <div class="grid grid-cols-3 gap-10">
+        {#each sensor_types as type}
+        <div class="flex flex-col justify-center items-center w-full" role="button" tabindex=0 oncontextmenu={(e) => {e.preventDefault(); context_position = [e.clientX, e.clientY]; editing_type = type; console.log("Type Clicked")}}>
+          <img src={type.icon} alt="sensor icon" style={`width: ${type.size_px}px; height: ${type.size_px}px;`}/>
+          <h6 style="font-weight: 400; text-align: center; width: 100%; margin-right: 0; margin-top: 6px">{type.name}</h6>
+        </div>
+        {/each}
+      </div>
     </div>
   </div>
+  {/if}
 
   <!-- Manual Sensor Select -->
   <div class="flex flex-col justify-center card bg-primary items-center z-0 mb-5 w-5/6">
@@ -145,3 +203,16 @@
     </div>      
   </div>
 </div>
+
+<svelte:window onclick={() => {context_position = [-1000, -1000]}} oncontextmenu={(e) => {e.preventDefault(); context_position = [e.clientX, e.clientY]; console.log("Window Clicked")}} />
+
+<dialog id="cancel_modal" class='modal' bind:this={type_modal}>
+  <TypeModal 
+    bind:editing_type={editing_type}
+    {addSensorType}
+  />
+</dialog>
+
+{#if type_modal}
+  <ContextMenu top={context_position[1]} left={context_position[0]} {type_modal}/>
+{/if}

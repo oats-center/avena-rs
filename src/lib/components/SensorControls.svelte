@@ -60,7 +60,6 @@
 <div class="h-full flex flex-col">
   <h3 class="text-accent my-5">Sensor Settings</h3>
   {#if editingSensor}
-    <div></div>
     <div class="grid grid-cols-2 gap-4 m-5 items-center">
       <label for="nameInput" class="text-accent mr-4">Name:</label>
       <input id="nameInput" type="text" bind:value={editingSensor.sensor_name} class="input modal_input w-full max-w-xs"/>
