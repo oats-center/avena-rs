@@ -37,15 +37,15 @@
     "icon" : string;
   }
 
-  //general variables
+
   // svelte-ignore non_reactive_update
   let selectedCabinet: string | null;
-  let serverName: string | null; 
   // svelte-ignore non_reactive_update
   let nats: NatsService | null;   
+  
+  let serverName: string | null; 
   let loading = $state<boolean>(true);
-    
-  //from nats
+  
   let mapconfig: MapConfig;
   let sensors = $state<Sensor[]>([]);
   let backgroundImage = $state<string | null>(null);
@@ -103,11 +103,16 @@
 
   //saves sensor changes to nats
   function saveSensorChanges(): void {
-    if(!nats || !selectedCabinet || !editingSensor || editingIndex === -1) throw new Error("Something went wrong with saving changes");
+    if(!nats || !selectedCabinet) throw new Error("Something went wrong with saving changes");
     
-    sensors[editingIndex] = editingSensor;
-    mapconfig[`labjackd.${editingSensor.labjack_serial}.ch${editingSensor.connected_channel}`] = editingSensor;
-
+    if(editingSensor && editingIndex){
+      sensors[editingIndex] = editingSensor;
+      mapconfig[`labjackd.${editingSensor.labjack_serial}.ch${editingSensor.connected_channel}`] = editingSensor;
+    } else {
+      sensors.forEach((sensor) => {
+        mapconfig[`labjackd.${sensor.labjack_serial}.ch${sensor.connected_channel}`] = sensor;
+      })
+    }
     putKeyValue(nats, selectedCabinet, "mapconfig", JSON.stringify(mapconfig));
     
     editingSensor = null;
@@ -197,13 +202,14 @@
 <div class='h-screen flex justify-center items-center '>
   <!--Map Area-->
   <div class="relative w-3/4 h-screen flex justify-center items-center">
-    {#if backgroundImage && sensors} <!-- Checks for valid mapconfig -->
+    {#if backgroundImage && sensors && sensor_types} <!-- Checks for valid mapconfig -->
       <SensorMap
         {sensors}
         {editingSensor}
         {editingIndex}
         {sensorSize}
         {backgroundImage}
+        {sensor_types}
         {handleSensorChanges}
       />
     {:else} <!-- Only if invalid mapconfig -->
@@ -224,15 +230,17 @@
       {sensor_types}
       {saveBackgroundChanges}
       {handleManualSelect}
+      {saveSensorChanges}
     />
     <!-- Sensor Controls for Selected Sensor -->
-    {#if editingIndex !== -1 && save_modal && cancel_modal && delete_modal}
+    {#if editingIndex !== -1 && save_modal && cancel_modal && delete_modal && sensor_types}
     <div class="sensor_controls" transition:slide={{duration: 250, axis: "x"}}>
       <SensorControls
         {sensors}
         {editingIndex}
         {editingSensor}
         {alert}
+        {sensor_types}
         {cancel_modal}
         {delete_modal}
         {save_modal}

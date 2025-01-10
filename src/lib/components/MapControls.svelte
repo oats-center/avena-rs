@@ -28,7 +28,7 @@
     }
   }
 
-  let {nats, selectedCabinet, sensors, editingSensor, editingIndex, sensor_types, saveBackgroundChanges, handleManualSelect} : 
+  let {nats, selectedCabinet, sensors, editingSensor, editingIndex, sensor_types, saveBackgroundChanges, handleManualSelect, saveSensorChanges} : 
   {
     nats: NatsService | null,
     selectedCabinet: string | null,
@@ -38,6 +38,7 @@
     sensor_types: SensorType[] | null,
     saveBackgroundChanges: Function,
     handleManualSelect: Function,
+    saveSensorChanges: Function,
   } = $props()
 
   let fileInput = $state<HTMLInputElement>();
@@ -60,6 +61,7 @@
   let context_position = $state<[number, number]>([-1000, -1000]);
   let type_modal = $state<HTMLDialogElement>();
   let editing_type = $state<SensorType>({"name": "", "icon": "", "size_px": 0});
+  let editing_type_index = -1;
 
   //handles adding a sensor, doesn't get updated in nats until updated
   function addSensor(): void {
@@ -104,12 +106,23 @@
 
   function addSensorType(sensor_type: SensorType): void { //add code to check for duplicate sensor types and differentiate adding vs editing
     if(!nats || !selectedCabinet) throw new Error("Something went wrong with saving changes");
+    if(sensor_type.icon === "") sensor_type.icon = editing_type.icon
+    
+    if(sensor_types) {
+      if(editing_type_index == -1) sensor_types.push(sensor_type)
+      else {
+        sensors.forEach((sensor) => {
+          if(sensor.sensor_type === sensor_types![editing_type_index].name) sensor.sensor_type = sensor_type.name
+        })
+        sensor_types[editing_type_index] = sensor_type
 
-    if(sensor_types) sensor_types.push(sensor_type)
-    else sensor_types = [sensor_type] //might have to be bindable @ props()??
-    
+        //save type changes to nats
+        saveSensorChanges()
+      } 
+    } 
+    else sensor_types = [sensor_type] //might have to be bindable @ props()?? 
     putKeyValue(nats, selectedCabinet, "sensor_types", JSON.stringify(formatSensorTypes()));
-    
+
     editing_type = {"name": "", "icon": "", "size_px": 0}
     type_modal?.close()
   }
@@ -152,8 +165,8 @@
         <button class="btn btn-outline btn-success" onclick={() => type_modal?.showModal()}>New Type</button>
       </div>
       <div class="grid grid-cols-3 gap-10">
-        {#each sensor_types as type}
-        <div class="flex flex-col justify-center items-center w-full" role="button" tabindex=0 oncontextmenu={(e) => {e.preventDefault(); context_position = [e.clientX, e.clientY]; editing_type = type; console.log("Type Clicked")}}>
+        {#each sensor_types as type, index}
+        <div class="flex flex-col justify-center items-center w-full" role="button" tabindex=0 oncontextmenu={(e) => {e.preventDefault(); context_position = [e.clientX, e.clientY]; editing_type = JSON.parse(JSON.stringify(type)); editing_type_index = index}}>
           <img src={type.icon} alt="sensor icon" style={`width: ${type.size_px}px; height: ${type.size_px}px;`}/>
           <h6 style="font-weight: 400; text-align: center; width: 100%; margin-right: 0; margin-top: 6px">{type.name}</h6>
         </div>

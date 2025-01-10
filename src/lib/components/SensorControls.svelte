@@ -10,8 +10,15 @@
     "color" : string; 
   }
 
+  interface SensorType {
+    "name": string
+    "size_px" : number;
+    "icon" : string;
+  }
+
+
   //variables that will not change in this file
-  let {cancel_modal, delete_modal, save_modal, sensors, editingIndex, editingSensor, alert, handleSensorChanges}:
+  let {cancel_modal, delete_modal, save_modal, sensors, editingIndex, editingSensor, sensor_types, alert, handleSensorChanges}:
       {
         cancel_modal: HTMLDialogElement, 
         delete_modal: HTMLDialogElement, 
@@ -19,6 +26,7 @@
         sensors: Sensor[], 
         editingIndex: number,
         editingSensor: Sensor | null,
+        sensor_types: SensorType[],
         alert: string | null,
         handleSensorChanges: Function,
       } = $props();
@@ -72,8 +80,8 @@
     
       <label for="groupSelect" class="text-accent">Sensor Type:</label>
       <select id="groupSelect" class="select modal_input w-full max-w-xs mt-2" bind:value={editingSensor.sensor_type}>
-        {#each sensorGroups as group}
-          <option value={group}>{group}</option>
+        {#each sensor_types as type}
+          <option value={type.name}>{type.name}</option>
         {/each}
       </select>
 
