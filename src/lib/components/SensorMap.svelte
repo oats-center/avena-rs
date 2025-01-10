@@ -1,6 +1,5 @@
 <script lang='ts'>
   import pressure_sensor from '$lib/images/pressure_sensor.svg';
-  import { onMount } from 'svelte';
   
   interface Sensor {
     "cabinet_id" : string;
@@ -13,12 +12,19 @@
     "color" : string; 
   }
 
-  let {sensors, editingSensor, editingIndex, sensorSize, backgroundImage, handleSensorChanges} : {
+  interface SensorType {
+    "name": string
+    "size_px" : number;
+    "icon" : string;
+  }
+
+  let {sensors, editingSensor, editingIndex, sensorSize, backgroundImage, sensor_types, handleSensorChanges} : {
     sensors: Sensor[],
     editingSensor: Sensor | null,
     editingIndex: number,
     sensorSize: number,
     backgroundImage: string | null, 
+    sensor_types: SensorType[],
     handleSensorChanges: Function,
   } = $props()
 
@@ -56,6 +62,16 @@
     editingSensor.x_pos = Math.min(100, Math.max(0, editingSensor.x_pos));
     editingSensor.y_pos = Math.min(100, Math.max(0, editingSensor.y_pos));
   }
+
+  function findSensorProperty<T>(curr_type: string, index: number, property: keyof typeof sensor_types[0]): T | undefined {
+    const targetSensorType = editingIndex === index && editingSensor
+      ? editingSensor.sensor_type.toLowerCase()
+      : curr_type.toLowerCase();
+
+    const sensor = sensor_types.find(sensor_type => sensor_type.name.toLowerCase() === targetSensorType);
+    return sensor ? sensor[property] as T : undefined;
+  }
+
 </script>
 
 <div role="none" class="relative" onmousemove={continueDrag}>
@@ -71,10 +87,10 @@
       tabindex=0
       style={`
         position: absolute; 
-        top: calc(${(index === editingIndex && editingSensor ? editingSensor.y_pos : sensor.y_pos)}% - ${sensorSize / 2}px);
-        left: calc(${(index === editingIndex && editingSensor ? editingSensor.x_pos : sensor.x_pos)}% - ${sensorSize / 2}px);
-        min-width: ${sensorSize}px
-        min-height: ${sensorSize}px
+        top: calc(${(index === editingIndex && editingSensor ? editingSensor.y_pos : sensor.y_pos)}% - ${(findSensorProperty(sensor.sensor_type, index, "size_px") as number) / 2}px);
+        left: calc(${(index === editingIndex && editingSensor ? editingSensor.x_pos : sensor.x_pos)}% - ${(findSensorProperty(sensor.sensor_type, index, "size_px") as number) / 2}px);
+        min-width: ${(findSensorProperty(sensor.sensor_type, index, "size_px") as number)}px
+        min-height: ${(findSensorProperty(sensor.sensor_type, index, "size_px") as number)}px
         border-radius: 8px; 
         outline: ${index === editingIndex ? "2px solid black" : "none"}; 
       `}
@@ -85,12 +101,12 @@
       onkeydown={() => handleSensorChanges(sensor, index)}
     >
       <img 
-        src={pressure_sensor}
-        width={`${sensorSize}px`}
-        height={`${sensorSize}px`}
+        src={findSensorProperty(sensor.sensor_type, index, "icon")}
+        width={`${findSensorProperty(sensor.sensor_type, index, "size_px")}px`}
+        height={`${findSensorProperty(sensor.sensor_type, index, "size_px")}px`}
         draggable={false}
         alt="sensor icon"
-        style={`min-width: ${sensorSize}px; min-height: ${sensorSize}px;`}
+        style={`min-width: ${findSensorProperty(sensor.sensor_type, index, "size_px")}px; min-height: ${findSensorProperty(sensor.sensor_type, index, "size_px")}px;`}
         />
     </div>
   {/each}

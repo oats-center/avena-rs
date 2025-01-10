@@ -1,5 +1,6 @@
 <script lang='ts'>
     import { onMount } from "svelte";
+    import Page from "../../../routes/+page.svelte";
 
 
   interface SensorType {
@@ -11,27 +12,6 @@
   let { editing_type = $bindable(), addSensorType } : { editing_type: SensorType, addSensorType: Function } = $props();
   
   let fileInput = $state<HTMLInputElement>();
-
-  function readFile(): string {
-    if(!fileInput) return "";
-
-    if(fileInput !== null && fileInput.files && fileInput.files[0]){
-      const file = fileInput.files[0];
-      const reader = new FileReader();
-
-      reader.addEventListener("load", () => {
-        if(typeof reader.result === "string"){
-          fileInput!.value = "";
-          console.log(reader.result)
-          return reader.result;
-        }
-      });
-      reader.readAsDataURL(file);
-    }
-    
-    console.log("No file input")
-    return "";  
-  }
 
   function confirmType(): void {
     if(!editing_type || !fileInput) return;
@@ -45,15 +25,14 @@
           fileInput!.value = "";
           editing_type.icon = reader.result
           addSensorType(editing_type)
-
-          return; 
         }
       });
       reader.readAsDataURL(file);
+      
+    } else {
+      console.log("No file input")
+      addSensorType(editing_type)
     }
-    
-    console.log("No file input")
-    return; 
   }
 
 </script>
