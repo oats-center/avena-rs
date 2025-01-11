@@ -194,7 +194,7 @@
 <div class='h-screen flex justify-center items-center '>
   <!--Map Area-->
   <div class="relative w-3/4 h-screen flex justify-center items-center">
-    {#if backgroundImage && sensors && sensor_types} <!-- Checks for valid mapconfig -->
+    {#if backgroundImage} <!-- Checks for valid mapconfig -->
       <SensorMap
         {sensors}
         {editingSensor}
@@ -205,8 +205,10 @@
         {handleSensorChanges}
       />
     {:else} <!-- Only if invalid mapconfig -->
+    <div class="flex flex-col">
       <h1>No MapConfig Has Been Created</h1>
       <h3 class="text-primary">Start By Importing a Backgroud Image</h3>
+    </div>
     {/if}
   </div>
 

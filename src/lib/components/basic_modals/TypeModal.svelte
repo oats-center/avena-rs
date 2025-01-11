@@ -1,7 +1,5 @@
 <script lang='ts'>
-    import { onMount } from "svelte";
     import Page from "../../../routes/+page.svelte";
-
 
   interface SensorType {
     "name": string
@@ -9,13 +7,35 @@
     "icon" : string;
   }
 
-  let { editing_type = $bindable(), addSensorType } : { editing_type: SensorType, addSensorType: Function } = $props();
+  let { sensor_types, editing_type = $bindable(), newType, addSensorType } : { sensor_types: SensorType[] | null, editing_type: SensorType, newType: boolean, addSensorType: Function } = $props();
   
   let fileInput = $state<HTMLInputElement>();
-
+  let alert = $state<string>("")
   function confirmType(): void {
     if(!editing_type || !fileInput) return;
-    
+    if(editing_type.name.trim() == "") {
+      alert = "Sensor Type Must Have a Name"
+      return;
+    } 
+    if(editing_type.size_px < 30 || editing_type.size_px > 80){
+      alert = "Sensor Type Size Must Be Between 30 and 80 pixels"
+      return;
+    }
+    if(newType && (fileInput === null || (fileInput.files && fileInput.files.length === 0))){
+      alert = "Sensor Type Must have an SVG File Added"
+      return;
+    }
+    if(sensor_types){
+      sensor_types.forEach((type) => {
+        if(type.name.toLowerCase() == editing_type.name.toLowerCase()){
+          alert = "Sensor Type already Exists"
+          return;
+        }
+      })
+      if(alert !== "") return;
+
+    }
+
     if(fileInput !== null && fileInput.files && fileInput.files[0]){
       const file = fileInput.files[0];
       const reader = new FileReader();
@@ -39,11 +59,12 @@
 
   {#if editing_type}
   <div class="modal-box bg-primary">
-    <h3 class="text-lg font-bold">New Sensor Type</h3>
+    <h3 class="text-lg font-bold mb-1">New Sensor Type</h3>
+    <h6 class="text-red-600 mb-2">{alert}</h6>
     <div class="grid grid-cols-2">
       <div>
         <h6>Name: </h6>
-        <input type="text" class="input modal_input" bind:value={editing_type.name} />
+        <input type="text" class="input modal_input" bind:value={editing_type.name} placeholder="New Type Name"/>
       </div>
       <div>
         <h6>Size: </h6>
@@ -57,7 +78,7 @@
     
     <div class="mt-5 flex">
       <form method="dialog">
-        <button class="btn btn-outline btn-success" onclick={() => editing_type = {"name": "", "icon": "", "size_px": 0}}>Cancel</button>
+        <button class="btn btn-outline btn-success" onclick={() => editing_type = {"name": "", "icon": "", "size_px": 30}}>Cancel</button>
       </form>
       <button class="btn btn-outline btn-error ml-5" onclick={confirmType}>Save</button>
     </div>
