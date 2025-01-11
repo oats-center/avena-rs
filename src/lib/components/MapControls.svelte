@@ -3,7 +3,7 @@
   import { NatsService, putKeyValue } from "$lib/nats.svelte";
 
   import TypeModal from "./basic_modals/TypeModal.svelte";
-    import ContextMenu from "./ContextMenu.svelte";
+  import ContextMenu from "./ContextMenu.svelte";
 
   interface Sensor {
     "cabinet_id" : string;
@@ -28,7 +28,7 @@
     }
   }
 
-  let {nats, selectedCabinet, sensors, editingSensor, editingIndex, sensor_types, saveBackgroundChanges, handleManualSelect, saveSensorChanges} : 
+  let {nats, selectedCabinet, sensors = $bindable(), editingSensor = $bindable(), editingIndex = $bindable(), sensor_types, background, saveBackgroundChanges, handleManualSelect, saveSensorChanges} : 
   {
     nats: NatsService | null,
     selectedCabinet: string | null,
@@ -36,6 +36,7 @@
     editingSensor: Sensor | null,
     editingIndex: number,
     sensor_types: SensorType[] | null,
+    background: HTMLImageElement | null,
     saveBackgroundChanges: Function,
     handleManualSelect: Function,
     saveSensorChanges: Function,
@@ -93,7 +94,6 @@
     
       reader.addEventListener("load", () => {
         if(typeof reader.result === "string"){
-          console.log(reader.result);
           saveBackgroundChanges(reader.result);
           fileInput!.value = "";
         }
@@ -136,10 +136,64 @@
       }
     })
 
-    console.log(formatted_types)
     return formatted_types;
   }
 
+
+  let dragging: boolean;
+  let newSensor = $state<Sensor | null>(null)
+  let newIndex = $state<number>(-1);
+
+  function handleTypeDragStart(e: MouseEvent, type: SensorType, index: number): void {
+    if (!background) throw new Error("Background Doesn't Work");
+    if (!selectedCabinet) throw new Error("No Cabinet Selection")
+    
+    dragging = true;
+    newSensor = {
+      "cabinet_id": selectedCabinet,
+      "labjack_serial" : "0",
+      "connected_channel": "0",
+      "sensor_name" : "New Sensor", 
+      "sensor_type" : type.name, 
+      "x_pos" : e.clientX,
+      "y_pos" : e.clientY, 
+      "color" : "black", 
+    }
+    newIndex = index
+  }
+  
+  //map: when the mouse moves, continue dragging
+  function continueTypeDrag(e: MouseEvent): void {
+    if (!background || !newSensor || !dragging) return;
+    newSensor.x_pos = e.clientX;
+    newSensor.y_pos = e.clientY;
+  }
+
+  //map: when the mouse button is back up, stop dragging and round values
+  function stopTypeDrag(): void {
+    dragging = false;
+    if (!newSensor || !background) return;
+  
+    if(  newSensor.x_pos >= background.x && newSensor.x_pos <= background.x +  background.width 
+      && newSensor.y_pos >= background.y && newSensor.y_pos <= background.y + background.height){
+        const scaleX = 100 / background.width;
+        const scaleY = 100 / background.height;
+        
+        newSensor.x_pos = (newSensor.x_pos - background.x) * scaleX;
+        newSensor.y_pos = (newSensor.y_pos - background.y) * scaleY;
+
+        newSensor.x_pos = Math.round(newSensor.x_pos)
+        newSensor.y_pos = Math.round(newSensor.y_pos)
+
+        sensors.push(JSON.parse(JSON.stringify(newSensor)));
+        newSensor = null;
+        editingIndex = sensors.length - 1
+        editingSensor = sensors[editingIndex]
+    } else {
+      newSensor = null;
+    }
+  }
+  
 </script>
 <div class="relative flex flex-col items-center border-l-2 h-screen">
   <!-- NavBar -->
@@ -167,7 +221,24 @@
       <div class="grid grid-cols-3 gap-10">
         {#each sensor_types as type, index}
         <div class="flex flex-col justify-center items-center w-full" role="button" tabindex=0 oncontextmenu={(e) => {e.preventDefault(); context_position = [e.clientX, e.clientY]; editing_type = JSON.parse(JSON.stringify(type)); editing_type_index = index}}>
-          <img src={type.icon} alt="sensor icon" style={`width: ${type.size_px}px; height: ${type.size_px}px;`}/>
+          <div
+            role="button"
+            tabindex=0
+            onmousedown={(event) => {handleTypeDragStart(event, type, index)}}
+            onmouseup={() => {if(newIndex === index) stopTypeDrag()}}
+            onmouseleave={() => {if(newIndex === index) stopTypeDrag()}}
+            onmousemove={(event) => {if (newIndex === index) continueTypeDrag(event)}}
+            style={(newSensor && index === newIndex) ? `
+              position: fixed; 
+              top: ${newSensor.y_pos - type.size_px / 2}px;
+              left: ${newSensor.x_pos - type.size_px / 2}px;
+              min-width: ${type.size_px}px
+              min-height: ${type.size_px}px
+            ` : ""}
+          >
+            <img src={type.icon} alt="sensor icon" style={`width: ${type.size_px}px; height: ${type.size_px}px;`} draggable={false}/>
+          </div>
+          
           <h6 style="font-weight: 400; text-align: center; width: 100%; margin-right: 0; margin-top: 6px">{type.name}</h6>
         </div>
         {/each}
@@ -203,9 +274,6 @@
 
   <!-- Background Image Change -->
   <div class="flex flex-col justify-center card bg-primary items-center z-0 w-5/6">
-    <!-- <label for="iconHeight" class="block mt-5">Sensor Size: </label>
-    <input type="number" bind:value={sensorSize} id="iconHeight" class="input input-bordered max-w-xs w-full" min=30 max=80/>
-    <input type="range" min=30 max=80 bind:value={sensorSize} class="w-full max-w-xs mt-2"/> -->
     <div class="card-body flex">
       <h4 class="text-center mb-2">Change Background Image</h4>
       <input type="file" class="file-input file-input-bordered modal_input" accept="image/png, image/jpg" bind:this={fileInput}/>
@@ -217,7 +285,7 @@
   </div>
 </div>
 
-<svelte:window onclick={() => {context_position = [-1000, -1000]}} oncontextmenu={(e) => {e.preventDefault(); context_position = [e.clientX, e.clientY]; console.log("Window Clicked")}} />
+<svelte:window onclick={() => {context_position = [-1000, -1000]}} oncontextmenu={(e) => {e.preventDefault(); context_position = [e.clientX, e.clientY];}} />
 
 <dialog id="cancel_modal" class='modal' bind:this={type_modal}>
   <TypeModal 

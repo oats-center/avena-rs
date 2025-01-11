@@ -18,7 +18,7 @@
 
 
   //variables that will not change in this file
-  let {cancel_modal, delete_modal, save_modal, sensors, editingIndex, editingSensor, sensor_types, alert, handleSensorChanges}:
+  let {cancel_modal, delete_modal, save_modal, sensors, editingIndex, editingSensor, sensor_types, alert = $bindable(), handleSensorChanges}:
       {
         cancel_modal: HTMLDialogElement, 
         delete_modal: HTMLDialogElement, 
