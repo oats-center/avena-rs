@@ -49,6 +49,7 @@
   let mapconfig: MapConfig;
   let sensors = $state<Sensor[]>([]);
   let backgroundImage = $state<string | null>(null);
+  let background = $state<HTMLImageElement | null>(null);
   let sensor_types = $state<SensorType[] | null>(null);
 
   let editingSensor = $state<Sensor | null>(null);
@@ -64,14 +65,7 @@
   async function initialize(): Promise<void> {
     if(serverName) nats = await connect(serverName);
     if(nats && selectedCabinet) {
-       /* putKeyValue(nats, "road1_cabinet1", "sensor_types", JSON.stringify({
-          "pressure" : {
-          "icon" : "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4NCjxzdmcgd2lkdGg9IjEwMHB0IiBoZWlnaHQ9IjEwMHB0IiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPg0KIDxwYXRoIGQ9Im01MCAyMi44MDFjMTYuNjk1IDAgMzAuMjI3IDEzLjUzNSAzMC4yMjcgMzAuMjI3IDAgOS44ODI4LTQuNzQyMiAxOC42NTYtMTIuMDcgMjQuMTcybC01LjMwODYtNy4yODEyIDIuMTcxOS0xLjg2NzIgMy42MzY3IDQuOTg4M2M1LjM1OTQtNSA4LjcxODgtMTIuMTE3IDguNzE4OC0yMC4wMTIgMC0xNS4wOTQtMTIuMjgxLTI3LjM3MS0yNy4zNzUtMjcuMzcxcy0yNy4zNzUgMTIuMjc3LTI3LjM3NSAyNy4zNzFjMCA3Ljg3ODkgMy4zNTE2IDE0Ljk4OCA4LjY5NTMgMTkuOTg0bDMuNjI4OS00Ljk5NjEgMi4xNjQxIDEuODc1LTUuMjg5MSA3LjI5M2MtNy4zMjAzLTUuNTE5NS0xMi4wNTUtMTQuMjgxLTEyLjA1NS0yNC4xNTYgMC0xNi42OTEgMTMuNTM1LTMwLjIyNyAzMC4yMy0zMC4yMjd6bS03Ljg1NTUgMTEuMzI0IDguNjcxOSAxNC45MDJjMS44NjMzIDAuMzc4OTEgMy4yNjk1IDIuMDI3MyAzLjI2OTUgNCAwIDIuMjU3OC0xLjgyODEgNC4wODU5LTQuMDg1OSA0LjA4NTktMi4yNTM5IDAtNC4wODU5LTEuODI4MS00LjA4NTktNC4wODU5IDAtMC42NTYyNSAwLjE3MTg4LTEuMjY5NSAwLjQ0OTIyLTEuODIwM2wtNi45Mjk3LTE1LjcwM3oiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPg0KPC9zdmc+DQo=",
-          "size_px" : 50
-        }
-      })) */
-      
-      //gets the values from NATS   
+      //access mapconfig from NATS   
       let tempMapConfig = await getKeyValue(nats, selectedCabinet, "mapconfig");
       if(tempMapConfig !== "Key value does not exist"){
         mapconfig = JSON.parse(tempMapConfig) as MapConfig
@@ -80,12 +74,12 @@
           .map(([, value]) => value as Sensor);
         backgroundImage = mapconfig.backgroundImage
       } else {
-        console.log("No MapConfig")
         mapconfig = {
           backgroundImage: ""
         }
       }
 
+      //access sensor types from NATS
       let tempSensorTypes = await getKeyValue(nats, selectedCabinet, "sensor_types");
       if(tempSensorTypes !== "Key value does not exist"){
         let types_json = JSON.parse(tempSensorTypes) as SensorTypes
@@ -93,9 +87,8 @@
             name, 
             ...data, 
         }));
-        console.log(types_json)
       } else {
-        //figure out what to put into this else statement 
+        sensor_types = null; 
       }
       loading = false
     }
@@ -147,7 +140,6 @@
     } else if (index !== undefined  && editingSensor !== null && editingIndex !== index) {
       cancel_modal?.showModal();
       queuedIndex = index;
-      console.log(queuedIndex);
       console.log("New sensor clicked on")
 
     //option: cancel modal confirm from new sensor selection 
@@ -207,9 +199,9 @@
         {sensors}
         {editingSensor}
         {editingIndex}
-        {sensorSize}
-        {backgroundImage}
         {sensor_types}
+        {backgroundImage}
+        bind:background={background}
         {handleSensorChanges}
       />
     {:else} <!-- Only if invalid mapconfig -->
@@ -224,10 +216,11 @@
     <MapControls
       {nats}
       {selectedCabinet}
-      {sensors}
-      {editingSensor}
-      {editingIndex}
+      bind:sensors={sensors}
+      bind:editingSensor={editingSensor}
+      bind:editingIndex={editingIndex}
       {sensor_types}
+      {background}
       {saveBackgroundChanges}
       {handleManualSelect}
       {saveSensorChanges}
@@ -239,7 +232,7 @@
         {sensors}
         {editingIndex}
         {editingSensor}
-        {alert}
+        bind:alert={alert}
         {sensor_types}
         {cancel_modal}
         {delete_modal}

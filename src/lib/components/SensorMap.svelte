@@ -18,22 +18,21 @@
     "icon" : string;
   }
 
-  let {sensors, editingSensor, editingIndex, sensorSize, backgroundImage, sensor_types, handleSensorChanges} : {
+  let {sensors, editingSensor, editingIndex, sensor_types, backgroundImage, background = $bindable(), handleSensorChanges} : {
     sensors: Sensor[],
     editingSensor: Sensor | null,
     editingIndex: number,
-    sensorSize: number,
     backgroundImage: string | null, 
     sensor_types: SensorType[],
+    background: HTMLImageElement | null,
     handleSensorChanges: Function,
   } = $props()
 
-  let background = $state<HTMLImageElement | null>();
+  
   let dragging = $state<boolean>(false);
     
   //map: when mouse down on a sensor, start dragging
   function handleDragStart(e: MouseEvent): void {
-    console.log("dragging")
     dragging = true;
   }
 
@@ -81,6 +80,7 @@
     bind:this={background}
     style="z-index: -1; height: 90vh; position: relative;"
   />
+  
   {#each sensors as sensor, index}
     <div
       role="button"
