@@ -61,27 +61,9 @@
   
   let context_position = $state<[number, number]>([-1000, -1000]);
   let type_modal = $state<HTMLDialogElement>();
-  let editing_type = $state<SensorType>({"name": "", "icon": "", "size_px": 0});
+  let editing_type = $state<SensorType>({"name": "", "icon": "", "size_px": 30});
   let editing_type_index = -1;
-
-  //handles adding a sensor, doesn't get updated in nats until updated
-  function addSensor(): void {
-    if(!selectedCabinet) throw new Error("Page not properly loaded");
-    let newSensor: Sensor = {
-      "cabinet_id" : selectedCabinet,
-      "labjack_serial" : "0",
-      "connected_channel": "0",
-      "sensor_name" : "New Sensor", 
-      "sensor_type" : "Temperature",
-      "x_pos" : 0,
-      "y_pos" : 0, 
-      "color" : "red" 
-    }
-
-    sensors.push(newSensor);
-    editingSensor = JSON.parse(JSON.stringify(newSensor));
-    editingIndex = sensors.length - 1;
-  }
+  let newType = $state<boolean>(true);
 
   //reads the file from the file input
   function readFile(): void {
@@ -123,7 +105,8 @@
     else sensor_types = [sensor_type] //might have to be bindable @ props()?? 
     putKeyValue(nats, selectedCabinet, "sensor_types", JSON.stringify(formatSensorTypes()));
 
-    editing_type = {"name": "", "icon": "", "size_px": 0}
+    editing_type = {"name": "", "icon": "", "size_px": 30}
+    newType = true;
     type_modal?.close()
   }
 
@@ -148,18 +131,20 @@
     if (!background) throw new Error("Background Doesn't Work");
     if (!selectedCabinet) throw new Error("No Cabinet Selection")
     
-    dragging = true;
-    newSensor = {
-      "cabinet_id": selectedCabinet,
-      "labjack_serial" : "0",
-      "connected_channel": "0",
-      "sensor_name" : "New Sensor", 
-      "sensor_type" : type.name, 
-      "x_pos" : e.clientX,
-      "y_pos" : e.clientY, 
-      "color" : "black", 
+    if(e.which === 1) {
+      dragging = true;
+      newSensor = {
+        "cabinet_id": selectedCabinet,
+        "labjack_serial" : "0",
+        "connected_channel": "0",
+        "sensor_name" : "New Sensor", 
+        "sensor_type" : type.name, 
+        "x_pos" : e.clientX,
+        "y_pos" : e.clientY, 
+        "color" : "black", 
+      }
+      newIndex = index
     }
-    newIndex = index
   }
   
   //map: when the mouse moves, continue dragging
@@ -205,13 +190,9 @@
     <div class="mx-10 justify-center">
       <button class="btn btn-primary" onclick={() => goto("lj-config")}>Card View</button>
     </div>
-    <div class="mx-10 justify-center">
-      <button class="btn btn-primary" onclick={() => addSensor()}>New Sensor</button>
-    </div>
   </div>
 
   <!-- New Sensors -->
-  {#if sensor_types}
   <div class="flex flex-col justify-center card bg-primary items-center z-0 mb-5 w-5/6">
     <div class="card-body flex">
       <div class='flex justify-center items-center space-x-5'>
@@ -219,33 +200,36 @@
         <button class="btn btn-outline btn-success" onclick={() => type_modal?.showModal()}>New Type</button>
       </div>
       <div class="grid grid-cols-3 gap-10">
-        {#each sensor_types as type, index}
-        <div class="flex flex-col justify-center items-center w-full" role="button" tabindex=0 oncontextmenu={(e) => {e.preventDefault(); context_position = [e.clientX, e.clientY]; editing_type = JSON.parse(JSON.stringify(type)); editing_type_index = index}}>
-          <div
-            role="button"
-            tabindex=0
-            onmousedown={(event) => {handleTypeDragStart(event, type, index)}}
-            onmouseup={() => {if(newIndex === index) stopTypeDrag()}}
-            onmouseleave={() => {if(newIndex === index) stopTypeDrag()}}
-            onmousemove={(event) => {if (newIndex === index) continueTypeDrag(event)}}
-            style={(newSensor && index === newIndex) ? `
-              position: fixed; 
-              top: ${newSensor.y_pos - type.size_px / 2}px;
-              left: ${newSensor.x_pos - type.size_px / 2}px;
-              min-width: ${type.size_px}px
-              min-height: ${type.size_px}px
-            ` : ""}
-          >
-            <img src={type.icon} alt="sensor icon" style={`width: ${type.size_px}px; height: ${type.size_px}px;`} draggable={false}/>
+        {#if sensor_types}
+          {#each sensor_types as type, index}
+          <div class="flex flex-col justify-center items-center w-full h-full " role="button" tabindex=0 oncontextmenu={(e) => {e.preventDefault(); context_position = [e.clientX, e.clientY]; editing_type = JSON.parse(JSON.stringify(type)); editing_type_index = index; newType = false;}}>
+            <div
+              role="button"
+              tabindex=0
+              class="flex flex-col justify-center h-full"
+              onmousedown={(event) => {handleTypeDragStart(event, type, index)}}
+              onmouseup={() => {if(newIndex === index) stopTypeDrag()}}
+              onmouseleave={() => {if(newIndex === index) stopTypeDrag()}}
+              onmousemove={(event) => {if (newIndex === index) continueTypeDrag(event)}}
+              style={(newSensor && index === newIndex) ? `
+                position: fixed; 
+                top: ${newSensor.y_pos - type.size_px / 2}px;
+                left: ${newSensor.x_pos - type.size_px / 2}px;
+                min-width: ${type.size_px}px
+                min-height: ${type.size_px}px
+              ` : ""}
+            >
+              <img src={type.icon} alt="sensor icon" style={`width: ${type.size_px}px; height: ${type.size_px}px;`} draggable={false}/>
+            </div>
+            
+            <h6 style="font-weight: 400; text-align: center; width: 100%; margin-right: 0; margin-top: 6px;">{type.name}</h6>
           </div>
-          
-          <h6 style="font-weight: 400; text-align: center; width: 100%; margin-right: 0; margin-top: 6px">{type.name}</h6>
-        </div>
-        {/each}
+          {/each}
+        {/if}
       </div>
     </div>
   </div>
-  {/if}
+  
 
   <!-- Manual Sensor Select -->
   <div class="flex flex-col justify-center card bg-primary items-center z-0 mb-5 w-5/6">
@@ -289,7 +273,9 @@
 
 <dialog id="cancel_modal" class='modal' bind:this={type_modal}>
   <TypeModal 
+    {sensor_types}
     bind:editing_type={editing_type}
+    {newType}
     {addSensorType}
   />
 </dialog>
