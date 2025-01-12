@@ -65,7 +65,7 @@
   }
 
 </script>
-<div class="h-full flex flex-col">
+<div class="controls">
   <h3 class="text-accent my-5">Sensor Settings</h3>
   {#if editingSensor}
     <div class="grid grid-cols-2 gap-4 m-5 items-center">
@@ -99,3 +99,17 @@
     </div>  
   {/if}    
 </div>
+
+
+<style>
+  .controls {
+    position: fixed;
+    top: 0;
+    right: 0;
+    height: 100vh;
+    width: 25vw;
+    display: flex;
+    flex-direction: column;
+    background-color:#FAF9F6; 
+  }  
+</style>

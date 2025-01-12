@@ -41,9 +41,11 @@
     const scaleX = 100 / background.width;
     const scaleY = 100 / background.height;
     
-    editingSensor.x_pos = (e.clientX - background.x) * scaleX;
-    editingSensor.y_pos = (e.clientY - background.y) * scaleY;
+    const back_loc = background.getBoundingClientRect()
 
+    editingSensor.x_pos = (e.clientX - back_loc.x) * scaleX;
+    editingSensor.y_pos = (e.clientY - back_loc.y) * scaleY;
+    
     editingSensor.x_pos = Math.min(100, Math.max(0, editingSensor.x_pos));
     editingSensor.y_pos = Math.min(100, Math.max(0, editingSensor.y_pos));
   }
@@ -74,7 +76,7 @@
 
 </script>
 
-<div role="none" class="relative" onmousemove={continueDrag}>
+<div role="none" class="fixed" onmousemove={continueDrag}>
   <img 
     alt="Background for Map" 
     src={backgroundImage}

@@ -229,7 +229,7 @@
     />
     <!-- Sensor Controls for Selected Sensor -->
     {#if editingIndex !== -1 && save_modal && cancel_modal && delete_modal && sensor_types}
-    <div class="sensor_controls" transition:slide={{duration: 250, axis: "x"}}>
+    <div transition:slide={{duration: 250, axis: "x"}}>
       <SensorControls
         {sensors}
         {editingIndex}
@@ -253,19 +253,3 @@
 <CancelModal bind:cancel_modal={cancel_modal} {handleSensorChanges}/>
 <DeleteModal bind:delete_modal={delete_modal} deleteFunction={deleteSensor} delete_string="sensor" confirmation_string={editingSensor?.sensor_name}/>
 <Alert bind:alert={alert}/>
-
-
-
-
-
-<style>
-  .sensor_controls {
-    position: absolute; 
-    right: 0; 
-    top: 0; 
-    background-color:#FAF9F6; 
-    width: 25%; 
-    height: 100vh; 
-    z-index: 10;
-  }
-</style>
