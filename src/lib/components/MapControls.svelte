@@ -164,8 +164,10 @@
         const scaleX = 100 / background.width;
         const scaleY = 100 / background.height;
         
-        newSensor.x_pos = (newSensor.x_pos - background.x) * scaleX;
-        newSensor.y_pos = (newSensor.y_pos - background.y) * scaleY;
+        const back_loc = background.getBoundingClientRect()
+
+        newSensor.x_pos = (newSensor.x_pos - back_loc.x) * scaleX;
+        newSensor.y_pos = (newSensor.y_pos - back_loc.y) * scaleY;
 
         newSensor.x_pos = Math.round(newSensor.x_pos)
         newSensor.y_pos = Math.round(newSensor.y_pos)
@@ -180,7 +182,7 @@
   }
   
 </script>
-<div class="relative flex flex-col items-center border-l-2 h-screen">
+<div class="flex flex-col items-center border-l-2">
   <!-- NavBar -->
   <h1>Map Configuration</h1>
   <div class="flex mb-8">
@@ -199,14 +201,14 @@
         <h4 class="text-center mb-2">New Sensor</h4>
         <button class="btn btn-outline btn-success" onclick={() => type_modal?.showModal()}>New Type</button>
       </div>
-      <div class="grid grid-cols-3 gap-10">
+      <div class="grid grid-cols-3 gap-5">
         {#if sensor_types}
           {#each sensor_types as type, index}
-          <div class="flex flex-col justify-center items-center w-full h-full " role="button" tabindex=0 oncontextmenu={(e) => {e.preventDefault(); context_position = [e.clientX, e.clientY]; editing_type = JSON.parse(JSON.stringify(type)); editing_type_index = index; newType = false;}}>
+          <div class="flex flex-col justify-center items-center h-full" role="button" tabindex=0 oncontextmenu={(e) => {e.preventDefault(); context_position = [e.clientX, e.clientY]; editing_type = JSON.parse(JSON.stringify(type)); editing_type_index = index; newType = false;}}>
             <div
               role="button"
               tabindex=0
-              class="flex flex-col justify-center h-full"
+              class="flex flex-col justify-center items-center"
               onmousedown={(event) => {handleTypeDragStart(event, type, index)}}
               onmouseup={() => {if(newIndex === index) stopTypeDrag()}}
               onmouseleave={() => {if(newIndex === index) stopTypeDrag()}}
@@ -215,14 +217,35 @@
                 position: fixed; 
                 top: ${newSensor.y_pos - type.size_px / 2}px;
                 left: ${newSensor.x_pos - type.size_px / 2}px;
-                min-width: ${type.size_px}px
-                min-height: ${type.size_px}px
-              ` : ""}
+                min-width: ${type.size_px}px;
+                min-height: ${type.size_px}px;
+              ` : `
+                height: 100%;
+                width: 100%;
+              `}
             >
               <img src={type.icon} alt="sensor icon" style={`width: ${type.size_px}px; height: ${type.size_px}px;`} draggable={false}/>
             </div>
-            
-            <h6 style="font-weight: 400; text-align: center; width: 100%; margin-right: 0; margin-top: 6px;">{type.name}</h6>
+            <div style={(newSensor && index === newIndex) ? `
+              height: 100%;
+              width: 100%;
+              min-width: ${type.size_px}px;
+              min-height: ${type.size_px}px;
+            ` : `
+              height: 0;
+              width: 100%;
+            `}>
+
+            </div>
+            <h6 style="
+              font-weight: 400; 
+              text-align: center; 
+              width: 100%; 
+              margin-right: 0; 
+              text-overflow: ellipsis;
+              overflow-x: clip;
+              "
+            >{type.name}</h6>
           </div>
           {/each}
         {/if}
