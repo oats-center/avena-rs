@@ -1,6 +1,4 @@
 <script lang='ts'>
-    import Page from "../../../routes/+page.svelte";
-
   interface SensorType {
     "name": string
     "size_px" : number;
@@ -13,6 +11,7 @@
   let alert = $state<string>("")
   function confirmType(): void {
     if(!editing_type || !fileInput) return;
+
     if(editing_type.name.trim() == "") {
       alert = "Sensor Type Must Have a Name"
       return;
@@ -25,7 +24,7 @@
       alert = "Sensor Type Must have an SVG File Added"
       return;
     }
-    if(sensor_types){
+    if(sensor_types && newType){
       sensor_types.forEach((type) => {
         if(type.name.toLowerCase() == editing_type.name.toLowerCase()){
           alert = "Sensor Type already Exists"

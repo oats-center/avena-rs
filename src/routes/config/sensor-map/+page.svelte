@@ -10,6 +10,7 @@
   import CancelModal from "$lib/components/basic_modals/CancelModal.svelte";
   import DeleteModal from "$lib/components/basic_modals/DeleteModal.svelte";
   import Alert from "$lib/components/Alert.svelte";
+  import ContextMenu from "$lib/components/ContextMenu.svelte";
 
   interface Sensor {
     "cabinet_id" : string;
@@ -45,7 +46,10 @@
   
   let serverName: string | null; 
   let loading = $state<boolean>(true);
-  
+
+  let contextState = $state<string>("General");
+  let context_position = $state<[number, number]>([-1000, -1000]);
+
   let mapconfig: MapConfig;
   let sensors = $state<Sensor[]>([]);
   let backgroundImage = $state<string | null>(null);
@@ -54,13 +58,14 @@
 
   let editingSensor = $state<Sensor | null>(null);
   let editingIndex= $state<number>(-1);
-  let sensorSize= 50
   let queuedIndex = -1;
           
   let alert = $state<string | null>(null);  
   let cancel_modal = $state<HTMLDialogElement>();
   let delete_modal = $state<HTMLDialogElement>();
-  let save_modal = $state<HTMLDialogElement>();  
+  let save_modal = $state<HTMLDialogElement>();
+  let type_modal = $state<HTMLDialogElement>();  
+  
   //gets values from nats and parses
   async function initialize(): Promise<void> {
     if(serverName) nats = await connect(serverName);
@@ -117,7 +122,7 @@
   function handleSensorChanges(sensor?: Sensor, index?: number): void {
     // option: used cancel button
     if((index === undefined || sensor === undefined) && queuedIndex === -1) { 
-      if(sensors[editingIndex].labjack_serial === "0"){
+      if(sensors[editingIndex].sensor_name == "" || sensors[editingIndex].labjack_serial === "" || sensors[editingIndex].connected_channel === ""){
         sensors.pop()
       }
       editingSensor = null;
@@ -222,6 +227,8 @@
       bind:editingSensor={editingSensor}
       bind:editingIndex={editingIndex}
       {sensor_types}
+      bind:context_position={context_position}
+      bind:type_modal={type_modal}
       {background}
       {saveBackgroundChanges}
       {handleManualSelect}
@@ -253,3 +260,7 @@
 <CancelModal bind:cancel_modal={cancel_modal} {handleSensorChanges}/>
 <DeleteModal bind:delete_modal={delete_modal} deleteFunction={deleteSensor} delete_string="sensor" confirmation_string={editingSensor?.sensor_name}/>
 <Alert bind:alert={alert}/>
+
+{#if type_modal}
+  <ContextMenu top={context_position[1]} left={context_position[0]} {type_modal}/>
+{/if}
