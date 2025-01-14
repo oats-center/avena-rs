@@ -15,7 +15,6 @@
     "y_pos" : number; 
     "color" : string; 
   }
-
   interface SensorType {
     "name": string
     "size_px" : number;
@@ -28,7 +27,7 @@
     }
   }
 
-  let {nats, selectedCabinet, sensors = $bindable(), editingSensor = $bindable(), editingIndex = $bindable(), sensor_types, background, saveBackgroundChanges, handleManualSelect, saveSensorChanges} : 
+  let {nats, selectedCabinet, sensors = $bindable(), editingSensor = $bindable(), editingIndex = $bindable(), sensor_types, context_position = $bindable(), type_modal = $bindable(), background, saveBackgroundChanges, handleManualSelect, saveSensorChanges} : 
   {
     nats: NatsService | null,
     selectedCabinet: string | null,
@@ -36,6 +35,8 @@
     editingSensor: Sensor | null,
     editingIndex: number,
     sensor_types: SensorType[] | null,
+    context_position: number[],
+    type_modal: HTMLDialogElement | undefined,
     background: HTMLImageElement | null,
     saveBackgroundChanges: Function,
     handleManualSelect: Function,
@@ -59,11 +60,10 @@
   let selectedChannel = $state<string>("Channel");
   
   
-  let context_position = $state<[number, number]>([-1000, -1000]);
-  let type_modal = $state<HTMLDialogElement>();
   let editing_type = $state<SensorType>({"name": "", "icon": "", "size_px": 30});
   let editing_type_index = -1;
   let newType = $state<boolean>(true);
+  let clickedElement = false;
 
   //reads the file from the file input
   function readFile(): void {
@@ -135,9 +135,9 @@
       dragging = true;
       newSensor = {
         "cabinet_id": selectedCabinet,
-        "labjack_serial" : "0",
-        "connected_channel": "0",
-        "sensor_name" : "New Sensor", 
+        "labjack_serial" : "",
+        "connected_channel": "",
+        "sensor_name" : "", 
         "sensor_type" : type.name, 
         "x_pos" : e.clientX,
         "y_pos" : e.clientY, 
@@ -181,6 +181,21 @@
     }
   }
   
+  function handleWindowClick(event: MouseEvent){
+    context_position = [-1000, -1000]; 
+  }
+
+  function handleWindowContext(event: MouseEvent){
+    event.preventDefault(); 
+    context_position = [event.clientX, event.clientY];
+    if(!clickedElement) {
+      editing_type = {"name": "", "icon": "", "size_px": 30}
+    } 
+    else {
+      clickedElement = false
+    }
+  }
+
 </script>
 <div class="flex flex-col items-center border-l-2">
   <!-- NavBar -->
@@ -204,14 +219,13 @@
       <div class="grid grid-cols-3 gap-5">
         {#if sensor_types}
           {#each sensor_types as type, index}
-          <div class="flex flex-col justify-center items-center h-full" role="button" tabindex=0 oncontextmenu={(e) => {e.preventDefault(); context_position = [e.clientX, e.clientY]; editing_type = JSON.parse(JSON.stringify(type)); editing_type_index = index; newType = false;}}>
+          <div class="flex flex-col justify-center items-center h-full" role="button" tabindex=0 oncontextmenu={(e) => {e.preventDefault(); editing_type = JSON.parse(JSON.stringify(type)); editing_type_index = index; newType = false; clickedElement = true}}>
             <div
               role="button"
               tabindex=0
               class="flex flex-col justify-center items-center"
               onmousedown={(event) => {handleTypeDragStart(event, type, index)}}
               onmouseup={() => {if(newIndex === index) stopTypeDrag()}}
-              onmouseleave={() => {if(newIndex === index) stopTypeDrag()}}
               onmousemove={(event) => {if (newIndex === index) continueTypeDrag(event)}}
               style={(newSensor && index === newIndex) ? `
                 position: fixed; 
@@ -258,21 +272,19 @@
   <div class="flex flex-col justify-center card bg-primary items-center z-0 mb-5 w-5/6">
     <div class="card-body w-full">
       <h4 class="text-center mb-2">Select Sensor</h4>
-      <div class="flex justify-center item-center w-full space-x-5">
-        <select class="select select-primary modal_input w-1/3" bind:value={selectedLabjack}>
+      <div class="grid grid-cols-2 gap-5">
+        <select class="select select-primary modal_input w-full" bind:value={selectedLabjack}>
           <option disabled selected>Labjack</option>
           {#each labjackArray as labjack}
           <option>{labjack}</option>
           {/each}
         </select>
-        <select disabled={selectedLabjack === "Labjack"} class="select select-primary modal_input w-1/3" bind:value={selectedChannel}>
+        <select disabled={selectedLabjack === "Labjack"} class="select select-primary modal_input w-full" bind:value={selectedChannel}>
           <option disabled selected>Channel</option>
           {#each channelArray as channel}
           <option>{channel}</option>
           {/each}
         </select>
-      </div>
-      <div class="flex justify-center items-center w-full space-x-5">
         <button class="btn btn-outline btn-success" onclick={() => {selectedLabjack = "Labjack"; selectedChannel = "Channel"}}>Reset</button>
         <button class="btn btn-outline btn-success" disabled={selectedLabjack === "Labjack" && selectedChannel === "Channel"} onclick={() => handleManualSelect(selectedLabjack, selectedChannel)}>Select</button>
       </div>
@@ -281,10 +293,10 @@
 
   <!-- Background Image Change -->
   <div class="flex flex-col justify-center card bg-primary items-center z-0 w-5/6">
-    <div class="card-body flex">
+    <div class="card-body flex justify-center items-center">
       <h4 class="text-center mb-2">Change Background Image</h4>
-      <input type="file" class="file-input file-input-bordered modal_input" accept="image/png, image/jpg" bind:this={fileInput}/>
       <div class="grid grid-cols-2 gap-4 w-full mt-2">
+        <input type="file" class="file-input file-input-bordered modal_input w-full col-span-2" accept="image/png, image/jpg" bind:this={fileInput}/>
         <button class="btn btn-outline btn-success" onclick={() => {fileInput!.value = ""}}>Cancel</button>
         <button class="btn btn-outline btn-success" onclick={readFile}>Save</button>
       </div>
@@ -292,9 +304,9 @@
   </div>
 </div>
 
-<svelte:window onclick={() => {context_position = [-1000, -1000]}} oncontextmenu={(e) => {e.preventDefault(); context_position = [e.clientX, e.clientY];}} />
+<svelte:window onclick={handleWindowClick} oncontextmenu={handleWindowContext} onmousemove={(e) => {if (newSensor) continueTypeDrag(e)}}/>
 
-<dialog id="cancel_modal" class='modal' bind:this={type_modal}>
+<dialog id="type_modal" class='modal' bind:this={type_modal}>
   <TypeModal 
     {sensor_types}
     bind:editing_type={editing_type}
@@ -302,7 +314,3 @@
     {addSensorType}
   />
 </dialog>
-
-{#if type_modal}
-  <ContextMenu top={context_position[1]} left={context_position[0]} {type_modal}/>
-{/if}

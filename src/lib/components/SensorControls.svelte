@@ -38,8 +38,12 @@
   //form validation for mapconfig controls
   function handleSave(): void {
     if(!editingSensor) throw new Error ("No editing sensor with save confirmation?")
-    if(editingSensor.labjack_serial === '0' || editingSensor.connected_channel === '0'){
-      alert = "Serial number & connected channel cannot be 0";
+    if(editingSensor.labjack_serial === '0' ||editingSensor.labjack_serial === ""){
+      alert = "Serial Number Cannot Be 0 or Empty";
+      return;
+    }
+    if(editingSensor.connected_channel === '0' ||editingSensor.connected_channel === ""){
+      alert = "Connected Channel Cannot Be 0 or Empty";
       return;
     }
     if(editingSensor.x_pos < 0 || editingSensor.x_pos > 100) {
@@ -70,13 +74,13 @@
   {#if editingSensor}
     <div class="grid grid-cols-2 gap-4 m-5 items-center">
       <label for="nameInput" class="text-accent mr-4">Name:</label>
-      <input id="nameInput" type="text" bind:value={editingSensor.sensor_name} class="input modal_input w-full max-w-xs"/>
+      <input id="nameInput" type="text" bind:value={editingSensor.sensor_name} class="input modal_input w-full max-w-xs" placeholder="Sensor Name"/>
     
       <label for="serialNumber" class="text-accent">LabJack Serial Number:</label>
-      <input id="serialNumber" type="text" bind:value={editingSensor.labjack_serial} class="input modal_input w-full max-w-xs mt-2" min=1/>
+      <input id="serialNumber" type="text" bind:value={editingSensor.labjack_serial} class="input modal_input w-full max-w-xs mt-2" placeholder="Labjack Serial"/>
     
       <label for="channelNumber" class="text-accent">Connect Channel:</label>
-      <input id="channelNumber" type="text" bind:value={editingSensor.connected_channel} class="input modal_input w-full max-w-xs mt-2" min=1/>
+      <input id="channelNumber" type="text" bind:value={editingSensor.connected_channel} class="input modal_input w-full max-w-xs mt-2" placeholder="Channel Number"/>
     
       <label for="groupSelect" class="text-accent">Sensor Type:</label>
       <select id="groupSelect" class="select modal_input w-full max-w-xs mt-2" bind:value={editingSensor.sensor_type}>
