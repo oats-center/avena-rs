@@ -1,20 +1,5 @@
 <script lang='ts'>
-  interface Sensor {
-    "cabinet_id" : string;
-    "labjack_serial" : string;
-    "connected_channel": string; 
-    "sensor_name" : string; 
-    "sensor_type" : string; 
-    "x_pos" : number; 
-    "y_pos" : number; 
-    "color" : string; 
-  }
-
-  interface SensorType {
-    "name": string
-    "size_px" : number;
-    "icon" : string;
-  }
+  import type { Sensor, SensorType } from "$lib/MapTypes"
 
   let {sensors, editingSensor, editingIndex, sensor_types, backgroundImage, background = $bindable(), handleSensorChanges} : {
     sensors: Sensor[] | null,
@@ -25,16 +10,15 @@
     background: HTMLImageElement | null,
     handleSensorChanges: Function,
   } = $props()
-
   
   let dragging = $state<boolean>(false);
     
-  //map: when mouse down on a sensor, start dragging
+  //when mouse down on a sensor, start dragging
   function handleDragStart(e: MouseEvent): void {
     if(e.which === 1) dragging = true;
   }
 
-  //map: when the mouse moves, continue dragging
+  //when the mouse moves, continue dragging
   function continueDrag(e: MouseEvent): void {
     if (!background || !editingSensor || !dragging) return;
 
@@ -50,7 +34,7 @@
     editingSensor.y_pos = Math.min(100, Math.max(0, editingSensor.y_pos));
   }
 
-  //map: when the mouse button is back up, stop dragging and round values
+  //when the mouse button is back up, stop dragging and round values
   function stopDrag(): void {
     dragging = false;
     if (!editingSensor) return;
@@ -62,6 +46,7 @@
     editingSensor.y_pos = Math.min(100, Math.max(0, editingSensor.y_pos));
   }
 
+  //gets any sensor type property for use on map
   function findSensorProperty<T>(curr_type: string, index: number, property: keyof SensorType): T | undefined {
     if (!sensor_types) throw new Error("Sensor Types Not Initialized")
     if (!sensors) throw new Error("Sensors Not Initialized")
