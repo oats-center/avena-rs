@@ -12,49 +12,22 @@
   import Alert from "$lib/components/Alert.svelte";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
 
-  interface Sensor {
-    "cabinet_id" : string;
-    "labjack_serial" : string;
-    "connected_channel": string; 
-    "sensor_name" : string; 
-    "sensor_type" : string; 
-    "x_pos" : number; 
-    "y_pos" : number; 
-    "color" : string; 
-  }
-  interface MapConfig {
-    "backgroundImage": string;
-    [key: `labjackd.${string}.ch${string}`]: Sensor;
-  }
-  interface SensorTypes {
-    [name: string]: {
-      "size_px": number
-      "icon": string
-    }
-  }
-  interface SensorType {
-    "name": string
-    "size_px" : number;
-    "icon" : string;
-  }
+  import type {MapConfig, Sensor, SensorType, SensorTypes} from "$lib/MapTypes"
 
 
   // svelte-ignore non_reactive_update
   let selectedCabinet: string | null;
   // svelte-ignore non_reactive_update
   let nats: NatsService | null;   
-  
   let serverName: string | null; 
   let loading = $state<boolean>(true);
-
-  let contextState = $state<string>("General");
   let context_position = $state<[number, number]>([-1000, -1000]);
 
   let mapconfig: MapConfig;
   let sensors = $state<Sensor[]>([]);
   let backgroundImage = $state<string | null>(null);
-  let background = $state<HTMLImageElement | null>(null);
   let sensor_types = $state<SensorType[] | null>(null);
+  let background = $state<HTMLImageElement | null>(null);
 
   let editingSensor = $state<Sensor | null>(null);
   let editingIndex= $state<number>(-1);
@@ -218,7 +191,6 @@
   </div>
 
   <!--Configuration Area-->
-  
   <div class="w-1/4">
     <MapControls
       {nats}
@@ -234,9 +206,10 @@
       {handleManualSelect}
       {saveSensorChanges}
     />
+
     <!-- Sensor Controls for Selected Sensor -->
     {#if editingIndex !== -1 && save_modal && cancel_modal && delete_modal && sensor_types}
-    <div transition:slide={{duration: 250, axis: "x"}}>
+    <div>
       <SensorControls
         {sensors}
         {editingIndex}
@@ -251,9 +224,7 @@
     </div>
     {/if}
   </div>
-  
 </div>
-
 {/if}
 
 <SaveModal bind:save_modal={save_modal} {saveSensorChanges}/>

@@ -3,29 +3,7 @@
   import { NatsService, putKeyValue } from "$lib/nats.svelte";
 
   import TypeModal from "./basic_modals/TypeModal.svelte";
-  import ContextMenu from "./ContextMenu.svelte";
-
-  interface Sensor {
-    "cabinet_id" : string;
-    "labjack_serial" : string;
-    "connected_channel": string; 
-    "sensor_name" : string; 
-    "sensor_type" : string; 
-    "x_pos" : number; 
-    "y_pos" : number; 
-    "color" : string; 
-  }
-  interface SensorType {
-    "name": string
-    "size_px" : number;
-    "icon" : string;
-  }
-  interface SensorTypes {
-    [name: string]: {
-      "size_px": number
-      "icon": string
-    }
-  }
+  import type { Sensor, SensorType, SensorTypes } from "$lib/MapTypes"
 
   let {nats, selectedCabinet, sensors = $bindable(), editingSensor = $bindable(), editingIndex = $bindable(), sensor_types, context_position = $bindable(), type_modal = $bindable(), background, saveBackgroundChanges, handleManualSelect, saveSensorChanges} : 
   {
@@ -42,8 +20,6 @@
     handleManualSelect: Function,
     saveSensorChanges: Function,
   } = $props()
-
-  let fileInput = $state<HTMLInputElement>();
   let labjackArray = $derived.by(() => {
     const uniqueLabjacks = sensors
     .map(sensor => sensor.labjack_serial)
@@ -56,18 +32,22 @@
     .map(sensor => sensor.connected_channel);
     return channels;
   });
+
+  let fileInput = $state<HTMLInputElement>();
   let selectedLabjack = $state<string>("Labjack");
   let selectedChannel = $state<string>("Channel");
-  
   
   let editing_type = $state<SensorType>({"name": "", "icon": "", "size_px": 30});
   let editing_type_index = -1;
   let newType = $state<boolean>(true);
   let clickedElement = false;
 
+  let dragging: boolean;
+  let newSensor = $state<Sensor | null>(null)
+  let newIndex = $state<number>(-1);
+
   //reads the file from the file input
   function readFile(): void {
-
     if(!fileInput) return;
 
     if(fileInput !== null && fileInput.files){
@@ -86,7 +66,8 @@
     }  
   }
 
-  function addSensorType(sensor_type: SensorType): void { //add code to check for duplicate sensor types and differentiate adding vs editing
+  //handles adding a new sensor Type
+  function addSensorType(sensor_type: SensorType): void {
     if(!nats || !selectedCabinet) throw new Error("Something went wrong with saving changes");
     if(sensor_type.icon === "") sensor_type.icon = editing_type.icon
     
@@ -110,6 +91,7 @@
     type_modal?.close()
   }
 
+  //formats the sensor type for NATS
   function formatSensorTypes(): SensorTypes  {
     let formatted_types: SensorTypes = {}
     sensor_types?.forEach((type) => {
@@ -122,11 +104,7 @@
     return formatted_types;
   }
 
-
-  let dragging: boolean;
-  let newSensor = $state<Sensor | null>(null)
-  let newIndex = $state<number>(-1);
-
+  //when mouse down on a sensor, start dragging
   function handleTypeDragStart(e: MouseEvent, type: SensorType, index: number): void {
     if (!background) throw new Error("Background Doesn't Work");
     if (!selectedCabinet) throw new Error("No Cabinet Selection")
@@ -147,20 +125,22 @@
     }
   }
   
-  //map: when the mouse moves, continue dragging
+  //when the mouse moves, continue dragging
   function continueTypeDrag(e: MouseEvent): void {
     if (!background || !newSensor || !dragging) return;
     newSensor.x_pos = e.clientX;
     newSensor.y_pos = e.clientY;
   }
 
-  //map: when the mouse button is back up, stop dragging and round values
+  //when the mouse button is back up, stop dragging and round values
   function stopTypeDrag(): void {
     dragging = false;
     if (!newSensor || !background) return;
   
-    if(  newSensor.x_pos >= background.x && newSensor.x_pos <= background.x +  background.width 
-      && newSensor.y_pos >= background.y && newSensor.y_pos <= background.y + background.height){
+    const back_loc = background.getBoundingClientRect()
+
+    if(  newSensor.x_pos >= back_loc.x && newSensor.x_pos <= back_loc.x +  background.width 
+      && newSensor.y_pos >= back_loc.y && newSensor.y_pos <= back_loc.y + background.height){
         const scaleX = 100 / background.width;
         const scaleY = 100 / background.height;
         
@@ -181,10 +161,12 @@
     }
   }
   
-  function handleWindowClick(event: MouseEvent){
+  //moves te context box out of window if clicked out of
+  function handleWindowClick(){
     context_position = [-1000, -1000]; 
   }
 
+  //moves context box into view and handles contents
   function handleWindowContext(event: MouseEvent){
     event.preventDefault(); 
     context_position = [event.clientX, event.clientY];
@@ -267,7 +249,6 @@
     </div>
   </div>
   
-
   <!-- Manual Sensor Select -->
   <div class="flex flex-col justify-center card bg-primary items-center z-0 mb-5 w-5/6">
     <div class="card-body w-full">
@@ -303,6 +284,7 @@
     </div>      
   </div>
 </div>
+
 
 <svelte:window onclick={handleWindowClick} oncontextmenu={handleWindowContext} onmousemove={(e) => {if (newSensor) continueTypeDrag(e)}}/>
 

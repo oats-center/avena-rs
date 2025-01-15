@@ -1,21 +1,6 @@
 <script lang='ts'>
-  interface Sensor {
-    "cabinet_id" : string;
-    "labjack_serial" : string;
-    "connected_channel": string; 
-    "sensor_name" : string; 
-    "sensor_type" : string; 
-    "x_pos" : number; 
-    "y_pos" : number; 
-    "color" : string; 
-  }
-
-  interface SensorType {
-    "name": string
-    "size_px" : number;
-    "icon" : string;
-  }
-
+  import type {Sensor, SensorType} from "$lib/MapTypes"
+    import { slide } from "svelte/transition";
 
   //variables that will not change in this file
   let {cancel_modal, delete_modal, save_modal, sensors, editingIndex, editingSensor, sensor_types, alert = $bindable(), handleSensorChanges}:
@@ -31,9 +16,7 @@
         handleSensorChanges: Function,
       } = $props();
     
-  //variables that will change in the file
   const sensorColors = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'grey', 'black'];
-  const sensorGroups = ['Temperature', 'Pressure'];
 
   //form validation for mapconfig controls
   function handleSave(): void {
@@ -63,13 +46,14 @@
     save_modal?.showModal();
   }
 
+  //handles when someone cancels sensor changes
   function handleCancel(): void {
     if(JSON.stringify(editingSensor) !== JSON.stringify(sensors[editingIndex])) cancel_modal?.showModal();
     else handleSensorChanges();
   }
 
 </script>
-<div class="controls">
+<div class="controls" transition:slide={{duration: 250, axis: "x"}}>
   <h3 class="text-accent my-5">Sensor Settings</h3>
   {#if editingSensor}
     <div class="grid grid-cols-2 gap-4 m-5 items-center">
@@ -103,7 +87,6 @@
     </div>  
   {/if}    
 </div>
-
 
 <style>
   .controls {
