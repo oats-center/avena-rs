@@ -112,9 +112,31 @@
         cabinetStatus = await checkCabinetStatus();
         
         if (cabinetStatus.toLowerCase() === 'offline') {
-          // Cabinet is offline, don't try to load devices
-          loading = false;
-          errorMessage = "This cabinet is currently offline and cannot be configured.";
+          // Cabinet is offline - load devices but restrict modifications
+          try {
+            let labjacksList = await getKeys(nats, selectedCabinet, "labjackd.config.*");
+            console.log("Offline mode - LabJack keys found:", labjacksList);
+            
+            if (labjacksList && labjacksList.length > 0) {
+              const loadedLabjacks: LabJack[] = [];
+              for(let labjack of labjacksList){
+                let values = await getLabjack(selectedCabinet, labjack);
+                loadedLabjacks.push(values);
+              }
+              console.log("Offline mode - LabJack devices loaded:", loadedLabjacks);
+              labjacks = loadedLabjacks; // Use Svelte's reactive assignment
+            } else {
+              console.log("Offline mode - No LabJack devices found");
+            }
+            
+            loading = false;
+            // Don't set up watchers in offline mode to avoid conflicts
+          } catch (error) {
+            console.error("Failed to load devices in offline mode:", error);
+            loading = false;
+            errorMessage = "Failed to load LabJack devices while cabinet is offline.";
+            return;
+          }
           return;
         }
         
@@ -417,11 +439,11 @@
 
   //opens the view modal for maintenance mode (read-only)
   function viewLabjack(labjack: LabJack, index: number) {
-    if (cabinetStatus === 'maintenance') {
+    if (cabinetStatus === 'maintenance' || cabinetStatus === 'offline') {
       newLabjack = false;
       labjackEdit = formatData(labjack);
       editingIndex = index;
-      console.log("opening view modal for maintenance mode")
+      console.log("opening view modal for", cabinetStatus, "mode")
       edit_modal?.showModal();
     }
   }
@@ -508,6 +530,20 @@
       </div>
     {/if}
 
+    <!-- Offline Mode Banner -->
+    {#if cabinetStatus === 'offline'}
+      <div class="mb-6 p-4 bg-red-500/20 border border-red-500/30 rounded-lg">
+        <div class="flex items-center justify-center space-x-3">
+          <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <span class="text-red-300 font-medium">
+            Offline Mode: This cabinet is currently offline. View-only access is enabled for existing devices.
+          </span>
+        </div>
+      </div>
+    {/if}
+
     <!-- Navigation and Actions Bar -->
     <div class="flex flex-col sm:flex-row items-center justify-between mb-8 p-4 bg-white/5 backdrop-blur-lg rounded-xl border border-white/10">
       <div class="flex items-center space-x-4 mb-4 sm:mb-0">
@@ -568,25 +604,6 @@
           </div>
           <h3 class="text-xl font-semibold text-white mb-2">Configuration Error</h3>
           <p class="text-gray-400 mb-6">{errorMessage}</p>
-          <button 
-            onclick={() => goto("/config/cabinet-select")}
-            class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg hover:shadow-xl"
-          >
-            Back to Cabinet Selection
-          </button>
-        </div>
-      </div>
-    {:else if cabinetStatus === 'offline'}
-      <!-- Offline Cabinet State -->
-      <div class="flex items-center justify-center py-20">
-        <div class="text-center">
-          <div class="inline-flex items-center justify-center w-20 h-20 bg-red-500/20 rounded-full mb-6 border border-red-500/30">
-            <svg class="w-10 h-10 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-            </svg>
-          </div>
-          <h3 class="text-xl font-semibold text-white mb-2">Cabinet Offline</h3>
-          <p class="text-gray-400 mb-6">This cabinet is currently offline and cannot be configured. Please select an online cabinet to proceed.</p>
           <button 
             onclick={() => goto("/config/cabinet-select")}
             class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg hover:shadow-xl"
@@ -662,11 +679,27 @@
 
             <!-- Action Button -->
             <button
-              onclick={() => cabinetStatus === 'maintenance' ? viewLabjack(labjack, index) : openEdit(labjack, index)}
-              class="w-full py-3 px-4 {cabinetStatus === 'maintenance' ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700' : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'} text-white font-semibold rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg hover:shadow-xl"
+              onclick={() => {
+                if (cabinetStatus === 'maintenance') {
+                  viewLabjack(labjack, index);
+                } else if (cabinetStatus === 'offline') {
+                  viewLabjack(labjack, index);
+                } else {
+                  openEdit(labjack, index);
+                }
+              }}
+              class="w-full py-3 px-4 {cabinetStatus === 'maintenance' ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700' : 
+                                   cabinetStatus === 'offline' ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700' : 
+                                   'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'} text-white font-semibold rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg hover:shadow-xl"
             >
               <div class="flex items-center justify-center space-x-2">
                 {#if cabinetStatus === 'maintenance'}
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                  </svg>
+                  <span>View Details</span>
+                {:else if cabinetStatus === 'offline'}
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
@@ -692,6 +725,8 @@
           </svg>
           <span class="text-blue-300 text-sm">
             {#if cabinetStatus === 'maintenance'}
+              Click on any LabJack device to view its configuration details (read-only access)
+            {:else if cabinetStatus === 'offline'}
               Click on any LabJack device to view its configuration details (read-only access)
             {:else}
               Click on any LabJack device to edit its configuration, channels, and sensor settings
@@ -730,7 +765,7 @@
     saveNewChanges={createLabjack}
     {delete_modal}
     {edit_modal}
-    readOnly={cabinetStatus === 'maintenance'}
+    readOnly={cabinetStatus === 'maintenance' || cabinetStatus === 'offline'}
   />
   <form method="dialog" class="modal-backdrop">
     <button>close</button>
