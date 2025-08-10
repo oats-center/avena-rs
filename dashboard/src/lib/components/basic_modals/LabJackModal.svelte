@@ -17,14 +17,15 @@
     "labjack_reset": boolean;
   }
 
-  let { labjackEdit, newLabjack, saveEditChanges, saveNewChanges, delete_modal, edit_modal} : 
+  let { labjackEdit, newLabjack, saveEditChanges, saveNewChanges, delete_modal, edit_modal, readOnly = false} : 
     {
       labjackEdit: FormattedLabJack | null,
       newLabjack: boolean,
       saveEditChanges: Function,
       saveNewChanges: Function,
       delete_modal: HTMLDialogElement | null | undefined,
-      edit_modal: HTMLDialogElement | null | undefined
+      edit_modal: HTMLDialogElement | null | undefined,
+      readOnly?: boolean
     } = $props()
 
   // Function to show delete modal
@@ -49,11 +50,19 @@
           <h3 class="text-xl font-semibold text-white">
             {#if newLabjack}
               Add New LabJack Device
+            {:else if readOnly}
+              View {labjackEdit.labjack_name}
             {:else}
               Edit {labjackEdit.labjack_name}
             {/if}
           </h3>
-          <p class="text-sm text-gray-400">Configure device settings and channel parameters</p>
+          <p class="text-sm text-gray-400">
+            {#if readOnly}
+              View device settings and channel parameters (read-only)
+            {:else}
+              Configure device settings and channel parameters
+            {/if}
+          </p>
         </div>
       </div>
       
@@ -74,7 +83,7 @@
           id="serialNumber"
           type="text" 
           name="serialNumber" 
-          disabled={!newLabjack} 
+          disabled={!newLabjack || readOnly} 
           class="w-full px-4 py-3 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed" 
           bind:value={labjackEdit.serial} 
           required
@@ -90,6 +99,7 @@
           class="w-full px-4 py-3 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200" 
           bind:value={labjackEdit.sensor_settings.sampling_rate}
           placeholder="0"
+          disabled={readOnly}
         />
       </div>
       
@@ -100,7 +110,8 @@
           type="number" 
           class="w-full px-4 py-3 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200" 
           bind:value={labjackEdit.sensor_settings.gains}
-          placeholder="0"
+          placeholder="1"
+          disabled={readOnly}
         />
       </div>
     </div>
@@ -145,6 +156,7 @@
                       type="checkbox" 
                       bind:checked={labjackEdit.sensor_settings.channels_enabled[index - 1]} 
                       class="sr-only peer"
+                      disabled={readOnly}
                     />
                     <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                   </label>
@@ -155,7 +167,7 @@
                     type="text" 
                     class="w-full px-3 py-2 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200 text-sm {!isEnabled ? 'opacity-50 cursor-not-allowed' : ''}" 
                     bind:value={labjackEdit.sensor_settings.data_formats[index - 1]} 
-                    disabled={!isEnabled}
+                    disabled={!isEnabled || readOnly}
                     placeholder="e.g., Voltage, Current"
                   />
                 </td>
@@ -165,7 +177,7 @@
                     type="text" 
                     class="w-full px-3 py-2 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200 text-sm {!isEnabled ? 'opacity-50 cursor-not-allowed' : ''}" 
                     bind:value={labjackEdit.sensor_settings.measurement_units[index - 1]} 
-                    disabled={!isEnabled}
+                    disabled={!isEnabled || readOnly}
                     placeholder="e.g., V, A, °C"
                   />
                 </td>
@@ -176,7 +188,7 @@
                       type="checkbox" 
                       bind:checked={labjackEdit.sensor_settings.publish_raw_data[index - 1]} 
                       class="sr-only peer"
-                      disabled={!isEnabled}
+                      disabled={!isEnabled || readOnly}
                     />
                     <div class="w-9 h-5 bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
                   </label>
@@ -188,7 +200,7 @@
                       type="checkbox" 
                       bind:checked={labjackEdit.sensor_settings.measure_peaks[index - 1]} 
                       class="sr-only peer"
-                      disabled={!isEnabled}
+                      disabled={!isEnabled || readOnly}
                     />
                     <div class="w-9 h-5 bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
                   </label>
@@ -209,29 +221,31 @@
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
         </svg>
-        <span>Cancel</span>
+        <span>{readOnly ? 'Close' : 'Cancel'}</span>
       </button>
       
-      <button 
-        class="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-medium rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg hover:shadow-xl flex items-center justify-center space-x-2"
-        onclick={() => newLabjack ? saveNewChanges() : saveEditChanges()}
-      >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-        </svg>
-        <span>Save Changes</span>
-      </button>
-      
-      {#if !newLabjack}
+      {#if !readOnly}
         <button 
-          class="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-medium rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg hover:shadow-xl flex items-center justify-center space-x-2"
-          onclick={showDeleteModal}
+          class="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-medium rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg hover:shadow-xl flex items-center justify-center space-x-2"
+          onclick={() => newLabjack ? saveNewChanges() : saveEditChanges()}
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M3 7h16"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
           </svg>
-          <span>Delete LabJack</span>
+          <span>Save Changes</span>
         </button>
+        
+        {#if !newLabjack}
+          <button 
+            class="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-medium rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg hover:shadow-xl flex items-center justify-center space-x-2"
+            onclick={showDeleteModal}
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M3 7h16"/>
+            </svg>
+            <span>Delete LabJack</span>
+          </button>
+        {/if}
       {/if}
     </div>
   </div>

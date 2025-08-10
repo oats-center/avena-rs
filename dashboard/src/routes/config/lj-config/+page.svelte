@@ -122,11 +122,20 @@
           // Cabinet is in maintenance mode - load devices but restrict modifications
           try {
             let labjacksList = await getKeys(nats, selectedCabinet, "labjackd.config.*");
-            console.log(labjacksList);
-            for(let labjack of labjacksList){
-              let values = await getLabjack(selectedCabinet, labjack);
-              labjacks.push(values);
+            console.log("Maintenance mode - LabJack keys found:", labjacksList);
+            
+            if (labjacksList && labjacksList.length > 0) {
+              const loadedLabjacks: LabJack[] = [];
+              for(let labjack of labjacksList){
+                let values = await getLabjack(selectedCabinet, labjack);
+                loadedLabjacks.push(values);
+              }
+              console.log("Maintenance mode - LabJack devices loaded:", loadedLabjacks);
+              labjacks = loadedLabjacks; // Use Svelte's reactive assignment
+            } else {
+              console.log("Maintenance mode - No LabJack devices found");
             }
+            
             loading = false;
             // Don't set up watchers in maintenance mode to avoid conflicts
           } catch (error) {
@@ -140,11 +149,20 @@
         
         // Cabinet is online, proceed with full functionality
         let labjacksList = await getKeys(nats, selectedCabinet, "labjackd.config.*");
-        console.log(labjacksList);
-        for(let labjack of labjacksList){
-          let values = await getLabjack(selectedCabinet, labjack);
-          labjacks.push(values);
+        console.log("Online mode - LabJack keys found:", labjacksList);
+        
+        if (labjacksList && labjacksList.length > 0) {
+          const loadedLabjacks: LabJack[] = [];
+          for(let labjack of labjacksList){
+            let values = await getLabjack(selectedCabinet, labjack);
+            loadedLabjacks.push(values);
+          }
+          console.log("Online mode - LabJack devices loaded:", loadedLabjacks);
+          labjacks = loadedLabjacks; // Use Svelte's reactive assignment
+        } else {
+          console.log("Online mode - No LabJack devices found");
         }
+        
         loading = false;
         watchLabJacks();
         watchCabinet();
@@ -397,11 +415,30 @@
     edit_modal?.showModal();
   }
 
+  //opens the view modal for maintenance mode (read-only)
+  function viewLabjack(labjack: LabJack, index: number) {
+    if (cabinetStatus === 'maintenance') {
+      newLabjack = false;
+      labjackEdit = formatData(labjack);
+      editingIndex = index;
+      console.log("opening view modal for maintenance mode")
+      edit_modal?.showModal();
+    }
+  }
+
   // Get status color for LabJack cards
-  function getStatusColor(samplingRate: number) {
-    if (samplingRate > 0) return 'border-green-500/30 bg-green-500/10';
-    if (samplingRate === 0) return 'border-yellow-500/30 bg-yellow-500/10';
-    return 'border-gray-500/30 bg-gray-500/10';
+  function getStatusColor(samplingRate: number, cabinetStatus: string) {
+    // Only show "Active" status if cabinet is online AND device is collecting data
+    if (samplingRate > 0 && cabinetStatus === 'online') {
+      return 'border-green-500/30 bg-green-500/10';
+    }
+    if (samplingRate > 0 && (cabinetStatus === 'maintenance' || cabinetStatus === 'offline')) {
+      return 'border-yellow-500/30 bg-yellow-500/10'; // Data collection but cabinet restricted
+    }
+    if (samplingRate === 0) {
+      return 'border-gray-500/30 bg-gray-500/10'; // Inactive
+    }
+    return 'border-gray-500/30 bg-gray-500/10'; // Unknown
   }
 
   // Get display name for cabinet
@@ -558,79 +595,66 @@
           </button>
         </div>
       </div>
-    {:else if cabinetStatus === 'maintenance'}
-      <!-- Maintenance Mode State -->
-      <div class="flex items-center justify-center py-20">
-        <div class="text-center">
-          <div class="inline-flex items-center justify-center w-20 h-20 bg-yellow-500/20 rounded-full mb-6 border border-yellow-500/30">
-            <svg class="w-10 h-10 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"/>
-            </svg>
-          </div>
-          <h3 class="text-xl font-semibold text-white mb-2">Cabinet in Maintenance Mode</h3>
-          <p class="text-gray-400 mb-6">This cabinet is currently in maintenance mode. You can view LabJack devices but modifications are restricted to prevent conflicts with maintenance operations.</p>
-          <button 
-            onclick={() => goto("/config/cabinet-select")}
-            class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg hover:shadow-xl"
-          >
-            Back to Cabinet Selection
-          </button>
-        </div>
-      </div>
     {:else if labjacks && labjacks.length > 0}
       <!-- LabJack Grid -->
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {#each labjacks as labjack, index}
-          {@const statusColor = getStatusColor(labjack.sensor_settings.sampling_rate)}
+          {@const statusColor = getStatusColor(labjack.sensor_settings.sampling_rate, cabinetStatus)}
           {@const isActive = labjack.sensor_settings.sampling_rate > 0}
+          {@const badgeStyle = cabinetStatus === 'online' && isActive ? 'bg-green-500/20 border-green-500/30' : 
+                              cabinetStatus === 'maintenance' && isActive ? 'bg-yellow-500/20 border-yellow-500/30' : 
+                              cabinetStatus === 'offline' && isActive ? 'bg-orange-500/20 border-orange-500/30' : 
+                              'bg-gray-500/20 border-gray-500/30'}
+          {@const dotColor = cabinetStatus === 'online' && isActive ? 'bg-green-400' : 
+                           cabinetStatus === 'maintenance' && isActive ? 'bg-yellow-400' : 
+                           cabinetStatus === 'offline' && isActive ? 'bg-orange-400' : 
+                           'bg-gray-400'}
+          {@const textColor = cabinetStatus === 'online' && isActive ? 'text-green-400' : 
+                            cabinetStatus === 'maintenance' && isActive ? 'text-yellow-400' : 
+                            cabinetStatus === 'offline' && isActive ? 'text-orange-400' : 
+                            'text-gray-400'}
+          {@const statusText = cabinetStatus === 'online' && isActive ? 'Active' : 
+                             cabinetStatus === 'maintenance' && isActive ? 'Maintenance Mode' : 
+                             cabinetStatus === 'offline' && isActive ? 'Offline Mode' : 
+                             isActive ? 'Data Collection' : 'Inactive'}
           
-          <div class="group relative bg-white/5 backdrop-blur-lg rounded-2xl p-6 border border-white/10 hover:border-yellow-500/30 transition-all duration-300 hover:transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-yellow-500/10 {statusColor}">
-            <!-- Status Badge -->
-            <div class="absolute top-4 right-4">
-              <div class="flex items-center space-x-2 px-3 py-1.5 rounded-full {isActive ? 'bg-green-500/20 border-green-500/30' : 'bg-yellow-500/20 border-yellow-500/30'} border">
-                <div class="w-2 h-2 {isActive ? 'bg-green-400' : 'bg-yellow-400'} rounded-full {isActive ? 'animate-pulse' : ''}"></div>
-                <span class="text-xs font-medium {isActive ? 'text-green-400' : 'text-yellow-400'}">
-                  {isActive ? 'Active' : 'Inactive'}
+          <div class="group relative bg-white/5 backdrop-blur-lg rounded-2xl p-8 border border-white/10 hover:border-yellow-500/30 transition-all duration-300 hover:transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-yellow-500/10 {statusColor}">
+            <!-- Single Status Badge -->
+            <div class="absolute top-6 right-6">
+              <div class="flex items-center space-x-2 px-3 py-1.5 rounded-full {badgeStyle} border">
+                <div class="w-2 h-2 {dotColor} rounded-full {cabinetStatus === 'online' && isActive ? 'animate-pulse' : ''}"></div>
+                <span class="text-xs font-medium {textColor}">
+                  {statusText}
                 </span>
               </div>
             </div>
             
-            <!-- Maintenance Mode Indicator -->
-            {#if cabinetStatus === 'maintenance'}
-              <div class="absolute top-4 left-4">
-                <div class="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-yellow-500/20 border border-yellow-500/30">
-                  <svg class="w-3 h-3 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"/>
-                  </svg>
-                  <span class="text-xs font-medium text-yellow-400">Maintenance</span>
-                </div>
-              </div>
-            {/if}
+            <!-- Remove the separate Maintenance Mode Indicator since it's now combined -->
 
-            <!-- LabJack Icon -->
-            <div class="flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-2xl mb-6 border border-blue-500/30">
-              <svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <!-- LabJack Icon - No extra margin needed since we removed the left badge -->
+            <div class="flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-2xl mb-8 border border-blue-500/30">
+              <svg class="w-10 h-10 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
               </svg>
             </div>
 
             <!-- LabJack Info -->
-            <div class="text-center mb-6">
-              <h3 class="text-xl font-semibold text-white mb-2">{labjack.labjack_name}</h3>
-              <p class="text-gray-400 text-sm">Serial: {labjack.serial}</p>
+            <div class="text-center mb-8">
+              <h3 class="text-2xl font-semibold text-white mb-3">{labjack.labjack_name}</h3>
+              <p class="text-gray-400 text-base">Serial: {labjack.serial}</p>
             </div>
 
             <!-- Configuration Details -->
-            <div class="mb-6 space-y-3">
-              <div class="flex items-center justify-between p-3 bg-gray-800/30 rounded-lg border border-gray-700/50">
+            <div class="mb-8 space-y-4">
+              <div class="flex items-center justify-between p-4 bg-gray-800/30 rounded-lg border border-gray-700/50">
                 <span class="text-sm text-gray-400">Sampling Rate:</span>
                 <span class="text-sm font-medium text-white">{labjack.sensor_settings.sampling_rate} Hz</span>
               </div>
-              <div class="flex items-center justify-between p-3 bg-gray-800/30 rounded-lg border border-gray-700/50">
+              <div class="flex items-center justify-between p-4 bg-gray-800/30 rounded-lg border border-gray-700/50">
                 <span class="text-sm text-gray-400">Gain:</span>
                 <span class="text-sm font-medium text-white">{labjack.sensor_settings.gains}x</span>
               </div>
-              <div class="flex items-center justify-between p-3 bg-gray-800/30 rounded-lg border border-gray-700/50">
+              <div class="flex items-center justify-between p-4 bg-gray-800/30 rounded-lg border border-gray-700/50">
                 <span class="text-sm text-gray-400">Active Channels:</span>
                 <span class="text-sm font-medium text-white">{labjack.sensor_settings.channels_enabled.length}</span>
               </div>
@@ -638,9 +662,8 @@
 
             <!-- Action Button -->
             <button
-              onclick={() => cabinetStatus === 'maintenance' ? null : openEdit(labjack, index)}
-              disabled={cabinetStatus === 'maintenance'}
-              class="w-full py-3 px-4 {cabinetStatus === 'maintenance' ? 'bg-gray-500 cursor-not-allowed' : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'} text-white font-semibold rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+              onclick={() => cabinetStatus === 'maintenance' ? viewLabjack(labjack, index) : openEdit(labjack, index)}
+              class="w-full py-3 px-4 {cabinetStatus === 'maintenance' ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700' : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'} text-white font-semibold rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg hover:shadow-xl"
             >
               <div class="flex items-center justify-center space-x-2">
                 {#if cabinetStatus === 'maintenance'}
@@ -648,7 +671,7 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
                   </svg>
-                  <span>View Only</span>
+                  <span>View Details</span>
                 {:else}
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
@@ -668,7 +691,11 @@
             <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
           </svg>
           <span class="text-blue-300 text-sm">
-            Click on any LabJack device to edit its configuration, channels, and sensor settings
+            {#if cabinetStatus === 'maintenance'}
+              Click on any LabJack device to view its configuration details (read-only access)
+            {:else}
+              Click on any LabJack device to edit its configuration, channels, and sensor settings
+            {/if}
           </span>
         </div>
       </div>
@@ -703,6 +730,7 @@
     saveNewChanges={createLabjack}
     {delete_modal}
     {edit_modal}
+    readOnly={cabinetStatus === 'maintenance'}
   />
   <form method="dialog" class="modal-backdrop">
     <button>close</button>
