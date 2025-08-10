@@ -168,20 +168,20 @@
 
   //moves context box into view and handles contents
   function handleWindowContext(event: MouseEvent){
+    // Only show context menu if we're actually clicking on a sensor type element
+    if (!clickedElement) {
+      return; // Don't show context menu for background clicks
+    }
+    
     event.preventDefault(); 
     context_position = [event.clientX, event.clientY];
-    if(!clickedElement) {
-      editing_type = {"name": "", "icon": "", "size_px": 30}
-    } 
-    else {
-      clickedElement = false
-    }
+    clickedElement = false;
   }
 
 </script>
 <div class="flex flex-col items-center space-y-4 w-full">
   <!-- NavBar -->
-  <div class="w-full text-center mb-4">
+  <div class="w-full text-center -mt-8">
     <h1 class="text-xl font-semibold text-white mb-4">Map Configuration</h1>
     <div class="flex justify-center space-x-4">
       <button 
