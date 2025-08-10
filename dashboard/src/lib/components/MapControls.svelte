@@ -179,107 +179,112 @@
   }
 
 </script>
-<div class="flex flex-col items-center border-l-2">
+<div class="flex flex-col items-center space-y-4 w-full">
   <!-- NavBar -->
-  <h1>Map Configuration</h1>
-  <div class="flex mb-8">
-    <div class="mx-10 justify-center">
-      <button class="btn btn-primary" onclick={() => goto("/config/cabinet-select")}>{"<-- "}Back to Cabinet Select</button>
-    </div>
-    <div class="mx-10 justify-center">
-      <button class="btn btn-primary" onclick={() => goto("lj-config")}>Card View</button>
+  <div class="w-full text-center mb-4">
+    <h1 class="text-xl font-semibold text-white mb-4">Map Configuration</h1>
+    <div class="flex justify-center space-x-4">
+      <button 
+        class="px-4 py-2 bg-white/10 backdrop-blur-lg border border-white/20 rounded-lg text-white hover:bg-white/20 transition-all duration-200"
+        onclick={() => goto("/config/cabinet-select")}
+      >
+        ← Back to Cabinet
+      </button>
+      <button 
+        class="px-4 py-2 bg-white/10 backdrop-blur-lg border border-white/20 rounded-lg text-white hover:bg-white/20 transition-all duration-200"
+        onclick={() => goto("lj-config")}
+      >
+        Card View
+      </button>
     </div>
   </div>
 
   <!-- New Sensors -->
-  <div class="flex flex-col justify-center card bg-primary items-center z-0 mb-5 w-5/6">
-    <div class="card-body flex">
-      <div class='flex justify-center items-center space-x-5'>
-        <h4 class="text-center mb-2">New Sensor</h4>
-        <button class="btn btn-outline btn-success" onclick={() => type_modal?.showModal()}>New Type</button>
-      </div>
-      <div class="grid grid-cols-3 gap-5">
-        {#if sensor_types}
-          {#each sensor_types as type, index}
-          <div class="flex flex-col justify-center items-center h-full" role="button" tabindex=0 oncontextmenu={(e) => {e.preventDefault(); editing_type = JSON.parse(JSON.stringify(type)); editing_type_index = index; newType = false; clickedElement = true}}>
-            <div
-              role="button"
-              tabindex=0
-              class="flex flex-col justify-center items-center"
-              onmousedown={(event) => {handleTypeDragStart(event, type, index)}}
-              onmouseup={() => {if(newIndex === index) stopTypeDrag()}}
-              onmousemove={(event) => {if (newIndex === index) continueTypeDrag(event)}}
-              style={(newSensor && index === newIndex) ? `
-                position: fixed; 
-                top: ${newSensor.y_pos - type.size_px / 2}px;
-                left: ${newSensor.x_pos - type.size_px / 2}px;
-                min-width: ${type.size_px}px;
-                min-height: ${type.size_px}px;
-              ` : `
-                height: 100%;
-                width: 100%;
-              `}
-            >
-              <img src={type.icon} alt="sensor icon" style={`width: ${type.size_px}px; height: ${type.size_px}px;`} draggable={false}/>
-            </div>
-            <div style={(newSensor && index === newIndex) ? `
-              height: 100%;
-              width: 100%;
+  <div class="w-full bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 p-4">
+    <div class="text-center mb-4">
+      <h4 class="text-lg font-medium text-white mb-3">New Sensor</h4>
+      <button 
+        class="px-4 py-2 bg-yellow-500/20 border border-yellow-500/30 rounded-lg text-yellow-300 hover:bg-yellow-500/30 transition-all duration-200"
+        onclick={() => type_modal?.showModal()}
+      >
+        New Type
+      </button>
+    </div>
+    <div class="grid grid-cols-3 gap-4">
+      {#if sensor_types}
+        {#each sensor_types as type, index}
+        <div class="flex flex-col justify-center items-center h-full" role="button" tabindex=0 oncontextmenu={(e) => {e.preventDefault(); editing_type = JSON.parse(JSON.stringify(type)); editing_type_index = index; newType = false; clickedElement = true}}>
+          <div
+            role="button"
+            tabindex=0
+            class="flex flex-col justify-center items-center"
+            onmousedown={(event) => {handleTypeDragStart(event, type, index)}}
+            onmouseup={() => {if(newIndex === index) stopTypeDrag()}}
+            onmousemove={(event) => {if (newIndex === index) continueTypeDrag(event)}}
+            style={(newSensor && index === newIndex) ? `
+              position: fixed; 
+              top: ${newSensor.y_pos - type.size_px / 2}px;
+              left: ${newSensor.x_pos - type.size_px / 2}px;
               min-width: ${type.size_px}px;
               min-height: ${type.size_px}px;
             ` : `
-              height: 0;
+              height: 100%;
               width: 100%;
-            `}>
-
-            </div>
-            <h6 style="
-              font-weight: 400; 
-              text-align: center; 
-              width: 100%; 
-              margin-right: 0; 
-              text-overflow: ellipsis;
-              overflow-x: clip;
-              "
-            >{type.name}</h6>
+            `}
+          >
+            <img src={type.icon} alt="sensor icon" style={`width: ${type.size_px}px; height: ${type.size_px}px;`} draggable={false}/>
           </div>
-          {/each}
-        {/if}
-      </div>
+          <div style={(newSensor && index === newIndex) ? `
+            height: 100%;
+            width: 100%;
+            min-width: ${type.size_px}px;
+            min-height: ${type.size_px}px;
+          ` : `
+            height: 0;
+            width: 100%;
+          `}>
+
+          </div>
+          <h6 class="text-sm text-gray-300 text-center w-full mt-2 truncate">{type.name}</h6>
+        </div>
+        {/each}
+      {/if}
     </div>
   </div>
   
   <!-- Manual Sensor Select -->
-  <div class="flex flex-col justify-center card bg-primary items-center z-0 mb-5 w-5/6">
-    <div class="card-body w-full">
-      <h4 class="text-center mb-2">Select Sensor</h4>
-      <div class="grid grid-cols-2 gap-5">
-        <select class="select select-primary modal_input w-full" bind:value={selectedLabjack}>
+  <div class="w-full bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 p-4">
+    <div class="text-center mb-4">
+      <h4 class="text-lg font-medium text-white mb-3">Select Sensor</h4>
+      <div class="grid grid-cols-2 gap-3">
+        <select class="w-full px-3 py-2 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50" bind:value={selectedLabjack}>
           <option disabled selected>Labjack</option>
           {#each labjackArray as labjack}
           <option>{labjack}</option>
           {/each}
         </select>
-        <select disabled={selectedLabjack === "Labjack"} class="select select-primary modal_input w-full" bind:value={selectedChannel}>
+        <select disabled={selectedLabjack === "Labjack"} class="w-full px-3 py-2 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 disabled:opacity-50" bind:value={selectedChannel}>
           <option disabled selected>Channel</option>
           {#each channelArray as channel}
           <option>{channel}</option>
           {/each}
         </select>
-        <button class="btn btn-outline btn-success" onclick={() => {selectedLabjack = "Labjack"; selectedChannel = "Channel"}}>Reset</button>
-        <button class="btn btn-outline btn-success" disabled={selectedLabjack === "Labjack" && selectedChannel === "Channel"} onclick={() => handleManualSelect(selectedLabjack, selectedChannel)}>Select</button>
+        <button class="px-4 py-2 bg-gray-600/50 border border-gray-500/50 rounded-lg text-gray-300 hover:bg-gray-500/50 transition-all duration-200" onclick={() => {selectedLabjack = "Labjack"; selectedChannel = "Channel"}}>Reset</button>
+        <button class="px-4 py-2 bg-yellow-500/20 border border-yellow-500/30 rounded-lg text-yellow-300 hover:bg-yellow-500/30 transition-all duration-200 disabled:opacity-50" disabled={selectedLabjack === "Labjack" && selectedChannel === "Channel"} onclick={() => handleManualSelect(selectedLabjack, selectedChannel)}>Select</button>
       </div>
     </div>
   </div>
 
   <!-- Background Image Change -->
-  <div class="flex flex-col justify-center card bg-primary items-center z-0 w-5/6">
-    <div class="card-body flex justify-center items-center">
-      <h4 class="text-center mb-2">Change Background Image</h4>
-      <div class="grid grid-cols-2 gap-4 w-full mt-2">
-        <input type="file" class="file-input file-input-bordered modal_input w-full col-span-2" accept="image/png, image/jpg" bind:this={fileInput}/>
-        <button class="btn btn-outline btn-success" onclick={() => {fileInput!.value = ""}}>Cancel</button>
-        <button class="btn btn-outline btn-success" onclick={readFile}>Save</button>
+  <div class="w-full bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 p-4">
+    <div class="text-center mb-4">
+      <h4 class="text-lg font-medium text-white mb-3">Change Background Image</h4>
+      <div class="grid grid-cols-1 gap-3">
+        <input type="file" class="w-full px-3 py-2 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-yellow-500/20 file:text-yellow-300 hover:file:bg-yellow-500/30" accept="image/png, image/jpg" bind:this={fileInput}/>
+        <div class="grid grid-cols-2 gap-3">
+          <button class="px-4 py-2 bg-gray-600/50 border border-gray-500/50 rounded-lg text-gray-300 hover:bg-gray-500/50 transition-all duration-200" onclick={() => {fileInput!.value = ""}}>Cancel</button>
+          <button class="px-4 py-2 bg-yellow-500/20 border border-yellow-500/30 rounded-lg text-yellow-300 hover:bg-yellow-500/30 transition-all duration-200" onclick={readFile}>Save</button>
+        </div>
       </div>
     </div>      
   </div>

@@ -6,7 +6,7 @@
   import { NatsService, connect,  putKeyValue, getKeyValue, getKeys} from "$lib/nats.svelte";
   import Alert from "$lib/components/Alert.svelte";
   import DeleteModal from "$lib/components/basic_modals/DeleteModal.svelte";
-    import LabJackModal from "$lib/components/basic_modals/LabJackModal.svelte";
+  import LabJackModal from "$lib/components/basic_modals/LabJackModal.svelte";
   
   type LabJack = {
     "cabinet_id": string;
@@ -77,7 +77,6 @@
   let nats: NatsService | null = null;
   let selectedCabinet: string | null = null;
   let edit_modal = $state<HTMLDialogElement>();
-  let new_modal = $state<HTMLDialogElement>();
   let delete_modal = $state<HTMLDialogElement>();
 
   let labjacks = $state<LabJack[]>([]);
@@ -119,10 +118,10 @@
   //saves changes made to a labjack
   function saveChanges() {
     console.log(labjackEdit)
-    if(labjackEdit){
+    if(labjackEdit && editingIndex >= 0 && editingIndex < labjacks.length){
       labjacks[editingIndex] = unformatData(labjackEdit)
+      if(nats && selectedCabinet) putKeyValue(nats, selectedCabinet, `labjackd.config.${labjacks[editingIndex].serial}`, JSON.stringify(labjacks[editingIndex]));
     }
-    if(nats && selectedCabinet) putKeyValue(nats, selectedCabinet, `labjackd.config.${labjacks[editingIndex].serial}`, JSON.stringify(labjacks[editingIndex]));
     editingIndex = -1;
     labjackEdit = null;
     edit_modal?.close()
@@ -171,7 +170,7 @@
         let newVal = await getLabjack(selectedCabinet, e.key)
         labjacks.push(newVal);
         alert = "New LabJack Added";
-      } else if(changedIndex && (e.operation == "DEL" || e.operation == "PURGE")){ //a labjack was deleted
+      } else if(changedIndex >= 0 && (e.operation == "DEL" || e.operation == "PURGE")){ //a labjack was deleted
         labjacks.splice(changedIndex, 1);
         alert = `Labjack Deleted`;
       }
@@ -186,7 +185,7 @@
     for(let labjack of labjacks){
       if(labjack.serial == labjackEdit.serial){
         alert = "Serial Number Already Exists";
-        new_modal?.close();
+        edit_modal?.close();
         return;
       }
     }
@@ -199,14 +198,18 @@
     labjacks.push(newVals);
     kv.create(`labjackd.config.${newVals.serial}`, JSON.stringify(newVals));
     watchVal(selectedCabinet, `labjackd.config.${newVals.serial}`, labjacks.length - 1);
-    new_modal?.close();
+    edit_modal?.close();
   }
 
   async function deleteLabjack() {
     if (!nats || !selectedCabinet) throw new Error("NATS is not initialized");
-    const kv = await nats.kvm.open(selectedCabinet);
-    await kv.delete(`labjackd.config.${labjacks[editingIndex].serial}`);
+    if (editingIndex >= 0 && editingIndex < labjacks.length) {
+      const kv = await nats.kvm.open(selectedCabinet);
+      await kv.delete(`labjackd.config.${labjacks[editingIndex].serial}`);
+    }
     editingIndex = -1;
+    labjackEdit = null;
+    delete_modal?.close();
     edit_modal?.close();
   }
 
@@ -284,6 +287,7 @@
 
   //opens the edit modal
   function openEdit(labjack: LabJack, index: number) {
+    newLabjack = false;
     labjackEdit = formatData(labjack);
     editingIndex = index;
     console.log("opening modal")
@@ -291,49 +295,199 @@
     console.log(edit_modal)
     edit_modal?.showModal();
   }
+
+  // Get status color for LabJack cards
+  function getStatusColor(samplingRate: number) {
+    if (samplingRate > 0) return 'border-green-500/30 bg-green-500/10';
+    if (samplingRate === 0) return 'border-yellow-500/30 bg-yellow-500/10';
+    return 'border-gray-500/30 bg-gray-500/10';
+  }
+
+  // Get display name for cabinet
+  function getDisplayName(id: string) {
+    return id.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  }
 </script>
 
-{#if loading}
-  <div class="loading-overlay">
-    <span class="loading loading-spinner loading-lg"></span>  
-  </div>
-{:else}
-  <div class="flex flex-col items-center w-full px-10">
-    <h1>Labjack Configuration</h1>
-    <div class="flex mb-8">
-      <div class="flex mx-10 justify-center">
-        <button class="btn btn-primary" onclick={() => goto("/config/cabinet-select")}>{"<--"}Back to Cabinet Select</button>
-      </div>
-      <div class="flex mx-10 justify-center">
-        <button class="btn btn-primary" onclick={() => {newLabjack = true; labjackEdit = defaultFormattedLabjack; edit_modal?.showModal()}}>New LabJack</button>
-      </div>
-      <div class="flex mx-10 justify-center">
-        <button class="btn btn-primary" onclick={() => goto("sensor-map")}>Map View</button>
+<div class="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black">
+  <!-- Header -->
+  <div class="bg-white/5 backdrop-blur-lg border-b border-white/10">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        <!-- Logo and Title -->
+        <div class="flex items-center space-x-4">
+          <div class="w-8 h-8 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-lg flex items-center justify-center">
+            <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+          </div>
+          <h1 class="text-xl font-semibold text-white">Avena-OTR Dashboard</h1>
+        </div>
+        
+        <!-- Connection Status -->
+        <div class="flex items-center space-x-3">
+          <div class="flex items-center space-x-2">
+            <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+            <span class="text-sm text-gray-300">Connected to NATS</span>
+          </div>
+        </div>
       </div>
     </div>
-    {#if labjacks !== null} 
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 w-full max-w-7xl">
+  </div>
+
+  <!-- Main Content -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Page Header -->
+    <div class="text-center mb-8">
+      <h1 class="text-4xl font-bold text-white mb-4">LabJack Configuration</h1>
+      <p class="text-xl text-gray-300 max-w-3xl mx-auto">
+        Configure and manage LabJack devices for {selectedCabinet ? getDisplayName(selectedCabinet) : 'the selected Avena box'}
+      </p>
+    </div>
+
+    <!-- Navigation and Actions Bar -->
+    <div class="flex flex-col sm:flex-row items-center justify-between mb-8 p-4 bg-white/5 backdrop-blur-lg rounded-xl border border-white/10">
+      <div class="flex items-center space-x-4 mb-4 sm:mb-0">
+        <button 
+          onclick={() => goto("/config/cabinet-select")}
+          class="flex items-center space-x-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors duration-200"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+          <span>Back to Avena Box Selection</span>
+        </button>
+        
+        <button 
+          onclick={() => goto("/config/sensor-map")}
+          class="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 4m0 13V4m0 0L9 7"/>
+          </svg>
+          <span>Map View</span>
+        </button>
+      </div>
+
+      <button 
+        onclick={() => {newLabjack = true; labjackEdit = defaultFormattedLabjack; edit_modal?.showModal()}}
+        class="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white font-semibold rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg hover:shadow-xl"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+        </svg>
+        <span>Add New LabJack</span>
+      </button>
+    </div>
+
+    {#if loading}
+      <!-- Loading State -->
+      <div class="flex items-center justify-center py-20">
+        <div class="text-center">
+          <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-full mb-6 animate-pulse">
+            <svg class="w-8 h-8 text-white animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+          </div>
+          <p class="text-gray-400 text-lg">Loading LabJack devices...</p>
+        </div>
+      </div>
+    {:else if labjacks && labjacks.length > 0}
+      <!-- LabJack Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {#each labjacks as labjack, index}
-          <div class="card bg-primary shadow-lg text-neutral p-4">
-            <div class="card-body space-y-4">
-              <h2 class="card-title text-center">{labjack["labjack_name"]}</h2>
-              <p><strong>Sampling Rate:</strong> {labjack.sensor_settings["sampling_rate"]}</p>
-              <p><strong>Gain:</strong> {labjack.sensor_settings["gains"]}</p>
-              <p><strong>Serial:</strong> {labjack.serial}</p>
-              <div class="flex justify-center">
-                <button class="btn btn-outline btn-success" onclick={() => openEdit(labjack, index)}>
-                  Edit Config
-                </button>
+          {@const statusColor = getStatusColor(labjack.sensor_settings.sampling_rate)}
+          {@const isActive = labjack.sensor_settings.sampling_rate > 0}
+          
+          <div class="group relative bg-white/5 backdrop-blur-lg rounded-2xl p-6 border border-white/10 hover:border-yellow-500/30 transition-all duration-300 hover:transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-yellow-500/10 {statusColor}">
+            <!-- Status Badge -->
+            <div class="absolute top-4 right-4">
+              <div class="flex items-center space-x-2 px-3 py-1.5 rounded-full {isActive ? 'bg-green-500/20 border-green-500/30' : 'bg-yellow-500/20 border-yellow-500/30'} border">
+                <div class="w-2 h-2 {isActive ? 'bg-green-400' : 'bg-yellow-400'} rounded-full {isActive ? 'animate-pulse' : ''}"></div>
+                <span class="text-xs font-medium {isActive ? 'text-green-400' : 'text-yellow-400'}">
+                  {isActive ? 'Active' : 'Inactive'}
+                </span>
               </div>
             </div>
+
+            <!-- LabJack Icon -->
+            <div class="flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-2xl mb-6 border border-blue-500/30">
+              <svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
+              </svg>
+            </div>
+
+            <!-- LabJack Info -->
+            <div class="text-center mb-6">
+              <h3 class="text-xl font-semibold text-white mb-2">{labjack.labjack_name}</h3>
+              <p class="text-gray-400 text-sm">Serial: {labjack.serial}</p>
+            </div>
+
+            <!-- Configuration Details -->
+            <div class="mb-6 space-y-3">
+              <div class="flex items-center justify-between p-3 bg-gray-800/30 rounded-lg border border-gray-700/50">
+                <span class="text-sm text-gray-400">Sampling Rate:</span>
+                <span class="text-sm font-medium text-white">{labjack.sensor_settings.sampling_rate} Hz</span>
+              </div>
+              <div class="flex items-center justify-between p-3 bg-gray-800/30 rounded-lg border border-gray-700/50">
+                <span class="text-sm text-gray-400">Gain:</span>
+                <span class="text-sm font-medium text-white">{labjack.sensor_settings.gains}x</span>
+              </div>
+              <div class="flex items-center justify-between p-3 bg-gray-800/30 rounded-lg border border-gray-700/50">
+                <span class="text-sm text-gray-400">Active Channels:</span>
+                <span class="text-sm font-medium text-white">{labjack.sensor_settings.channels_enabled.length}</span>
+              </div>
+            </div>
+
+            <!-- Action Button -->
+            <button
+              onclick={() => openEdit(labjack, index)}
+              class="w-full py-3 px-4 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg hover:shadow-xl"
+            >
+              <div class="flex items-center justify-center space-x-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                </svg>
+                <span>Edit Configuration</span>
+              </div>
+            </button>
           </div>
         {/each}
       </div>
+
+      <!-- Help Text -->
+      <div class="mt-12 text-center">
+        <div class="inline-flex items-center space-x-2 px-4 py-2 bg-blue-500/20 border border-blue-500/30 rounded-lg">
+          <svg class="w-5 h-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+          </svg>
+          <span class="text-blue-300 text-sm">
+            Click on any LabJack device to edit its configuration, channels, and sensor settings
+          </span>
+        </div>
+      </div>
+    {:else}
+      <!-- No LabJacks State -->
+      <div class="text-center py-20">
+        <div class="inline-flex items-center justify-center w-20 h-20 bg-gray-500/20 rounded-full mb-6">
+          <svg class="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
+          </svg>
+        </div>
+        <h3 class="text-xl font-semibold text-white mb-2">No LabJack Devices Found</h3>
+        <p class="text-gray-400 mb-6">No LabJack devices are currently configured for this Avena box.</p>
+        <button 
+          onclick={() => {newLabjack = true; labjackEdit = defaultFormattedLabjack; edit_modal?.showModal()}}
+          class="px-6 py-3 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white font-semibold rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg hover:shadow-xl"
+        >
+          Add Your First LabJack
+        </button>
+      </div>
     {/if}
   </div>
-{/if}
+</div>
 
-{#if delete_modal}
+<!-- Edit/Add LabJack Modal -->
 <dialog id="edit_modal" class="modal" bind:this={edit_modal}>
   <LabJackModal
     {labjackEdit}
@@ -341,11 +495,55 @@
     saveEditChanges={saveChanges}
     saveNewChanges={createLabjack}
     {delete_modal}
+    {edit_modal}
   />
-</dialog>  
-{/if}
+  <form method="dialog" class="modal-backdrop">
+    <button>close</button>
+  </form>
+</dialog>
 
-<DeleteModal bind:delete_modal={delete_modal} deleteFunction={deleteLabjack} delete_string="labjack" confirmation_string={labjackEdit?.labjack_name}/>
+<!-- Delete Confirmation Modal -->
+<dialog id="delete_modal" class="modal" bind:this={delete_modal}>
+  <DeleteModal 
+    {delete_modal} 
+    deleteFunction={deleteLabjack} 
+    delete_string="labjack" 
+    confirmation_string={labjackEdit?.labjack_name}
+  />
+  <form method="dialog" class="modal-backdrop">
+    <button>close</button>
+  </form>
+</dialog>
+
+
 
 <Alert bind:alert={alert}/>
+
+<style>
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: rgba(206, 184, 136, 0.5);
+    border-radius: 4px;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(206, 184, 136, 0.7);
+  }
+  
+  /* Smooth transitions */
+  * {
+    transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 150ms;
+  }
+</style>
 

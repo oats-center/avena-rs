@@ -122,40 +122,6 @@ nats kv put avenabox_001 labjackd.config.TEST001 '{"cabinet_id":"avenabox_001","
 - **Historical data viewing**
 - **Alert management**
 
-## 🔧 Development
-
-### Available Scripts
-```bash
-npm run dev          # Start development server
-npm run build        # Build for production
-npm run preview      # Preview production build
-npm run check        # Type check with svelte-check
-npm run lint         # Lint with ESLint
-```
-
-### Project Structure
-```
-dashboard/
-├── src/
-│   ├── lib/
-│   │   ├── components/          # Reusable UI components
-│   │   │   ├── Alert.svelte     # Alert notifications
-│   │   │   ├── SensorMap.svelte # Interactive sensor map
-│   │   │   └── basic_modals/    # Modal dialogs
-│   │   └── nats.svelte.ts       # NATS connection utilities
-│   ├── routes/                  # SvelteKit routing
-│   │   ├── +page.svelte        # Login page
-│   │   └── config/             # Configuration pages
-│   │       ├── cabinet-select/  # Avena box selection
-│   │       ├── lj-config/       # LabJack configuration
-│   │       └── sensor-map/      # Sensor visualization
-│   └── app.css                 # Global styles
-├── static/                     # Static assets
-├── setup_nats.sh              # NATS setup script with sample data
-├── cleanup_nats.sh            # NATS cleanup and management script
-└── nats.conf                  # NATS configuration
-```
-
 ## 🗄️ Data Management
 
 ### NATS Key-Value Stores
@@ -220,53 +186,6 @@ nats kv keys bucket_name
 ./setup_nats.sh
 ```
 
-## 🐛 Troubleshooting
-
-### Common Issues
-
-#### Connection Errors
-- **"WebSocket connection failed"**: Ensure NATS is running with `--ws` flag
-- **"JetStream not enabled"**: Check NATS configuration includes JetStream
-- **"Port already in use"**: Use different ports or stop conflicting services
-
-#### Data Not Loading
-- **Check NATS logs**: Look for error messages
-- **Verify KV stores**: Use `nats kv ls` to check buckets
-- **Check browser console**: Look for JavaScript errors
-
-#### Dashboard Issues
-- **Clear browser cache**: Hard refresh (Ctrl+F5)
-- **Check session storage**: Verify server URL is stored
-- **Restart development server**: `npm run dev`
-
-### Debug Mode
-```bash
-# Start NATS with debug logging
-nats-server -c nats.conf -D
-
-# Check dashboard console (F12 → Console tab)
-# Look for connection and data loading logs
-```
-
-## 🔗 Integration
-
-### LabJack Devices
-- **Supported models**: T4, T7, T8
-- **Connection types**: USB, Ethernet
-- **Data formats**: Analog, digital, I2C, SPI
-
-### External Systems
-- **NATS messaging** for distributed communication
-- **REST APIs** for external integrations
-- **WebSocket streaming** for real-time updates
-
-## 📚 Additional Resources
-
-- **NATS Documentation**: https://docs.nats.io/
-- **SvelteKit Guide**: https://kit.svelte.dev/
-- **LabJack Documentation**: https://labjack.com/support
-- **Project Issues**: Check the main repository
-
 ## 🤝 Contributing
 
 1. Fork the repository
@@ -277,8 +196,6 @@ nats-server -c nats.conf -D
 
 ## 📄 License
 
-This project is licensed under the terms specified in the main repository license.
+MIT License
 
 ---
-
-**Avena-OTR Dashboard**: Advanced Vehicle Network Architecture - Off-The-Road Monitoring System
