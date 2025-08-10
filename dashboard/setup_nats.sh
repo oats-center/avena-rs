@@ -72,6 +72,12 @@ wait_for_nats() {
             return 0
         fi
         
+        # Check if process is still running
+        if ! kill -0 $NATS_PID 2>/dev/null; then
+            print_error "NATS server process died unexpectedly"
+            return 1
+        fi
+        
         echo -n "."
         sleep 1
         attempt=$((attempt + 1))
@@ -85,8 +91,9 @@ wait_for_nats() {
 create_sample_data() {
     print_status "Creating sample data..."
     
-    # Wait a bit for JetStream to initialize
-    sleep 3
+    # Wait longer for JetStream to initialize properly
+    print_status "Waiting for JetStream to initialize..."
+    sleep 5
     
     # Create all_cabinets bucket
     if ! nats kv ls | grep -q "all_cabinets"; then
@@ -141,7 +148,7 @@ create_sample_data() {
                         "data_formats": ["temperature", "humidity"],
                         "measurement_units": ["°C", "%RH"],
                         "publish_raw_data": [true, true],
-                        "measurement_peaks": [true, false],
+                        "measure_peaks": [true, false],
                         "publish_summary_peaks": true,
                         "labjack_reset": false
                     }
@@ -205,11 +212,51 @@ echo "   • 3 LabJack configurations with different sensor setups"
     echo "=========================================="
 }
 
+# Function to check NATS server status
+check_nats_status() {
+    if [ -f "nats.pid" ]; then
+        local pid=$(cat nats.pid 2>/dev/null)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            if curl -s http://localhost:8222/healthz >/dev/null 2>&1; then
+                print_success "NATS server is already running (PID: $pid)"
+                return 0
+            else
+                print_warning "NATS server process exists but not responding, cleaning up..."
+                kill "$pid" 2>/dev/null || true
+                rm -f nats.pid
+                return 1
+            fi
+        else
+            print_status "Stale PID file found, cleaning up..."
+            rm -f nats.pid
+            return 1
+        fi
+    fi
+    return 1
+}
+
 # Main setup function
 main() {
     echo "🚀 Avena-OTR Dashboard NATS Setup"
     echo "=================================="
     echo
+    
+    # Check if NATS is already running
+    if check_nats_status; then
+        echo
+        print_success "NATS server is already running and healthy!"
+        echo
+        echo "📡 Connection Details:"
+        echo "   • NATS Port: 4222"
+        echo "   • HTTP Monitor: http://localhost:8222"
+        echo "   • WebSocket: ws://localhost:4443"
+        echo
+        echo "🔐 Dashboard Login:"
+        echo "   • Server: ws://localhost:4443"
+        echo "   • Password: (leave empty)"
+        echo
+        return 0
+    fi
     
     # Check prerequisites
     print_status "Checking prerequisites..."
@@ -251,6 +298,11 @@ main() {
     # Stop any existing NATS server
     stop_nats
     
+    # Clean up old PID file
+    if [ -f "nats.pid" ]; then
+        rm -f nats.pid
+    fi
+    
     # Create JetStream directory
     print_status "Setting up JetStream storage..."
     mkdir -p ./jetstream
@@ -260,9 +312,16 @@ main() {
     nats-server -c nats.conf > nats.log 2>&1 &
     NATS_PID=$!
     
+    # Save PID immediately
+    echo $NATS_PID > nats.pid
+    print_status "NATS server PID saved to nats.pid"
+    
     # Wait for NATS to be ready
     if ! wait_for_nats; then
         print_error "Failed to start NATS server. Check nats.log for details."
+        # Clean up on failure
+        kill $NATS_PID 2>/dev/null || true
+        rm -f nats.pid
         exit 1
     fi
     
@@ -272,24 +331,37 @@ main() {
     # Show connection information
     show_connection_info
     
-    # Save PID for easy management
-    echo $NATS_PID > nats.pid
-    print_status "NATS server PID saved to nats.pid"
-    
     print_success "Setup complete! NATS server is running in the background."
     print_status "Logs are available in nats.log"
+    print_status "Server PID: $NATS_PID"
 }
 
-# Cleanup function
-cleanup() {
-    if [ -n "$NATS_PID" ]; then
-        print_status "Cleaning up..."
-        kill $NATS_PID 2>/dev/null || true
+# Remove the problematic trap and cleanup function
+# trap cleanup EXIT
+
+# Function to show simple status
+show_status() {
+    echo "📊 NATS Server Status Check"
+    echo "============================"
+    
+    if check_nats_status; then
+        local pid=$(cat nats.pid)
+        echo "✅ Server Status: RUNNING"
+        echo "🆔 Process ID: $pid"
+        echo "🌐 WebSocket: ws://localhost:4443"
+        echo "📡 NATS Port: 4222"
+        echo "📊 Monitor: http://localhost:8222"
+    else
+        echo "❌ Server Status: NOT RUNNING"
+        echo "💡 To start: ./setup_nats.sh"
     fi
 }
 
-# Set trap for cleanup
-trap cleanup EXIT
+# Check if script is called with status argument
+if [ "$1" = "status" ]; then
+    show_status
+    exit 0
+fi
 
 # Run main function
 main "$@"

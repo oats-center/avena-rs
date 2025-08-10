@@ -15,9 +15,7 @@
   import type {MapConfig, Sensor, SensorType, SensorTypes} from "$lib/MapTypes"
 
 
-  // svelte-ignore non_reactive_update
-  let selectedCabinet: string | null;
-  // svelte-ignore non_reactive_update
+  let selectedCabinet = $state<string | null>(null);
   let nats: NatsService | null;   
   let serverName: string | null; 
   let loading = $state<boolean>(true);
@@ -162,6 +160,11 @@
     ) ?? null;
     editingSensor = sensors[editingIndex];
   }
+
+  // Get display name for cabinet
+  function getDisplayName(id: string) {
+    return id.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  }
 </script>
 
 {#if loading} <!-- While loading nats data -->
@@ -169,60 +172,100 @@
   <span class="loading loading-spinner loading-lg"></span>  
 </div>
 {:else}
-<div class='h-screen flex justify-center items-center '>
-  <!--Map Area-->
-  <div class="relative w-3/4 h-screen flex justify-center items-center">
-    {#if backgroundImage} <!-- Checks for valid mapconfig -->
-      <SensorMap
-        {sensors}
-        {editingSensor}
-        {editingIndex}
-        {sensor_types}
-        {backgroundImage}
-        bind:background={background}
-        {handleSensorChanges}
-      />
-    {:else} <!-- Only if invalid mapconfig -->
-    <div class="flex flex-col">
-      <h1>No MapConfig Has Been Created</h1>
-      <h3 class="text-primary">Start By Importing a Backgroud Image</h3>
+<div class="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black">
+  <!-- Header -->
+  <div class="bg-white/5 backdrop-blur-lg border-b border-white/10">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        <!-- Logo and Title -->
+        <div class="flex items-center space-x-4">
+          <div class="w-8 h-8 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-lg flex items-center justify-center">
+            <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+          </div>
+          <h1 class="text-xl font-semibold text-white">Avena-OTR Dashboard</h1>
+        </div>
+        
+        <!-- Page Title -->
+        <div class="flex items-center space-x-3">
+          <h2 class="text-lg font-medium text-gray-300">
+            {selectedCabinet ? `${getDisplayName(selectedCabinet)} Sensor Map Configuration` : 'Sensor Map Configuration'}
+          </h2>
+          <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+          <span class="text-sm text-gray-300">Connected to NATS</span>
+        </div>
+      </div>
     </div>
-    {/if}
   </div>
 
-  <!--Configuration Area-->
-  <div class="w-1/4">
-    <MapControls
-      {nats}
-      {selectedCabinet}
-      bind:sensors={sensors}
-      bind:editingSensor={editingSensor}
-      bind:editingIndex={editingIndex}
-      {sensor_types}
-      bind:context_position={context_position}
-      bind:type_modal={type_modal}
-      {background}
-      {saveBackgroundChanges}
-      {handleManualSelect}
-      {saveSensorChanges}
-    />
-
-    <!-- Sensor Controls for Selected Sensor -->
-    {#if editingIndex !== -1 && save_modal && cancel_modal && delete_modal && sensor_types}
-    <div>
-      <SensorControls
-        {sensors}
-        {editingIndex}
-        {editingSensor}
-        bind:alert={alert}
-        {sensor_types}
-        {cancel_modal}
-        {delete_modal}
-        {save_modal}
-        {handleSensorChanges}
-      />
+  <!-- Main Content -->
+  <div class="h-[calc(108vh-8rem)] flex">
+    <!--Map Area-->
+    <div class="relative w-3/4 h-full flex justify-center items-center p-4">
+      {#if backgroundImage} <!-- Checks for valid mapconfig -->
+        <div class="w-full h-full bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 overflow-hidden">
+          <SensorMap
+            {sensors}
+            {editingSensor}
+            {editingIndex}
+            {sensor_types}
+            {backgroundImage}
+            bind:background={background}
+            {handleSensorChanges}
+          />
+        </div>
+      {:else} <!-- Only if invalid mapconfig -->
+        <div class="w-full h-full bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 flex flex-col items-center justify-center">
+          <div class="text-center">
+            <div class="inline-flex items-center justify-center w-20 h-20 bg-gray-500/20 rounded-full mb-6">
+              <svg class="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 4m0 13V4m-6 3l6-3"/>
+              </svg>
+            </div>
+            <h1 class="text-2xl font-bold text-white mb-2">No MapConfig Has Been Created</h1>
+            <h3 class="text-gray-300 text-lg">Start By Importing a Background Image</h3>
+          </div>
+        </div>
+      {/if}
     </div>
-    {/if}
+
+    <!--Configuration Area-->
+    <div class="w-1/4 h-full p-4 space-y-4">
+      <div class="bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 p-2">
+        <MapControls
+          {nats}
+          {selectedCabinet}
+          bind:sensors={sensors}
+          bind:editingSensor={editingSensor}
+          bind:editingIndex={editingIndex}
+          {sensor_types}
+          bind:context_position={context_position}
+          bind:type_modal={type_modal}
+          {background}
+          {saveBackgroundChanges}
+          {handleManualSelect}
+          {saveSensorChanges}
+        />
+      </div>
+
+      <!-- Sensor Controls for Selected Sensor -->
+      {#if editingIndex !== -1 && save_modal && cancel_modal && delete_modal && sensor_types}
+        <div class="bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 p-2">
+          <SensorControls
+            {sensors}
+            {editingIndex}
+            {editingSensor}
+            bind:alert={alert}
+            {sensor_types}
+            {cancel_modal}
+            {delete_modal}
+            {save_modal}
+            {handleSensorChanges}
+          />
+        </div>
+      {/if}
+    </div>
   </div>
 </div>
 {/if}
@@ -235,3 +278,31 @@
 {#if type_modal}
   <ContextMenu top={context_position[1]} left={context_position[0]} {type_modal}/>
 {/if}
+
+<style>
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: rgba(206, 184, 136, 0.5);
+    border-radius: 4px;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(206, 184, 136, 0.7);
+  }
+  
+  /* Smooth transitions */
+  * {
+    transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 150ms;
+  }
+</style>
