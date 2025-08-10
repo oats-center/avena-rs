@@ -85,23 +85,58 @@
   let editingIndex = -1;
   let alert = $state<string | null>(null);
   let newLabjack = $state<boolean>(false);
+  let cabinetStatus = $state<string>("unknown");
+  let errorMessage = $state<string | null>(null);
   
+  // Check cabinet status before attempting to connect
+  async function checkCabinetStatus(): Promise<string> {
+    if (!nats) return "unknown";
+    
+    try {
+      const status = await getKeyValue(nats, "all_cabinets", selectedCabinet!);
+      const cabinetData = JSON.parse(status);
+      return cabinetData.status || "unknown";
+    } catch (error) {
+      console.error("Failed to get cabinet status:", error);
+      return "offline";
+    }
+  }
+
   //initializes new connection with the serverName given, gets all of the labjacks 
   //for the selected cabinet, and watches those vals also
   async function initialize() {
-    if(serverName) nats = await connect(serverName)
-    if(nats && selectedCabinet) {
-      let labjacksList = await getKeys(nats, selectedCabinet, "labjackd.config.*");
-      console.log(labjacksList);
-      for(let labjack of labjacksList){
-        let values = await getLabjack(selectedCabinet, labjack);
-        labjacks.push(values);
+    try {
+      if(serverName) nats = await connect(serverName);
+      if(nats && selectedCabinet) {
+        // Check cabinet status first
+        cabinetStatus = await checkCabinetStatus();
+        
+        if (cabinetStatus.toLowerCase() === 'offline') {
+          // Cabinet is offline, don't try to load devices
+          loading = false;
+          errorMessage = "This cabinet is currently offline and cannot be configured.";
+          return;
+        }
+        
+        // Cabinet is online, proceed with loading devices
+        let labjacksList = await getKeys(nats, selectedCabinet, "labjackd.config.*");
+        console.log(labjacksList);
+        for(let labjack of labjacksList){
+          let values = await getLabjack(selectedCabinet, labjack);
+          labjacks.push(values);
+        }
+        loading = false;
+        watchLabJacks();
+        watchCabinet();
+      } else {
+        console.log('No Nats Connection');
+        loading = false;
+        errorMessage = "Failed to connect to NATS server.";
       }
+    } catch (error) {
+      console.error("Initialization failed:", error);
       loading = false;
-      watchLabJacks();
-      watchCabinet();
-    } else {
-      console.log('No Nats Connection');
+      errorMessage = "Failed to initialize LabJack configuration.";
     }
   }
 
@@ -117,6 +152,11 @@
 
   //saves changes made to a labjack
   function saveChanges() {
+    if (cabinetStatus === 'offline') {
+      alert = "Cannot save changes when cabinet is offline.";
+      return;
+    }
+    
     console.log(labjackEdit)
     if(labjackEdit && editingIndex >= 0 && editingIndex < labjacks.length){
       labjacks[editingIndex] = unformatData(labjackEdit)
@@ -181,6 +221,12 @@
   async function createLabjack(event: Event) {
     if (!nats || !selectedCabinet) throw new Error("NATS is not initialized");
     if (!labjackEdit) return;
+    
+    if (cabinetStatus === 'offline') {
+      alert = "Cannot create LabJack devices when cabinet is offline.";
+      edit_modal?.close();
+      return;
+    }
 
     for(let labjack of labjacks){
       if(labjack.serial == labjackEdit.serial){
@@ -203,6 +249,13 @@
 
   async function deleteLabjack() {
     if (!nats || !selectedCabinet) throw new Error("NATS is not initialized");
+    
+    if (cabinetStatus === 'offline') {
+      alert = "Cannot delete LabJack devices when cabinet is offline.";
+      delete_modal?.close();
+      return;
+    }
+    
     if (editingIndex >= 0 && editingIndex < labjacks.length) {
       const kv = await nats.kvm.open(selectedCabinet);
       await kv.delete(`labjackd.config.${labjacks[editingIndex].serial}`);
@@ -287,6 +340,11 @@
 
   //opens the edit modal
   function openEdit(labjack: LabJack, index: number) {
+    if (cabinetStatus === 'offline') {
+      alert = "Cannot edit LabJack devices when cabinet is offline.";
+      return;
+    }
+    
     newLabjack = false;
     labjackEdit = formatData(labjack);
     editingIndex = index;
@@ -360,7 +418,8 @@
         
         <button 
           onclick={() => goto("/config/sensor-map")}
-          class="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200"
+          disabled={cabinetStatus === 'offline'}
+          class="flex items-center space-x-2 px-4 py-2 {cabinetStatus === 'offline' ? 'bg-gray-500 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'} text-white rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 4m0 13V4m0 0L9 7"/>
@@ -371,12 +430,13 @@
 
       <button 
         onclick={() => {newLabjack = true; labjackEdit = defaultFormattedLabjack; edit_modal?.showModal()}}
-        class="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white font-semibold rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg hover:shadow-xl"
+        disabled={cabinetStatus === 'offline'}
+        class="flex items-center space-x-2 px-6 py-3 {cabinetStatus === 'offline' ? 'bg-gray-500 cursor-not-allowed' : 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700'} text-white font-semibold rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
         </svg>
-        <span>Add New LabJack</span>
+        <span>{cabinetStatus === 'offline' ? 'Cabinet Offline' : 'Add New LabJack'}</span>
       </button>
     </div>
 
@@ -390,6 +450,44 @@
             </svg>
           </div>
           <p class="text-gray-400 text-lg">Loading LabJack devices...</p>
+        </div>
+      </div>
+    {:else if errorMessage}
+      <!-- Error State -->
+      <div class="flex items-center justify-center py-20">
+        <div class="text-center">
+          <div class="inline-flex items-center justify-center w-20 h-20 bg-red-500/20 rounded-full mb-6 border border-red-500/30">
+            <svg class="w-10 h-10 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+            </svg>
+          </div>
+          <h3 class="text-xl font-semibold text-white mb-2">Configuration Error</h3>
+          <p class="text-gray-400 mb-6">{errorMessage}</p>
+          <button 
+            onclick={() => goto("/config/cabinet-select")}
+            class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg hover:shadow-xl"
+          >
+            Back to Cabinet Selection
+          </button>
+        </div>
+      </div>
+    {:else if cabinetStatus === 'offline'}
+      <!-- Offline Cabinet State -->
+      <div class="flex items-center justify-center py-20">
+        <div class="text-center">
+          <div class="inline-flex items-center justify-center w-20 h-20 bg-yellow-500/20 rounded-full mb-6 border border-yellow-500/30">
+            <svg class="w-10 h-10 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+            </svg>
+          </div>
+          <h3 class="text-xl font-semibold text-white mb-2">Cabinet Offline</h3>
+          <p class="text-gray-400 mb-6">This cabinet is currently offline and cannot be configured. Please select an online cabinet to proceed.</p>
+          <button 
+            onclick={() => goto("/config/cabinet-select")}
+            class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg hover:shadow-xl"
+          >
+            Back to Cabinet Selection
+          </button>
         </div>
       </div>
     {:else if labjacks && labjacks.length > 0}
@@ -478,9 +576,10 @@
         <p class="text-gray-400 mb-6">No LabJack devices are currently configured for this Avena box.</p>
         <button 
           onclick={() => {newLabjack = true; labjackEdit = defaultFormattedLabjack; edit_modal?.showModal()}}
-          class="px-6 py-3 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white font-semibold rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg hover:shadow-xl"
+          disabled={cabinetStatus === 'offline'}
+          class="px-6 py-3 {cabinetStatus === 'offline' ? 'bg-gray-500 cursor-not-allowed' : 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700'} text-white font-semibold rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Add Your First LabJack
+          {cabinetStatus === 'offline' ? 'Cabinet Offline' : 'Add Your First LabJack'}
         </button>
       </div>
     {/if}
