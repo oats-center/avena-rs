@@ -124,7 +124,8 @@ create_sample_data() {
                     "labjack_name": "Main Sensor Hub",
                     "serial": "TEST001",
                     "sensor_settings": {
-                        "sampling_rate": 1000,
+                        "sampling_rate": 10000,
+                        "scans_per_read": 1000,
                         "channels_enabled": [1, 2, 3],
                         "gains": 1,
                         "data_formats": ["voltage", "temperature", "pressure"],
@@ -142,7 +143,8 @@ create_sample_data() {
                     "labjack_name": "Environmental Monitor",
                     "serial": "TEST002",
                     "sensor_settings": {
-                        "sampling_rate": 500,
+                        "sampling_rate": 5000,
+                        "scans_per_read": 1000,
                         "channels_enabled": [1, 2],
                         "gains": 2,
                         "data_formats": ["temperature", "humidity"],
@@ -160,7 +162,8 @@ create_sample_data() {
                     "labjack_name": "Traffic Sensor",
                     "serial": "TEST003",
                     "sensor_settings": {
-                        "sampling_rate": 100,
+                        "sampling_rate": 2000,
+                        "scans_per_read": 1000,
                         "channels_enabled": [1, 4, 5],
                         "gains": 1,
                         "data_formats": ["voltage", "digital", "digital"],

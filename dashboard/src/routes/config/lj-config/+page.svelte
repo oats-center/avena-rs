@@ -16,6 +16,7 @@
   }
   type SensorSettings = {
     "sampling_rate": number;
+    "scans_per_read": number;
     "channels_enabled": number[];
     "gains": number;
     "data_formats": string[];
@@ -33,6 +34,7 @@
   }
   type FormattedSensorSettings = {
     "sampling_rate": number;
+    "scans_per_read": number;
     "channels_enabled": boolean[];
     "gains": number;
     "data_formats": string[];
@@ -46,6 +48,7 @@
   //default values for above types
   const defaultSensorSettings = {
     "sampling_rate": 0,
+    "scans_per_read": 1000,
     "channels_enabled": [0],
     "gains": 0,
     "data_formats": [""],
@@ -57,6 +60,7 @@
   }
   const defaultFormattedSettings: FormattedSensorSettings = {
     "sampling_rate": 0,
+    "scans_per_read": 1000,
     "channels_enabled": [false],
     "gains": 0,
     "data_formats": [""],
@@ -365,6 +369,7 @@
 
     
     formattedSettings.sampling_rate = settings.sampling_rate;
+    formattedSettings.scans_per_read = settings.scans_per_read;
     formattedSettings.gains = settings.gains;
     formattedSettings.publish_summary_peaks = settings.publish_summary_peaks;
     formattedSettings.labjack_reset = false;
@@ -400,6 +405,7 @@
     let activeChannel = -1;
 
     labjack.sensor_settings.sampling_rate = settings.sampling_rate;
+    labjack.sensor_settings.scans_per_read = settings.scans_per_read;
     labjack.sensor_settings.gains = settings.gains;
     labjack.sensor_settings.publish_summary_peaks = settings.publish_summary_peaks;
     labjack.sensor_settings.labjack_reset = false;
@@ -676,6 +682,10 @@
               <div class="flex items-center justify-between p-4 bg-gray-800/30 rounded-lg border border-gray-700/50">
                 <span class="text-sm text-gray-400">Sampling Rate:</span>
                 <span class="text-sm font-medium text-white">{labjack.sensor_settings.sampling_rate} Hz</span>
+              </div>
+              <div class="flex items-center justify-between p-4 bg-gray-800/30 rounded-lg border border-gray-700/50">
+                <span class="text-sm text-gray-400">Scans Per Read:</span>
+                <span class="text-sm font-medium text-white">{labjack.sensor_settings.scans_per_read}</span>
               </div>
               <div class="flex items-center justify-between p-4 bg-gray-800/30 rounded-lg border border-gray-700/50">
                 <span class="text-sm text-gray-400">Gain:</span>

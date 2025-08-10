@@ -7,6 +7,7 @@
   }
   type FormattedSensorSettings = {
     "sampling_rate": number;
+    "scans_per_read": number;
     "channels_enabled": boolean[];
     "gains": number;
     "data_formats": string[];
@@ -76,7 +77,7 @@
     </div>
 
     <!-- Basic Configuration -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
       <div class="space-y-2">
         <label for="serialNumber" class="block text-sm font-medium text-gray-300">Serial Number</label>
         <input 
@@ -99,6 +100,18 @@
           class="w-full px-4 py-3 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200" 
           bind:value={labjackEdit.sensor_settings.sampling_rate}
           placeholder="0"
+          disabled={readOnly}
+        />
+      </div>
+      
+      <div class="space-y-2">
+        <label for="scansPerRead" class="block text-sm font-medium text-gray-300">Scans Per Read</label>
+        <input 
+          id="scansPerRead"
+          type="number" 
+          class="w-full px-4 py-3 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200" 
+          bind:value={labjackEdit.sensor_settings.scans_per_read}
+          placeholder="1000"
           disabled={readOnly}
         />
       </div>
