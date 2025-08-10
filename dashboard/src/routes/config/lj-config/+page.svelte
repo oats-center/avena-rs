@@ -75,7 +75,7 @@
  
   let serverName: string | null = null;
   let nats: NatsService | null = null;
-  let selectedCabinet: string | null = null;
+  let selectedCabinet = $state<string | null>(null);
   let edit_modal = $state<HTMLDialogElement>();
   let delete_modal = $state<HTMLDialogElement>();
 
@@ -308,6 +308,7 @@
     serverName = sessionStorage.getItem("serverName");
     if (!serverName) goto("/")
     selectedCabinet = sessionStorage.getItem("selectedCabinet");
+    console.log("Selected Cabinet:", selectedCabinet); // Debug log
     initialize();
   });
 
@@ -439,7 +440,12 @@
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <!-- Page Header -->
     <div class="text-center mb-8">
-      <h1 class="text-4xl font-bold text-white mb-4">LabJack Configuration</h1>
+      <!-- Debug info -->
+      <div class="text-sm text-gray-500 mb-2">Debug: selectedCabinet = "{selectedCabinet}"</div>
+      
+      <h1 class="text-4xl font-bold text-white mb-4">
+        {selectedCabinet ? `${getDisplayName(selectedCabinet)} LabJack Configuration` : 'LabJack Configuration'}
+      </h1>
       <p class="text-xl text-gray-300 max-w-3xl mx-auto">
         Configure and manage LabJack devices for {selectedCabinet ? getDisplayName(selectedCabinet) : 'the selected Avena box'}
         {#if cabinetStatus === 'maintenance'}

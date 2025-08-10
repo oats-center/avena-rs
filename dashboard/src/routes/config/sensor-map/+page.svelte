@@ -15,9 +15,7 @@
   import type {MapConfig, Sensor, SensorType, SensorTypes} from "$lib/MapTypes"
 
 
-  // svelte-ignore non_reactive_update
-  let selectedCabinet: string | null;
-  // svelte-ignore non_reactive_update
+  let selectedCabinet = $state<string | null>(null);
   let nats: NatsService | null;   
   let serverName: string | null; 
   let loading = $state<boolean>(true);
@@ -162,6 +160,11 @@
     ) ?? null;
     editingSensor = sensors[editingIndex];
   }
+
+  // Get display name for cabinet
+  function getDisplayName(id: string) {
+    return id.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  }
 </script>
 
 {#if loading} <!-- While loading nats data -->
@@ -186,7 +189,9 @@
         
         <!-- Page Title -->
         <div class="flex items-center space-x-3">
-          <h2 class="text-lg font-medium text-gray-300">Sensor Map Configuration</h2>
+          <h2 class="text-lg font-medium text-gray-300">
+            {selectedCabinet ? `${getDisplayName(selectedCabinet)} Sensor Map Configuration` : 'Sensor Map Configuration'}
+          </h2>
           <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
           <span class="text-sm text-gray-300">Connected to NATS</span>
         </div>
@@ -195,7 +200,7 @@
   </div>
 
   <!-- Main Content -->
-  <div class="h-[calc(100vh-4rem)] flex">
+  <div class="h-[calc(108vh-8rem)] flex">
     <!--Map Area-->
     <div class="relative w-3/4 h-full flex justify-center items-center p-4">
       {#if backgroundImage} <!-- Checks for valid mapconfig -->
@@ -227,7 +232,7 @@
 
     <!--Configuration Area-->
     <div class="w-1/4 h-full p-4 space-y-4">
-      <div class="bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 p-4">
+      <div class="bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 p-2">
         <MapControls
           {nats}
           {selectedCabinet}
@@ -246,7 +251,7 @@
 
       <!-- Sensor Controls for Selected Sensor -->
       {#if editingIndex !== -1 && save_modal && cancel_modal && delete_modal && sensor_types}
-        <div class="bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 p-4">
+        <div class="bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 p-2">
           <SensorControls
             {sensors}
             {editingIndex}

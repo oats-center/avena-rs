@@ -69,8 +69,9 @@
     <!-- Basic Configuration -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
       <div class="space-y-2">
-        <label class="block text-sm font-medium text-gray-300">Serial Number</label>
+        <label for="serialNumber" class="block text-sm font-medium text-gray-300">Serial Number</label>
         <input 
+          id="serialNumber"
           type="text" 
           name="serialNumber" 
           disabled={!newLabjack} 
@@ -82,8 +83,9 @@
       </div>
       
       <div class="space-y-2">
-        <label class="block text-sm font-medium text-gray-300">Sampling Rate (Hz)</label>
+        <label for="samplingRate" class="block text-sm font-medium text-gray-300">Sampling Rate (Hz)</label>
         <input 
+          id="samplingRate"
           type="number" 
           class="w-full px-4 py-3 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200" 
           bind:value={labjackEdit.sensor_settings.sampling_rate}
@@ -92,8 +94,9 @@
       </div>
       
       <div class="space-y-2">
-        <label class="block text-sm font-medium text-gray-300">Gain</label>
+        <label for="gain" class="block text-sm font-medium text-gray-300">Gain</label>
         <input 
+          id="gain"
           type="number" 
           class="w-full px-4 py-3 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200" 
           bind:value={labjackEdit.sensor_settings.gains}
