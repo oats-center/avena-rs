@@ -1,189 +1,169 @@
 # Avena-OTR Dashboard
 
-A real-time web dashboard for monitoring and configuring roadside Avena boxes - intelligent roadside units that house compute, storage, and LabJack data acquisition devices connected to road sensors. Built with SvelteKit, this dashboard provides an intuitive interface for managing sensor configurations, monitoring Avena box status, and visualizing data streams from road infrastructure.
+A modern web-based dashboard for configuring and monitoring LabJack devices inside Avena cabinet boxes located alongside highways. This system provides real-time configuration management for sensors deployed under highway roads, enabling comprehensive infrastructure monitoring and data collection.
 
-## 🎯 Project Overview
+## 🚀 Overview
 
-The Avena-OTR Dashboard is a comprehensive monitoring and configuration system designed for roadside infrastructure management. It allows operators to:
+The Avena-OTR (Off-The-Road) Dashboard is a sophisticated web application built with **SvelteKit** that provides centralized management for roadside infrastructure monitoring systems. It connects to **NATS** messaging system to communicate with Avena cabinet boxes containing LabJack data acquisition devices.
 
-- **Monitor Avena box status** in real-time across multiple locations
-- **Configure LabJack devices** with custom sensor settings, sampling rates, and data formats
-- **Visualize sensor data** through interactive maps and real-time displays
-- **Manage system configurations** through an intuitive web interface
-- **Stream data** via NATS messaging system for distributed operations
+### Key Features
+
+- **🔧 LabJack Device Configuration**: Configure sampling rates, channels, gains, and data formats
+- **📊 Real-time Monitoring**: Live status monitoring of cabinet boxes and devices
+- **🛠️ Maintenance Mode**: Controlled access during maintenance operations
+- **🌐 WebSocket Communication**: Real-time updates via NATS WebSocket interface
+- **📱 Responsive Design**: Modern UI that works on desktop and mobile devices
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Road Sensors  │    │   Avena Box     │    │   NATS Server   │    ┌─────────────────┐
-│   (Embedded)    │───▶│   (LabJack +    │───▶│   (JetStream)   │◀───│   Dashboard     │
-│                 │    │    Compute)     │    │                 │    │   (SvelteKit)   │
-└─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
+┌─────────────────┐    WebSocket    ┌─────────────────┐    NATS    ┌─────────────────┐
+│   Dashboard     │ ──────────────► │   NATS Server   │ ─────────► │  Avena Cabinet  │
+│   (SvelteKit)   │                 │   (JetStream)   │            │   (LabJack)     │
+└─────────────────┘                 └─────────────────┘            └─────────────────┘
 ```
 
-- **Road Sensors**: Embedded sensors collecting traffic, environmental, and infrastructure data
-- **Avena Box**: Intelligent roadside unit housing LabJack devices, compute, and storage
-- **LabJack Devices**: Data acquisition hardware collecting sensor readings from road sensors
-- **NATS Server**: Message broker with JetStream for persistent data storage
-- **Dashboard**: Web interface for configuration and monitoring
+### Technology Stack
+
+- **Frontend**: SvelteKit 5.0, TypeScript, Tailwind CSS, DaisyUI
+- **Backend**: NATS Server with JetStream for persistent storage
+- **Communication**: WebSocket over NATS for real-time updates
+- **Data Storage**: NATS Key-Value store for configuration persistence
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- **Node.js 18+** and npm
-- **NATS CLI** for data management
-- **Modern web browser**
 
-### 1. Install Dependencies
-```bash
-cd dashboard
-npm install
-```
+- **Node.js** (v18 or higher)
+- **NATS Server** (installed via Homebrew or download)
 
-### 2. Start NATS Server with Sample Data
-```bash
-# Make the scripts executable
-chmod +x setup_nats.sh cleanup_nats.sh
+### Installation
 
-# Run the setup script
-./setup_nats.sh
-```
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd avena-rs/dashboard
+   ```
 
-### 3. Start Dashboard
-```bash
-npm run dev
-```
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-### 4. Access Dashboard
-Open your browser and navigate to: `http://localhost:5173`
+3. **Setup NATS Server**
+   ```bash
+   # Make setup script executable
+   chmod +x setup_nats.sh
+   
+   # Run NATS setup (creates server and sample data)
+   ./setup_nats.sh
+   ```
 
-## 🔐 Login Instructions
+4. **Start the dashboard**
+   ```bash
+   npm run dev
+   ```
 
-### Authentication
-The dashboard connects to NATS servers for real-time data access. **No traditional username/password is required.**
+5. **Access the dashboard**
+   - Open browser: `http://localhost:5173`
+   - Login with WebSocket URL: `ws://localhost:4443`
+   - Password: (leave empty for local development)
 
-### Connection Details
-- **Server URL**: `ws://localhost:4443` or `ws://<nats-server>:4443` (WebSocket connection to NATS)
-- **Password**: Leave empty (NATS server runs without authentication by default)
+## 📋 Dashboard Features
 
-### Login Flow
-1. Enter server URL
-2. Leave password field empty (support not added)
-3. Click "Connect"
-4. Select an Avena box from the list
-5. Access LabJack configuration and monitoring tools
+### 1. Cabinet Selection
+- View all available Avena cabinet boxes
+- Real-time status monitoring (Online/Offline/Maintenance)
+- Quick access to device configurations
 
-## 🛠️ Setup Script
+### 2. LabJack Configuration
+- **Device Management**: Add, edit, and delete LabJack devices
+- **Channel Configuration**: Configure up to 8 analog/digital channels
+- **Sensor Settings**: Set sampling rates, gains, and data formats
+- **Status-aware**: Different access levels based on cabinet status
 
-The `setup_nats.sh` script automatically:
-- Starts NATS server with WebSocket support
-- Enables JetStream for persistent storage
-- Creates sample Avena box data
-- Populates LabJack configurations
-- Sets up Key-Value stores
+### 3. Sensor Mapping
+TODO - Unclear
 
-### Manual Setup (Alternative)
-If you prefer to set up manually:
+### 4. Cabinet Status Management
+- **Status Control**: Set cabinets to Online/Offline/Maintenance modes
+- **Access Control**: Restrict modifications during maintenance
+- **Real-time Updates**: Live status changes across the system
 
-```bash
-# Start NATS with WebSocket and JetStream
-nats-server -c nats.conf
+## 🔧 Configuration
 
-# Create sample data
-nats kv add all_cabinets
-nats kv put all_cabinets avenabox_001 '{"status": "online"}'
-nats kv add avenabox_001
-nats kv put avenabox_001 labjackd.config.TEST001 '{"cabinet_id":"avenabox_001","labjack_name":"Test LabJack 1","serial":"TEST001","sensor_settings":{"sampling_rate":1000,"channels_enabled":[1,2],"gains":1,"data_formats":["voltage","voltage"],"measurement_units":["V","V"],"publish_raw_data":[true,true],"measure_peaks":[false,false],"publish_summary_peaks":false,"labjack_reset":false}}'
-```
+### NATS Server Configuration
 
-## 📊 Dashboard Features
+The dashboard uses a custom NATS configuration (`nats.conf`) with:
 
-### Avena Box Management
-- **Real-time status monitoring** of roadside Avena boxes
-- **Geographic visualization** of Avena box locations
-- **Status tracking** (online, offline, maintenance)
+- **WebSocket Support**: Port 4443 for browser connections
+- **JetStream**: Persistent storage for configurations
+- **HTTP Monitor**: Port 8222 for server monitoring
+- **NATS Core**: Port 4222 for standard NATS clients
 
-### LabJack Configuration
-- **Device management** with unique serial numbers
-- **Sensor settings** configuration:
-  - Sampling rates (1Hz - 100kHz)
-  - Channel enable/disable
-  - Gain settings
-  - Data formats (voltage, temperature, etc.)
-  - Measurement units
-  - Data publishing options
-- **Real-time configuration updates**
-- **Hot-reload support** for runtime changes
+### Sample Data Structure
 
-### Data Visualization
-- **Interactive sensor maps**
-- **Real-time data streams**
-- **Historical data viewing**
-- **Alert management**
+The setup script creates sample data including:
 
-## 🗄️ Data Management
-
-### NATS Key-Value Stores
-- **`all_cabinets`**: Avena box status and metadata
-- **`{avenabox_name}`**: Avena box-specific LabJack configurations
-- **Real-time updates** via NATS JetStream
-
-### Data Structure
 ```json
 {
   "cabinet_id": "avenabox_001",
-  "labjack_name": "LabJack T7",
-  "serial": "T7ABC123",
+  "labjack_name": "Main Sensor Hub",
+  "serial": "TEST001",
   "sensor_settings": {
     "sampling_rate": 1000,
     "channels_enabled": [1, 2, 3],
     "gains": 1,
     "data_formats": ["voltage", "temperature", "pressure"],
-    "measurement_units": ["V", "°C", "PSI"]
+    "measurement_units": ["V", "°C", "PSI"],
+    "publish_raw_data": [true, true, true],
+    "measure_peaks": [false, true, false],
+    "publish_summary_peaks": true,
+    "labjack_reset": false
   }
 }
 ```
 
-## 🧹 Clearing NATS Data
+## 🛠️ Development
 
-### Quick Cleanup (Recommended)
-```bash
-# Use the cleanup script for easy management
-./cleanup_nats.sh
+### Project Structure
+
+```
+dashboard/
+├── src/
+│   ├── lib/
+│   │   ├── components/          # Reusable UI components
+│   │   ├── nats.svelte.ts       # NATS communication utilities
+│   │   └── MapTypes.ts          # TypeScript type definitions
+│   ├── routes/
+│   │   ├── +page.svelte         # Login page
+│   │   └── config/              # Configuration pages
+│   │       ├── cabinet-select/   # Cabinet selection
+│   │       ├── lj-config/        # LabJack configuration
+│   │       ├── sensor-map/       # Sensor mapping interface
+│   │       └── cabinet-status/   # Status management
+│   └── app.css                  # Global styles
+├── nats.conf                    # NATS server configuration
+├── setup_nats.sh               # NATS setup script
+└── package.json                # Dependencies and scripts
 ```
 
-### Manual Cleanup
+### Available Scripts
+
 ```bash
-# Stop NATS server
-pkill nats-server
-
-# Remove JetStream data directory
-rm -rf ./jetstream
-
-# Restart with setup script
-./setup_nats.sh
+npm run dev          # Start development server
+npm run build        # Build for production
+npm run preview      # Preview production build
 ```
 
-### Clear Specific Data
+### NATS Management
+
 ```bash
-# Remove specific Avena box
-nats kv del avenabox_001
-
-# Remove specific LabJack config
-nats kv del avenabox_001 labjackd.config.TEST001
-
-# List all buckets
-nats kv ls
-
-# List keys in a bucket
-nats kv keys bucket_name
-```
-
-### Reset to Default State
-```bash
-# Run the setup script again
-./setup_nats.sh
+./setup_nats.sh              # Start NATS server with sample data
+./setup_nats.sh status       # Check NATS server status
+./cleanup_nats.sh            # Stop and cleanup NATS server
+nats kv ls                   # List all buckets
+nats kv keys bucket_name     # View keys in a bucket
 ```
 
 ## 🤝 Contributing
@@ -191,11 +171,9 @@ nats kv keys bucket_name
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Add tests if applicable
+4. Test thoroughly with NATS server
 5. Submit a pull request
 
 ## 📄 License
 
-MIT License
-
----
+This project is licensed under the terms specified in the main repository license.
