@@ -1,38 +1,93 @@
-# create-svelte
+# avena-rs - Highway Infrastructure Monitoring
 
-Everything you need to build a Svelte project, powered by [`create-svelte`](https://github.com/sveltejs/kit/tree/main/packages/create-svelte).
+Real-time road sensor data acquisition system for monitoring strain gauges and pressure cells embedded under highway concrete. Progressive Web App (PWA) that can be installed as a native executable.
 
-## Creating a project
+## Architecture
 
-If you're seeing this, you've probably already done this step. Congrats!
-
-```bash
-# create a new project in the current directory
-npm create svelte@latest
-
-# create a new project in my-app
-npm create svelte@latest my-app
+```
+Highway Sensors → LabJack → Rust Sampler → NATS → Parquet Files
+                                    ↓
+                              Svelte Dashboard
 ```
 
-## Developing
+## Quick Start
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+### Prerequisites
+- Node.js 18+ 
+- Rust toolchain
+- NATS server
+- LabJack device connected to highway sensors
 
+### Frontend
 ```bash
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
+pnpm install
+pnpm dev
 ```
 
-## Building
-
-To create a production version of your app:
-
+### Backend
 ```bash
-npm run build
+# Set environment variables
+export NATS_URL="nats://localhost:4222"
+export CFG_BUCKET="sampler_cfg"
+export CFG_KEY="active"
+
+# Run sampler
+./target/debug/streamer
+
+# Run parquet generator (in another terminal)
+cargo run --bin store
 ```
 
-You can preview the production build with `npm run preview`.
+### Environment Variables
 
-> To deploy your app, you may need to install an [adapter](https://kit.svelte.dev/docs/adapters) for your target environment.
+**Required:**
+- `NATS_URL` - NATS server address (e.g., `nats://localhost:4222`)
+- `NATS_USERNAME` - NATS username (if authentication enabled)
+- `NATS_PASSWORD` - NATS password (if authentication enabled)
+- `CFG_BUCKET` - Configuration bucket name (default: `sampler_cfg`)
+- `CFG_KEY` - Configuration key name (default: `active`)
+
+**Example .env file (development only):**
+```bash
+NATS_URL=nats://your-nats-server:4222
+NATS_USERNAME=your_username
+NATS_PASSWORD=your_password
+CFG_BUCKET=sampler_cfg
+CFG_KEY=active
+```
+
+**⚠️ Security Warning:** Never commit .env files to git! Use system environment variables or secure keychains for production.
+
+## Configuration
+
+The system uses NATS KV store for configuration. Main config structure:
+
+```json
+{
+  "scans_per_read": 200,
+  "suggested_scan_rate": 7000.0,
+  "channels": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+  "asset_number": 1,
+  "nats_url": "nats://0.0.0.0:4222",
+  "nats_subject": "labjack",
+  "nats_stream": "LABJACK"
+}
+```
+
+## Features
+
+- **Real-time monitoring** of strain gauges and pressure cells
+- **High-frequency sampling** up to 7kHz
+- **Multi-channel support** (14+ channels)
+- **Live configuration updates** via web dashboard
+- **Automatic data archival** in Parquet format
+- **Multi-cabinet management**
+- **Progressive Web App** - installable as native executable
+- **Offline-capable** dashboard for field use
+- **Cross-platform** - Windows, Mac, Linux, mobile
+
+## Troubleshooting
+
+- **NATS Connection Failed**: Check server is running
+- **Config Not Loading**: Verify KV bucket exists
+- **Real-time Updates**: Check NATS permissions
