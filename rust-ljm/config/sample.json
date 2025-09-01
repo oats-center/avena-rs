@@ -1,0 +1,10 @@
+{
+  "scans_per_read": 200,
+  "suggested_scan_rate": 7000.0,
+  "channels": [0, 1, 2, 3, 4],
+  "asset_number": 1,
+  "nats_url": "nats://0.0.0.0:4222",
+  "nats_subject": "labjack",
+  "nats_stream": "LABJACK",
+  "rotate_secs": 60
+}
