@@ -57,29 +57,33 @@
 </script>
 
   {#if editing_type}
-  <div class="modal-box bg-primary">
-    <h3 class="text-lg font-bold mb-1">New Sensor Type</h3>
-    <h6 class="text-red-600 mb-2">{alert}</h6>
-    <div class="grid grid-cols-2">
+  <div class="modal-box bg-gray-800 border border-white/10">
+    <h3 class="text-lg font-bold mb-4 text-white">New Sensor Type</h3>
+    {#if alert}
+      <div class="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-lg">
+        <h6 class="text-red-300 text-sm">{alert}</h6>
+      </div>
+    {/if}
+    <div class="grid grid-cols-2 gap-4 mb-5">
       <div>
-        <h6>Name: </h6>
-        <input type="text" class="input modal_input" bind:value={editing_type.name} placeholder="New Type Name"/>
+        <h6 class="text-gray-300 text-sm font-medium mb-2">Name: </h6>
+        <input type="text" class="w-full px-3 py-2 bg-gray-700/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50" bind:value={editing_type.name} placeholder="New Type Name"/>
       </div>
       <div>
-        <h6>Size: </h6>
-        <input type="number" min="30" max="80" class="input modal_input w-full" bind:value={editing_type.size_px} />
+        <h6 class="text-gray-300 text-sm font-medium mb-2">Size: </h6>
+        <input type="number" min="30" max="80" class="w-full px-3 py-2 bg-gray-700/50 border border-gray-600/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50" bind:value={editing_type.size_px} />
       </div>
     </div>
-    <div class="flex items-center mt-5">
-      <h6 class="mr-5">Icon: </h6>
-      <input type="file" class="file-input file-input-bordered modal_input w-full" accept="image/svg" bind:this={fileInput}/>
+    <div class="flex items-center mb-6">
+      <h6 class="mr-4 text-gray-300 text-sm font-medium">Icon: </h6>
+      <input type="file" class="flex-1 px-3 py-2 bg-gray-700/50 border border-gray-600/50 rounded-lg text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-yellow-500/20 file:text-yellow-300 hover:file:bg-yellow-500/30" accept="image/svg" bind:this={fileInput}/>
     </div>
     
-    <div class="mt-5 flex">
+    <div class="flex justify-end space-x-3">
       <form method="dialog">
-        <button class="btn btn-outline btn-success" onclick={() => editing_type = {"name": "", "icon": "", "size_px": 30}}>Cancel</button>
+        <button class="px-4 py-2 bg-gray-600/50 border border-gray-500/50 rounded-lg text-gray-300 hover:bg-gray-500/50 transition-all duration-200" onclick={() => editing_type = {"name": "", "icon": "", "size_px": 30}}>Cancel</button>
       </form>
-      <button class="btn btn-outline btn-error ml-5" onclick={confirmType}>Save</button>
+      <button class="px-4 py-2 bg-yellow-500/20 border border-yellow-500/30 rounded-lg text-yellow-300 hover:bg-yellow-500/30 transition-all duration-200" onclick={confirmType}>Save</button>
     </div>
   </div>
   <form method="dialog" class="modal-backdrop">

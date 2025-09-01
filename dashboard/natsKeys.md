@@ -1,6 +1,6 @@
 # NATS Keys
 
-All keys listed in this document are stored within the `demo.nats.io` server.
+All keys listed in this document are stored within the `localhost` server.
 
 In the program, NATS KeyValue stores are accessed using various functions in the `$lib/nats.svelte.ts` file.
 
@@ -31,46 +31,40 @@ This bucket contains a key for each cabinet with the format `roadN_cabinetN`. Ea
 ```
 
 ### `roadN_cabinetN`
-Each cabinet then has its own bucket, containing a few different key variations:
-- `labjackd.config.N`: LabJack Config Settings (where N is the labjack serial number)
-- `mapconfig`: All cabinet information for map view
-- `sensor_types`: Sensor type definitions for map view
+Each cabinet then has its own bucket, containing:
+- `labjackd.config.SERIAL`: LabJack Config Settings (where SERIAL is the labjack serial number)
 
 #### Example:
 ```json
-//bucket: road1_cabinet1
-"labjackd.config.1": { 
-  "cabinet_id": "road1_cabinet1",
-  "labjack_name": "Labjack 2",
-  "serial": "2",
+// bucket: road1_cabinet1
+"labjackd.config.TEST001": {
+  "cabinet_id": "avenabox_001",
+  "labjack_name": "Main Sensor Hub",
+  "serial": "TEST001",
   "sensor_settings": {
-    //subject to change
-  }
-}
-"mapconfig": {
-  "backgroundImage": "data:image/png;base64...",
-  "labjackd.1.ch1": {
-    "cabinet_id":"road1_cabinet1",
-    "labjack_serial":"1",
-    "connected_channel":"1",
-    "sensor_name":"New Sensor",
-    "sensor_type":"Temp",
-    "x_pos":22,
-    "y_pos":64,
-    "color":"red"
-  },
-  "labjackd.1.ch2": {
-    ...
-  }
-}
-"sensor_types": {
-  "Press": {
-    "icon":"data:image/svg+xml;base64...",
-    "size_px": 50
-  }, 
-  "Temp": {
-    ...
+    "sampling_rate": 7000,
+    "scan_rate": 500,
+    "channels_enabled": [1, 2, 4],
+    "gains": 1,
+    "data_formats": ["voltage", "temperature", "current"],
+    "measurement_units": ["V", "°C", "A"],
+    "labjack_reset": false
   }
 }
 ```
 
+## Data Structure Notes
+
+### LabJack Configuration
+- **sampling_rate**: Data sampling frequency in Hz
+- **scan_rate**: Channel scanning frequency in Hz  
+- **channels_enabled**: Array of active channel numbers (1-8)
+- **gains**: Amplification factor for signal processing
+- **data_formats**: Data type for each enabled channel
+- **measurement_units**: Units of measurement for each enabled channel
+- **labjack_reset**: Boolean flag for device reset status
+
+### Cabinet Status Values
+- `"online"`: Cabinet is operational and accepting configurations
+- `"offline"`: Cabinet is disconnected or unreachable
+- `"maintenance"`: Cabinet is in maintenance mode (read-only access)
