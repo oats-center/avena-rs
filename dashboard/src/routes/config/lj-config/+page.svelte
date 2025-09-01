@@ -7,6 +7,7 @@
   import Alert from "$lib/components/Alert.svelte";
   import DeleteModal from "$lib/components/basic_modals/DeleteModal.svelte";
   import LabJackModal from "$lib/components/basic_modals/LabJackModal.svelte";
+  import PWAInstall from "$lib/components/PWAInstall.svelte";
   
   type LabJack = {
     "cabinet_id": string;
@@ -810,3 +811,6 @@
     transition-duration: 150ms;
   }
 </style>
+
+<!-- PWA Install Prompt -->
+<PWAInstall />
