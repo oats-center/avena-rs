@@ -16,13 +16,11 @@
   }
   type SensorSettings = {
     "sampling_rate": number;
+    "scan_rate": number;
     "channels_enabled": number[];
     "gains": number;
     "data_formats": string[];
     "measurement_units": string[];
-    "publish_raw_data": boolean[];
-    "measure_peaks": boolean[];
-    "publish_summary_peaks": boolean;
     "labjack_reset": boolean;
   }
   type FormattedLabJack = {
@@ -33,37 +31,31 @@
   }
   type FormattedSensorSettings = {
     "sampling_rate": number;
+    "scan_rate": number;
     "channels_enabled": boolean[];
     "gains": number;
     "data_formats": string[];
     "measurement_units": string[];
-    "publish_raw_data": boolean[];
-    "measure_peaks": boolean[];
-    "publish_summary_peaks": boolean;
     "labjack_reset": boolean;
   }
   
   //default values for above types
   const defaultSensorSettings = {
     "sampling_rate": 0,
+    "scan_rate": 0,
     "channels_enabled": [0],
     "gains": 0,
     "data_formats": [""],
     "measurement_units": [""],
-    "publish_raw_data": [false],
-    "measure_peaks": [false],
-    "publish_summary_peaks": false,
     "labjack_reset": false,
   }
   const defaultFormattedSettings: FormattedSensorSettings = {
     "sampling_rate": 0,
+    "scan_rate": 0,
     "channels_enabled": [false],
     "gains": 0,
     "data_formats": [""],
     "measurement_units": [""],
-    "publish_raw_data": [false],
-    "measure_peaks": [false],
-    "publish_summary_peaks": false,
     "labjack_reset": false,
   }
   const defaultFormattedLabjack: FormattedLabJack = {
@@ -365,8 +357,8 @@
 
     
     formattedSettings.sampling_rate = settings.sampling_rate;
+    formattedSettings.scan_rate = settings.scan_rate;
     formattedSettings.gains = settings.gains;
-    formattedSettings.publish_summary_peaks = settings.publish_summary_peaks;
     formattedSettings.labjack_reset = false;
     for(let i = 0; i < 8; i++) {
       const index = settings.channels_enabled.indexOf(i + 1)
@@ -374,14 +366,10 @@
         formattedSettings.channels_enabled[i] = true;
         formattedSettings.data_formats[i] = settings.data_formats[index];
         formattedSettings.measurement_units[i] = settings.measurement_units[index];
-        formattedSettings.publish_raw_data[i] = settings.publish_raw_data[index];
-        formattedSettings.measure_peaks[i] = settings.measure_peaks[index];
       } else {
         formattedSettings.channels_enabled[i] = false;
         formattedSettings.data_formats[i] = "";
         formattedSettings.measurement_units[i] = "";
-        formattedSettings.publish_raw_data[i] = false;
-        formattedSettings.measure_peaks[i] = false;
       }
     }
 
@@ -394,14 +382,22 @@
       cabinet_id: formattedLJ.cabinet_id,
       labjack_name: formattedLJ.labjack_name,
       serial: formattedLJ.serial,
-      sensor_settings: defaultSensorSettings
+      sensor_settings: {
+        sampling_rate: 0,
+        scan_rate: 0,
+        channels_enabled: [],
+        gains: 0,
+        data_formats: [],
+        measurement_units: [],
+        labjack_reset: false,
+      }
     }
     const settings = formattedLJ.sensor_settings;
     let activeChannel = -1;
 
     labjack.sensor_settings.sampling_rate = settings.sampling_rate;
+    labjack.sensor_settings.scan_rate = settings.scan_rate;
     labjack.sensor_settings.gains = settings.gains;
-    labjack.sensor_settings.publish_summary_peaks = settings.publish_summary_peaks;
     labjack.sensor_settings.labjack_reset = false;
     for(let i = 0; i < 8; i++) {
       if(settings.channels_enabled[i]){
@@ -409,8 +405,6 @@
         labjack.sensor_settings.channels_enabled[activeChannel] = i + 1;
         labjack.sensor_settings.data_formats[activeChannel] = settings.data_formats[i];
         labjack.sensor_settings.measurement_units[activeChannel] = settings.measurement_units[i];
-        labjack.sensor_settings.publish_raw_data[activeChannel] = settings.publish_raw_data[i];
-        labjack.sensor_settings.measure_peaks[activeChannel] = settings.measure_peaks[i];
       }
     }
     return labjack;

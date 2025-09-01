@@ -18,6 +18,28 @@ mod sample_data_generated {
 }
 use sample_data_generated::sampler::{self, ScanArgs};
 
+#[allow(dead_code)]
+#[derive(Debug, Clone, Deserialize)]
+struct NestedConfig {
+    cabinet_id: String,
+    labjack_name: String,
+    serial: String,
+    sensor_settings: SensorSettings,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Deserialize)]
+struct SensorSettings {
+    scan_rate: Option<i32>,     // make optional, can default
+    sampling_rate: f64,
+    channels_enabled: Vec<u8>,
+    gains: i32,
+    data_formats: Vec<String>,
+    measurement_units: Vec<String>,
+    labjack_reset: bool,
+}
+
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct SampleConfig {
     scans_per_read: i32,
@@ -29,6 +51,23 @@ struct SampleConfig {
     nats_stream: String,
     rotate_secs: u64,
 }
+
+impl From<(NestedConfig, &SampleConfig)> for SampleConfig {
+    fn from((nested, base): (NestedConfig, &SampleConfig)) -> Self {
+        let raw = nested.sensor_settings;
+        SampleConfig {
+            scans_per_read: raw.scan_rate.unwrap_or(200), // sensible default
+            suggested_scan_rate: raw.sampling_rate,
+            channels: raw.channels_enabled,
+            asset_number: base.asset_number,
+            nats_url: base.nats_url.clone(),
+            nats_subject: base.nats_subject.clone(),
+            nats_stream: base.nats_stream.clone(),
+            rotate_secs: base.rotate_secs,
+        }
+    }
+}
+
 
 struct LabJackGuard {
     handle: i32,
@@ -108,13 +147,29 @@ async fn ensure_kv_bucket(js: &jetstream::Context, bucket: &str) -> Result<kv::S
 async fn load_config_from_kv(store: &kv::Store, key: &str) -> Result<SampleConfig, LJMError> {
     match store.entry(key).await {
         Ok(Some(entry)) => {
-            serde_json::from_slice::<SampleConfig>(entry.value.as_ref())
-                .map_err(|e| LJMError::LibraryError(format!("Config JSON parse error: {}", e)))
+            let nested_cfg: NestedConfig = serde_json::from_slice(entry.value.as_ref())
+                .map_err(|e| LJMError::LibraryError(format!("Config JSON parse error: {}", e)))?;
+
+            let base = SampleConfig {
+                scans_per_read: nested_cfg.sensor_settings.scan_rate.unwrap_or(200),
+                suggested_scan_rate: nested_cfg.sensor_settings.sampling_rate,
+                channels: nested_cfg.sensor_settings.channels_enabled.clone(),
+                asset_number: 0,
+                nats_url: std::env::var("NATS_URL").unwrap_or_else(|_| "nats://0.0.0.0:4222".into()),
+                nats_subject: "avenabox".into(),
+                nats_stream: "stream".into(),
+                rotate_secs: 60,
+            };
+
+            Ok(SampleConfig::from((nested_cfg, &base)))
         }
         Ok(None) => Err(LJMError::LibraryError(format!("KV key '{}' not found", key))),
         Err(e) => Err(LJMError::LibraryError(format!("KV entry error for '{}': {}", key, e))),
     }
 }
+
+
+
 
 
 async fn watch_kv_config(
@@ -135,13 +190,41 @@ async fn watch_kv_config(
                 match maybe {
                     Some(Ok(entry)) => {
                         if entry.operation == Operation::Put {
-                            if let Ok(new_cfg) = serde_json::from_slice::<SampleConfig>(entry.value.as_ref()) {
-                                if new_cfg != *config_tx.borrow() {
-                                    println!("[watch_kv_config] KV config updated (rev {}): {:?}", entry.revision, new_cfg);
-                                    let _ = config_tx.send(new_cfg);
+                            // try nested format first
+                            let parsed = serde_json::from_slice::<NestedConfig>(entry.value.as_ref())
+                                .map(|nested| {
+                                    let raw = nested.sensor_settings;
+                                    let base = config_tx.borrow().clone();
+
+                                    SampleConfig {
+                                        scans_per_read: raw.scan_rate.unwrap_or(200),
+                                        suggested_scan_rate: raw.sampling_rate,
+                                        channels: raw.channels_enabled,
+                                        asset_number: base.asset_number,
+                                        nats_url: base.nats_url,
+                                        nats_subject: base.nats_subject,
+                                        nats_stream: base.nats_stream,
+                                        rotate_secs: base.rotate_secs,
+                                    }
+
+                                })
+                                .or_else(|_| {
+                                    serde_json::from_slice::<SampleConfig>(entry.value.as_ref())
+                                });
+
+                            match parsed {
+                                Ok(new_cfg) => {
+                                    if new_cfg != *config_tx.borrow() {
+                                        println!(
+                                            "[watch_kv_config] KV config updated (rev {}): {:?}",
+                                            entry.revision, new_cfg
+                                        );
+                                        let _ = config_tx.send(new_cfg);
+                                    }
                                 }
-                            } else {
-                                eprintln!("[watch_kv_config] Invalid JSON in KV for key '{}'", entry.key);
+                                Err(e) => {
+                                    eprintln!("[watch_kv_config] Failed to parse JSON for key '{}': {}", entry.key, e);
+                                }
                             }
                         } else {
                             eprintln!("[watch_kv_config] {:?} for key '{}', ignoring.", entry.operation, entry.key);
@@ -157,6 +240,7 @@ async fn watch_kv_config(
         }
     }
 }
+
 
 
 use std::sync::{
@@ -334,8 +418,8 @@ async fn main() -> Result<(), LJMError> {
         .map_err(|e| LJMError::LibraryError(format!("NATS connect failed: {}", e)))?;
     let js = jetstream::new(nc);
 
-    let bucket = std::env::var("CFG_BUCKET").unwrap_or_else(|_| "sampler_cfg".into());
-    let key    = std::env::var("CFG_KEY").unwrap_or_else(|_| "active".into());
+    let bucket = std::env::var("CFG_BUCKET").unwrap_or_else(|_| "avenabox_001".into());
+    let key    = std::env::var("CFG_KEY").unwrap_or_else(|_| "labjackd.config.TEST001".into());
 
     let store = ensure_kv_bucket(&js, &bucket).await?;
     let cfg = load_config_from_kv(&store, &key).await?;

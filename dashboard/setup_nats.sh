@@ -124,14 +124,12 @@ create_sample_data() {
                     "labjack_name": "Main Sensor Hub",
                     "serial": "TEST001",
                     "sensor_settings": {
+                        "scan_rate": 200,
                         "sampling_rate": 1000,
                         "channels_enabled": [1, 2, 3],
                         "gains": 1,
                         "data_formats": ["voltage", "temperature", "pressure"],
                         "measurement_units": ["V", "°C", "PSI"],
-                        "publish_raw_data": [true, true, true],
-                        "measure_peaks": [false, true, false],
-                        "publish_summary_peaks": true,
                         "labjack_reset": false
                     }
                 }' || true
@@ -142,20 +140,19 @@ create_sample_data() {
                     "labjack_name": "Environmental Monitor",
                     "serial": "TEST002",
                     "sensor_settings": {
+                        "scan_rate": 200,
                         "sampling_rate": 500,
                         "channels_enabled": [1, 2],
                         "gains": 2,
                         "data_formats": ["temperature", "humidity"],
                         "measurement_units": ["°C", "%RH"],
-                        "publish_raw_data": [true, true],
-                        "measure_peaks": [true, false],
-                        "publish_summary_peaks": true,
                         "labjack_reset": false
                     }
                 }' || true
                 ;;
             "avenabox_003")
                 nats kv put "$avenabox" labjackd.config.TEST003 '{
+                    "scan_rate": 200,
                     "cabinet_id": "avenabox_003",
                     "labjack_name": "Traffic Sensor",
                     "serial": "TEST003",
@@ -165,9 +162,6 @@ create_sample_data() {
                         "gains": 1,
                         "data_formats": ["voltage", "digital", "digital"],
                         "measurement_units": ["V", "count", "count"],
-                        "publish_raw_data": [true, false, false],
-                        "measure_peaks": [false, true, true],
-                        "publish_summary_peaks": false,
                         "labjack_reset": false
                     }
                 }' || true

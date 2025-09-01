@@ -1,26 +1,37 @@
-[72774] 2025/09/01 01:02:53.489868 [INF] Starting nats-server
-[72774] 2025/09/01 01:02:53.489976 [INF]   Version:  2.11.7
-[72774] 2025/09/01 01:02:53.489983 [INF]   Git:      [not set]
-[72774] 2025/09/01 01:02:53.489987 [INF]   Name:     NCZCMR7ADQPZEZFSLXZMSL2B4NXHXXFWKHCOYDDOO44ECISUFIHW5YUB
-[72774] 2025/09/01 01:02:53.489993 [INF]   Node:     Wb8xIrL8
-[72774] 2025/09/01 01:02:53.489996 [INF]   ID:       NCZCMR7ADQPZEZFSLXZMSL2B4NXHXXFWKHCOYDDOO44ECISUFIHW5YUB
-[72774] 2025/09/01 01:02:53.490011 [INF] Using configuration file: nats.conf (sha256:42b79660de255ca88ae24db86a107ce499471f8b03911395807012fb7aeac879)
-[72774] 2025/09/01 01:02:53.491344 [INF] Starting http monitor on 0.0.0.0:8222
-[72774] 2025/09/01 01:02:53.491903 [INF] Starting JetStream
-[72774] 2025/09/01 01:02:53.492044 [INF]     _ ___ _____ ___ _____ ___ ___   _   __  __
-[72774] 2025/09/01 01:02:53.492050 [INF]  _ | | __|_   _/ __|_   _| _ \ __| /_\ |  \/  |
-[72774] 2025/09/01 01:02:53.492053 [INF] | || | _|  | | \__ \ | | |   / _| / _ \| |\/| |
-[72774] 2025/09/01 01:02:53.492056 [INF]  \__/|___| |_| |___/ |_| |_|_\___/_/ \_\_|  |_|
-[72774] 2025/09/01 01:02:53.492059 [INF] 
-[72774] 2025/09/01 01:02:53.492062 [INF]          https://docs.nats.io/jetstream
-[72774] 2025/09/01 01:02:53.492065 [INF] 
-[72774] 2025/09/01 01:02:53.492068 [INF] ---------------- JETSTREAM ----------------
-[72774] 2025/09/01 01:02:53.492096 [INF]   Max Memory:      1.00 GB
-[72774] 2025/09/01 01:02:53.492100 [INF]   Max Storage:     10.00 GB
-[72774] 2025/09/01 01:02:53.492103 [INF]   Store Directory: "jetstream/jetstream"
-[72774] 2025/09/01 01:02:53.492106 [INF]   API Level:       1
-[72774] 2025/09/01 01:02:53.492108 [INF] -------------------------------------------
-[72774] 2025/09/01 01:02:53.492447 [INF] Listening for websocket clients on ws://0.0.0.0:4443
-[72774] 2025/09/01 01:02:53.492453 [WRN] Websocket not configured with TLS. DO NOT USE IN PRODUCTION!
-[72774] 2025/09/01 01:02:53.492611 [INF] Listening for client connections on 0.0.0.0:4222
-[72774] 2025/09/01 01:02:53.492710 [INF] Server is ready
+[98971] 2025/09/01 03:53:50.666750 [INF] Starting nats-server
+[98971] 2025/09/01 03:53:50.667255 [INF]   Version:  2.11.7
+[98971] 2025/09/01 03:53:50.667260 [INF]   Git:      [not set]
+[98971] 2025/09/01 03:53:50.667263 [INF]   Name:     NAS5ZLEYCS5N56SM4HCGQOHDKZGSGROPBWJHD5SRCAAQZJM3PFUBGWJK
+[98971] 2025/09/01 03:53:50.667265 [INF]   Node:     3hFrAVg3
+[98971] 2025/09/01 03:53:50.667267 [INF]   ID:       NAS5ZLEYCS5N56SM4HCGQOHDKZGSGROPBWJHD5SRCAAQZJM3PFUBGWJK
+[98971] 2025/09/01 03:53:50.667389 [INF] Using configuration file: nats.conf (sha256:42b79660de255ca88ae24db86a107ce499471f8b03911395807012fb7aeac879)
+[98971] 2025/09/01 03:53:50.671729 [INF] Starting http monitor on 0.0.0.0:8222
+[98971] 2025/09/01 03:53:50.672240 [INF] Starting JetStream
+[98971] 2025/09/01 03:53:50.672409 [INF]     _ ___ _____ ___ _____ ___ ___   _   __  __
+[98971] 2025/09/01 03:53:50.672413 [INF]  _ | | __|_   _/ __|_   _| _ \ __| /_\ |  \/  |
+[98971] 2025/09/01 03:53:50.672415 [INF] | || | _|  | | \__ \ | | |   / _| / _ \| |\/| |
+[98971] 2025/09/01 03:53:50.672418 [INF]  \__/|___| |_| |___/ |_| |_|_\___/_/ \_\_|  |_|
+[98971] 2025/09/01 03:53:50.672419 [INF] 
+[98971] 2025/09/01 03:53:50.672421 [INF]          https://docs.nats.io/jetstream
+[98971] 2025/09/01 03:53:50.672423 [INF] 
+[98971] 2025/09/01 03:53:50.672425 [INF] ---------------- JETSTREAM ----------------
+[98971] 2025/09/01 03:53:50.672588 [INF]   Max Memory:      1.00 GB
+[98971] 2025/09/01 03:53:50.672592 [INF]   Max Storage:     10.00 GB
+[98971] 2025/09/01 03:53:50.672595 [INF]   Store Directory: "jetstream/jetstream"
+[98971] 2025/09/01 03:53:50.672597 [INF]   API Level:       1
+[98971] 2025/09/01 03:53:50.672599 [INF] -------------------------------------------
+[98971] 2025/09/01 03:53:50.673944 [INF]   Starting restore for stream '$G > KV_all_cabinets'
+[98971] 2025/09/01 03:53:50.679327 [INF]   Restored 3 messages for stream '$G > KV_all_cabinets' in 5ms
+[98971] 2025/09/01 03:53:50.679551 [INF]   Starting restore for stream '$G > KV_avenabox_001'
+[98971] 2025/09/01 03:53:50.680021 [INF]   Restored 3 messages for stream '$G > KV_avenabox_001' in 0s
+[98971] 2025/09/01 03:53:50.681341 [INF]   Starting restore for stream '$G > KV_avenabox_002'
+[98971] 2025/09/01 03:53:50.682334 [INF]   Restored 1 messages for stream '$G > KV_avenabox_002' in 1ms
+[98971] 2025/09/01 03:53:50.682549 [INF]   Starting restore for stream '$G > KV_avenabox_003'
+[98971] 2025/09/01 03:53:50.682880 [INF]   Restored 1 messages for stream '$G > KV_avenabox_003' in 0s
+[98971] 2025/09/01 03:53:50.683397 [INF]   Starting restore for stream '$G > stream'
+[98971] 2025/09/01 03:53:50.683949 [INF]   Restored 118,375 messages for stream '$G > stream' in 1ms
+[98971] 2025/09/01 03:53:50.684000 [INF]   Recovering 8 consumers for stream - '$G > KV_avenabox_001'
+[98971] 2025/09/01 03:53:50.690891 [INF] Listening for websocket clients on ws://0.0.0.0:4443
+[98971] 2025/09/01 03:53:50.690896 [WRN] Websocket not configured with TLS. DO NOT USE IN PRODUCTION!
+[98971] 2025/09/01 03:53:50.691077 [INF] Listening for client connections on 0.0.0.0:4222
+[98971] 2025/09/01 03:53:50.691175 [INF] Server is ready

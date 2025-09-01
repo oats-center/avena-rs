@@ -7,13 +7,11 @@
   }
   type FormattedSensorSettings = {
     "sampling_rate": number;
+    "scan_rate": number;
     "channels_enabled": boolean[];
     "gains": number;
     "data_formats": string[];
     "measurement_units": string[];
-    "publish_raw_data": boolean[];
-    "measure_peaks": boolean[];
-    "publish_summary_peaks": boolean;
     "labjack_reset": boolean;
   }
 
@@ -76,27 +74,27 @@
     </div>
 
     <!-- Basic Configuration -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
       <div class="space-y-2">
-        <label for="serialNumber" class="block text-sm font-medium text-gray-300">Serial Number</label>
+        <label for="serialNumber" class="block text-xs font-medium text-gray-300">Serial Number</label>
         <input 
           id="serialNumber"
           type="text" 
           name="serialNumber" 
           disabled={!newLabjack || readOnly} 
-          class="w-full px-4 py-3 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed" 
+          class="w-full px-3 py-2 text-sm bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed" 
           bind:value={labjackEdit.serial} 
           required
-          placeholder="Enter serial number"
+          placeholder="Serial"
         />
       </div>
       
       <div class="space-y-2">
-        <label for="samplingRate" class="block text-sm font-medium text-gray-300">Sampling Rate (Hz)</label>
+        <label for="samplingRate" class="block text-xs font-medium text-gray-300">Sampling Rate (Hz)</label>
         <input 
           id="samplingRate"
           type="number" 
-          class="w-full px-4 py-3 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200" 
+          class="w-full px-3 py-2 text-sm bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200" 
           bind:value={labjackEdit.sensor_settings.sampling_rate}
           placeholder="0"
           disabled={readOnly}
@@ -104,11 +102,23 @@
       </div>
       
       <div class="space-y-2">
-        <label for="gain" class="block text-sm font-medium text-gray-300">Gain</label>
+        <label for="scanRate" class="block text-xs font-medium text-gray-300">Scan Rate (Hz)</label>
+        <input 
+          id="scanRate"
+          type="number" 
+          class="w-full px-3 py-2 text-sm bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200" 
+          bind:value={labjackEdit.sensor_settings.scan_rate}
+          placeholder="0"
+          disabled={readOnly}
+        />
+      </div>
+      
+      <div class="space-y-2">
+        <label for="gain" class="block text-xs font-medium text-gray-300">Gain</label>
         <input 
           id="gain"
           type="number" 
-          class="w-full px-4 py-3 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200" 
+          class="w-full px-3 py-2 text-sm bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200" 
           bind:value={labjackEdit.sensor_settings.gains}
           placeholder="1"
           disabled={readOnly}
@@ -133,8 +143,6 @@
               <th class="text-center py-3 px-4 text-sm font-medium text-gray-300 bg-gray-800/50">Enabled</th>
               <th class="text-left py-3 px-4 text-sm font-medium text-gray-300 bg-gray-800/50">Data Format</th>
               <th class="text-left py-3 px-4 text-sm font-medium text-gray-300 bg-gray-800/50">Units</th>
-              <th class="text-center py-3 px-4 text-sm font-medium text-gray-300 bg-gray-800/50">Publish Raw Data</th>
-              <th class="text-center py-3 px-4 text-sm font-medium text-gray-300 bg-gray-800/50 rounded-tr-lg">Measure Peaks</th>
             </tr>
           </thead>
           <tbody>
@@ -180,30 +188,6 @@
                     disabled={!isEnabled || readOnly}
                     placeholder="e.g., V, A, °C"
                   />
-                </td>
-                
-                <td class="py-3 px-4 text-center">
-                  <label class="relative inline-flex items-center cursor-pointer {!isEnabled ? 'opacity-50 cursor-not-allowed' : ''}">
-                    <input 
-                      type="checkbox" 
-                      bind:checked={labjackEdit.sensor_settings.publish_raw_data[index - 1]} 
-                      class="sr-only peer"
-                      disabled={!isEnabled || readOnly}
-                    />
-                    <div class="w-9 h-5 bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
-                  </label>
-                </td>
-                
-                <td class="py-3 px-4 text-center">
-                  <label class="relative inline-flex items-center cursor-pointer {!isEnabled ? 'opacity-50 cursor-not-allowed' : ''}">
-                    <input 
-                      type="checkbox" 
-                      bind:checked={labjackEdit.sensor_settings.measure_peaks[index - 1]} 
-                      class="sr-only peer"
-                      disabled={!isEnabled || readOnly}
-                    />
-                    <div class="w-9 h-5 bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
-                  </label>
                 </td>
               </tr>
             {/each}
