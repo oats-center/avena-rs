@@ -50,17 +50,24 @@ Each cabinet then has its own bucket, containing a few different key variations:
 "mapconfig": {
   "backgroundImage": "data:image/png;base64...",
   "labjackd.1.ch1": {
-    "cabinet_id":"road1_cabinet1",
-    "labjack_serial":"1",
-    "connected_channel":"1",
-    "sensor_name":"New Sensor",
-    "sensor_type":"Temp",
+    "cabinet_id": "avenabox_001",
+    "labjack_name": "Main Sensor Hub",
+    "serial": "TEST001",
+    "sensor_name":"Temperature Sensor A",
+    "sensor_type":"Temperature",
     "x_pos":22,
     "y_pos":64,
     "color":"red"
   },
   "labjackd.1.ch2": {
-    ...
+    "cabinet_id": "avenabox_001",
+    "labjack_name": "Main Sensor Hub",
+    "serial": "TEST001",
+    "sensor_name":"Pressure Sensor",
+    "sensor_type":"Pressure",
+    "x_pos":22,
+    "y_pos":70,
+    "color":"red"
   }
 }
 "sensor_types": {

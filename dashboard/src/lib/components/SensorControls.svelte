@@ -21,7 +21,7 @@
   //form validation for mapconfig controls
   function handleSave(): void {
     if(!editingSensor) throw new Error ("No editing sensor with save confirmation?")
-    if(editingSensor.labjack_serial === '0' ||editingSensor.labjack_serial === ""){
+    if(editingSensor.serial === '0' ||editingSensor.serial === ""){
       alert = "Serial Number Cannot Be 0 or Empty";
       return;
     }
@@ -38,7 +38,7 @@
       return;
     }
     for(let i = 0; i < sensors.length; i++) {
-      if(sensors[i].connected_channel == editingSensor.connected_channel && sensors[i].labjack_serial == editingSensor.labjack_serial && editingIndex !== i){
+      if(sensors[i].connected_channel == editingSensor.connected_channel && sensors[i].serial == editingSensor.serial && editingIndex !== i){
         alert = "Sensor with corresponding channel and labjack already exists"
         return;
       }
@@ -60,8 +60,11 @@
       <label for="nameInput" class="text-gray-300 text-sm font-medium">Name:</label>
       <input id="nameInput" type="text" bind:value={editingSensor.sensor_name} class="w-full px-3 py-2 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50" placeholder="Sensor Name"/>
     
+      <label for="labjackName" class="text-gray-300 text-sm font-medium">LabJack Name:</label>
+      <input id="labjackName" type="text" bind:value={editingSensor.labjack_name} class="w-full px-3 py-2 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50" placeholder="LabJack Name"/>
+    
       <label for="serialNumber" class="text-gray-300 text-sm font-medium">LabJack Serial Number:</label>
-      <input id="serialNumber" type="text" bind:value={editingSensor.labjack_serial} class="w-full px-3 py-2 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50" placeholder="Labjack Serial"/>
+      <input id="serialNumber" type="text" bind:value={editingSensor.serial} class="w-full px-3 py-2 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50" placeholder="Labjack Serial"/>
     
       <label for="channelNumber" class="text-gray-300 text-sm font-medium">Connect Channel:</label>
       <input id="channelNumber" type="text" bind:value={editingSensor.connected_channel} class="w-full px-3 py-2 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50" placeholder="Channel Number"/>
