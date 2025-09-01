@@ -1,0 +1,15 @@
+# Rust target directory
+/target
+
+# Binary files
+*.bin
+
+# CSV log/output files
+*.csv
+
+# FBS log/output files
+*.fbsdata
+
+
+# parquet files ignire
+parquet/*
