@@ -22,13 +22,13 @@
   } = $props()
   let labjackArray = $derived.by(() => {
     const uniqueLabjacks = sensors
-    .map(sensor => sensor.labjack_serial)
+    .map(sensor => sensor.serial)
     .filter((serial, index, self) => self.indexOf(serial) === index);
     return uniqueLabjacks;
   });
   let channelArray = $derived.by(() => {
     let channels = [];
-    channels = sensors.filter(sensor => sensor.labjack_serial === selectedLabjack)
+    channels = sensors.filter(sensor => sensor.serial === selectedLabjack)
     .map(sensor => sensor.connected_channel);
     return channels;
   });
@@ -46,24 +46,22 @@
   let newSensor = $state<Sensor | null>(null)
   let newIndex = $state<number>(-1);
 
-  //reads the file from the file input
-  function readFile(): void {
-    if(!fileInput) return;
-
-    if(fileInput !== null && fileInput.files){
-      const file = fileInput.files[0];
-      const reader = new FileReader();
+  //reads file and converts to base64
+  async function readFile(): Promise<void> {
+    if (!fileInput || !fileInput.files || fileInput.files.length === 0) return;
     
-      reader.addEventListener("load", () => {
-        if(typeof reader.result === "string"){
-          saveBackgroundChanges(reader.result);
-          fileInput!.value = "";
-        }
-      });
-      reader.readAsDataURL(file);
-    } else {
-      console.log("No file input")
-    }  
+    const file = fileInput.files[0];
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+      if (e.target?.result) {
+        const base64String = e.target.result as string;
+        saveBackgroundChanges(base64String);
+        fileInput!.value = ""; // Clear the input after upload
+      }
+    };
+    
+    reader.readAsDataURL(file);
   }
 
   //handles adding a new sensor Type
@@ -109,17 +107,35 @@
     if (!background) throw new Error("Background Doesn't Work");
     if (!selectedCabinet) throw new Error("No Cabinet Selection")
     
+    // Only allow drag if labjack is selected
+    if (selectedLabjack === "Choose Labjack") {
+      console.log("Please select a Labjack first before adding sensors");
+      return;
+    }
+    
     if(e.which === 1) {
       dragging = true;
+      
+      // Find next available channel for this labjack
+      const usedChannels = sensors
+        .filter(sensor => sensor.serial === selectedLabjack)
+        .map(sensor => parseInt(sensor.connected_channel));
+      
+      let nextChannel = 1;
+      while (usedChannels.includes(nextChannel)) {
+        nextChannel++;
+      }
+      
       newSensor = {
         "cabinet_id": selectedCabinet,
-        "labjack_serial" : "",
-        "connected_channel": "",
-        "sensor_name" : "", 
+        "labjack_name": `Labjack ${selectedLabjack}`,
+        "serial" : selectedLabjack,
+        "connected_channel": nextChannel.toString(),
+        "sensor_name" : `${type.name} Sensor ${nextChannel}`, 
         "sensor_type" : type.name, 
         "x_pos" : e.clientX,
         "y_pos" : e.clientY, 
-        "color" : "black", 
+        "color" : type.name === "Temperature" ? "red" : "blue", 
       }
       newIndex = index
     }
@@ -143,8 +159,6 @@
       && newSensor.y_pos >= back_loc.y && newSensor.y_pos <= back_loc.y + background.height){
         const scaleX = 100 / background.width;
         const scaleY = 100 / background.height;
-        
-        const back_loc = background.getBoundingClientRect()
 
         newSensor.x_pos = (newSensor.x_pos - back_loc.x) * scaleX;
         newSensor.y_pos = (newSensor.y_pos - back_loc.y) * scaleY;
@@ -152,10 +166,15 @@
         newSensor.x_pos = Math.round(newSensor.x_pos)
         newSensor.y_pos = Math.round(newSensor.y_pos)
 
+        // Add sensor to array and save to NATS immediately
         sensors.push(JSON.parse(JSON.stringify(newSensor)));
-        newSensor = null;
         editingIndex = sensors.length - 1
         editingSensor = sensors[editingIndex]
+        
+        // Auto-save the new sensor
+        saveSensorChanges();
+        
+        newSensor = null;
     } else {
       newSensor = null;
     }
@@ -164,6 +183,16 @@
   //moves te context box out of window if clicked out of
   function handleWindowClick(){
     context_position = [-1000, -1000]; 
+  }
+
+  //removes the selected sensor
+  function removeSensor(): void {
+    if (editingIndex !== -1) {
+      sensors.splice(editingIndex, 1);
+      editingIndex = -1;
+      editingSensor = null;
+      saveSensorChanges();
+    }
   }
 
   //moves context box into view and handles contents
@@ -179,115 +208,160 @@
   }
 
 </script>
-<div class="flex flex-col items-center space-y-4 w-full">
-  <!-- NavBar -->
-  <div class="w-full text-center -mt-8">
-    <h1 class="text-xl font-semibold text-white mb-4">Map Configuration</h1>
-    <div class="flex justify-center space-x-4">
-      <button 
-        class="px-4 py-2 bg-white/10 backdrop-blur-lg border border-white/20 rounded-lg text-white hover:bg-white/20 transition-all duration-200"
-        onclick={() => goto("/config/cabinet-select")}
-      >
-        ← Back to Cabinet
-      </button>
-      <button 
-        class="px-4 py-2 bg-white/10 backdrop-blur-lg border border-white/20 rounded-lg text-white hover:bg-white/20 transition-all duration-200"
-        onclick={() => goto("lj-config")}
-      >
-        Card View
-      </button>
-    </div>
+<div class="w-full space-y-3">
+  <!-- Navigation -->
+  <div class="flex flex-col space-y-2">
+    <button 
+      class="px-3 py-2 bg-white/10 backdrop-blur-lg border border-white/20 rounded-lg text-white hover:bg-white/20 transition-all duration-200 text-sm"
+      onclick={() => goto("/config/cabinet-select")}
+    >
+      ← Back to Cabinet
+    </button>
+    <button 
+      class="px-3 py-2 bg-white/10 backdrop-blur-lg border border-white/20 rounded-lg text-white hover:bg-white/20 transition-all duration-200 text-sm"
+      onclick={() => goto("lj-config")}
+    >
+      Card View
+    </button>
   </div>
 
-  <!-- New Sensors -->
-  <div class="w-full bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 p-4">
-    <div class="text-center mb-4">
-      <h4 class="text-lg font-medium text-white mb-3">New Sensor</h4>
-      <button 
-        class="px-4 py-2 bg-yellow-500/20 border border-yellow-500/30 rounded-lg text-yellow-300 hover:bg-yellow-500/30 transition-all duration-200"
-        onclick={() => type_modal?.showModal()}
-      >
-        New Type
-      </button>
-    </div>
-    <div class="grid grid-cols-3 gap-4">
-      {#if sensor_types}
-        {#each sensor_types as type, index}
-        <div class="flex flex-col justify-center items-center h-full" role="button" tabindex=0 oncontextmenu={(e) => {e.preventDefault(); editing_type = JSON.parse(JSON.stringify(type)); editing_type_index = index; newType = false; clickedElement = true}}>
-          <div
-            role="button"
-            tabindex=0
-            class="flex flex-col justify-center items-center"
-            onmousedown={(event) => {handleTypeDragStart(event, type, index)}}
-            onmouseup={() => {if(newIndex === index) stopTypeDrag()}}
-            onmousemove={(event) => {if (newIndex === index) continueTypeDrag(event)}}
-            style={(newSensor && index === newIndex) ? `
-              position: fixed; 
-              top: ${newSensor.y_pos - type.size_px / 2}px;
-              left: ${newSensor.x_pos - type.size_px / 2}px;
-              min-width: ${type.size_px}px;
-              min-height: ${type.size_px}px;
-            ` : `
-              height: 100%;
-              width: 100%;
-            `}
-          >
-            <img src={type.icon} alt="sensor icon" style={`width: ${type.size_px}px; height: ${type.size_px}px;`} draggable={false}/>
-          </div>
-          <div style={(newSensor && index === newIndex) ? `
-            height: 100%;
-            width: 100%;
-            min-width: ${type.size_px}px;
-            min-height: ${type.size_px}px;
-          ` : `
-            height: 0;
-            width: 100%;
-          `}>
-
-          </div>
-          <h6 class="text-sm text-gray-300 text-center w-full mt-2 truncate">{type.name}</h6>
+  <!-- Add Sensors -->
+  <div class="bg-white/5 backdrop-blur-lg rounded-lg border border-white/10 p-3">
+    <h4 class="text-sm font-medium text-white mb-2">Add Sensors</h4>
+    {#if sensor_types && sensor_types.length > 0}
+      <div class="grid grid-cols-2 gap-1.5">
+        {#each sensor_types.slice(0, 4) as type, index}
+        <div 
+          class="flex flex-col items-center p-1.5 bg-white/5 rounded border border-white/10 hover:bg-white/10 transition-all cursor-grab active:cursor-grabbing" 
+          role="button" 
+          tabindex=0 
+          onmousedown={(event) => {handleTypeDragStart(event, type, index)}}
+          onmouseup={() => {if(newIndex === index) stopTypeDrag()}}
+          onmousemove={(event) => {if (newIndex === index) continueTypeDrag(event)}}
+          style={(newSensor && index === newIndex) ? `
+            position: fixed; 
+            top: ${newSensor.y_pos - type.size_px / 2}px;
+            left: ${newSensor.x_pos - type.size_px / 2}px;
+            width: ${type.size_px}px;
+            height: ${type.size_px}px;
+            z-index: 1000;
+            background: rgba(0,0,0,0.8);
+            border: 2px solid #fbbf24;
+          ` : ''}
+        >
+          <img 
+            src={type.icon} 
+            alt="sensor icon" 
+            class="w-5 h-5 mb-0.5" 
+            draggable={false}
+          />
+          <span class="text-xs text-gray-300 text-center truncate w-full">{type.name}</span>
         </div>
         {/each}
-      {/if}
+      </div>
+    {:else}
+      <div class="text-center py-2">
+        <p class="text-gray-400 text-xs">No sensors available</p>
+      </div>
+    {/if}
+  </div>
+
+  <!-- Select Labjack -->
+  <div class="bg-white/5 backdrop-blur-lg rounded-lg border border-white/10 p-3">
+    <h4 class="text-sm font-medium text-white mb-2">Select Labjack</h4>
+    <div class="space-y-2">
+      <select class="w-full px-2 py-1.5 bg-gray-800/50 border border-gray-600/50 rounded text-white text-xs focus:outline-none focus:ring-1 focus:ring-yellow-500/50" bind:value={selectedLabjack}>
+        <option disabled selected>Choose Labjack</option>
+        {#each labjackArray as labjack}
+        <option>{labjack}</option>
+        {/each}
+      </select>
+      <button 
+        class="w-full px-2 py-1.5 bg-yellow-500/20 border border-yellow-500/30 rounded text-yellow-300 hover:bg-yellow-500/30 transition-all duration-200 text-xs disabled:opacity-50" 
+        disabled={selectedLabjack === "Choose Labjack"}
+        onclick={() => saveSensorChanges()}
+      >
+        Save Location
+      </button>
     </div>
   </div>
-  
-  <!-- Manual Sensor Select -->
-  <div class="w-full bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 p-4">
-    <div class="text-center mb-4">
-      <h4 class="text-lg font-medium text-white mb-3">Select Sensor</h4>
-      <div class="grid grid-cols-2 gap-3">
-        <select class="w-full px-3 py-2 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50" bind:value={selectedLabjack}>
-          <option disabled selected>Labjack</option>
-          {#each labjackArray as labjack}
-          <option>{labjack}</option>
-          {/each}
-        </select>
-        <select disabled={selectedLabjack === "Labjack"} class="w-full px-3 py-2 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 disabled:opacity-50" bind:value={selectedChannel}>
-          <option disabled selected>Channel</option>
-          {#each channelArray as channel}
-          <option>{channel}</option>
-          {/each}
-        </select>
-        <button class="px-4 py-2 bg-gray-600/50 border border-gray-500/50 rounded-lg text-gray-300 hover:bg-gray-500/50 transition-all duration-200" onclick={() => {selectedLabjack = "Labjack"; selectedChannel = "Channel"}}>Reset</button>
-        <button class="px-4 py-2 bg-yellow-500/20 border border-yellow-500/30 rounded-lg text-yellow-300 hover:bg-yellow-500/30 transition-all duration-200 disabled:opacity-50" disabled={selectedLabjack === "Labjack" && selectedChannel === "Channel"} onclick={() => handleManualSelect(selectedLabjack, selectedChannel)}>Select</button>
+
+  <!-- Background Image Upload -->
+  <div class="bg-white/5 backdrop-blur-lg rounded-lg border border-white/10 p-3">
+    <h4 class="text-sm font-medium text-white mb-2">Background Image</h4>
+    <div class="space-y-2">
+      <input 
+        type="file" 
+        class="w-full px-2 py-1.5 bg-gray-800/50 border border-gray-600/50 rounded text-white text-xs file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-yellow-500/20 file:text-yellow-300 hover:file:bg-yellow-500/30" 
+        accept="image/png, image/jpg, image/svg+xml" 
+        bind:this={fileInput}
+      />
+      <div class="grid grid-cols-2 gap-1.5">
+        <button 
+          class="px-2 py-1.5 bg-gray-600/50 border border-gray-500/50 rounded text-gray-300 hover:bg-gray-500/50 transition-all duration-200 text-xs" 
+          onclick={() => {fileInput!.value = ""}}
+        >
+          Cancel
+        </button>
+        <button 
+          class="px-2 py-1.5 bg-yellow-500/20 border border-yellow-500/30 rounded text-yellow-300 hover:bg-yellow-500/30 transition-all duration-200 text-xs" 
+          onclick={readFile}
+        >
+          Upload
+        </button>
       </div>
     </div>
   </div>
 
-  <!-- Background Image Change -->
-  <div class="w-full bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 p-4">
-    <div class="text-center mb-4">
-      <h4 class="text-lg font-medium text-white mb-3">Change Background Image</h4>
-      <div class="grid grid-cols-1 gap-3">
-        <input type="file" class="w-full px-3 py-2 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-yellow-500/20 file:text-yellow-300 hover:file:bg-yellow-500/30" accept="image/png, image/jpg" bind:this={fileInput}/>
-        <div class="grid grid-cols-2 gap-3">
-          <button class="px-4 py-2 bg-gray-600/50 border border-gray-500/50 rounded-lg text-gray-300 hover:bg-gray-500/50 transition-all duration-200" onclick={() => {fileInput!.value = ""}}>Cancel</button>
-          <button class="px-4 py-2 bg-yellow-500/20 border border-yellow-500/30 rounded-lg text-yellow-300 hover:bg-yellow-500/30 transition-all duration-200" onclick={readFile}>Save</button>
+  <!-- Sensor Position Controls -->
+  {#if editingIndex !== -1 && editingSensor}
+  <div class="bg-white/5 backdrop-blur-lg rounded-lg border border-white/10 p-3">
+    <h4 class="text-sm font-medium text-white mb-2">Selected Sensor Position</h4>
+    <div class="space-y-2">
+      <div class="text-xs text-gray-300 mb-1">{editingSensor.sensor_name || `${editingSensor.sensor_type} ${editingSensor.connected_channel}`}</div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="text-xs text-gray-400">X Position (%)</label>
+          <input 
+            type="number" 
+            min="0" 
+            max="100" 
+            step="0.1"
+            class="w-full px-2 py-1 bg-gray-800/50 border border-gray-600/50 rounded text-white text-xs focus:outline-none focus:ring-1 focus:ring-yellow-500/50"
+            bind:value={editingSensor.x_pos}
+            oninput={() => saveSensorChanges()}
+          />
+        </div>
+        <div>
+          <label class="text-xs text-gray-400">Y Position (%)</label>
+          <input 
+            type="number" 
+            min="0" 
+            max="100" 
+            step="0.1"
+            class="w-full px-2 py-1 bg-gray-800/50 border border-gray-600/50 rounded text-white text-xs focus:outline-none focus:ring-1 focus:ring-yellow-500/50"
+            bind:value={editingSensor.y_pos}
+            oninput={() => saveSensorChanges()}
+          />
         </div>
       </div>
-    </div>      
+      <div class="grid grid-cols-2 gap-1.5 mt-2">
+        <button 
+          class="px-2 py-1.5 bg-red-500/20 border border-red-500/30 rounded text-red-300 hover:bg-red-500/30 transition-all duration-200 text-xs" 
+          onclick={removeSensor}
+        >
+          Remove
+        </button>
+        <button 
+          class="px-2 py-1.5 bg-yellow-500/20 border border-yellow-500/30 rounded text-yellow-300 hover:bg-yellow-500/30 transition-all duration-200 text-xs" 
+          onclick={() => saveSensorChanges()}
+        >
+          Save
+        </button>
+      </div>
+    </div>
   </div>
+  {/if}
 </div>
 
 

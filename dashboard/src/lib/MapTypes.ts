@@ -21,11 +21,12 @@ export type SensorType = {
 //Sensor information parsed from MapConfig
 export type Sensor = {
   "cabinet_id" : string;
-  "labjack_serial" : string;
-  "connected_channel": string; 
+  "labjack_name" : string;
+  "serial" : string;
   "sensor_name" : string; 
   "sensor_type" : string; 
   "x_pos" : number; 
   "y_pos" : number; 
-  "color" : string; 
+  "color" : string;
+  "connected_channel" : string;
 }

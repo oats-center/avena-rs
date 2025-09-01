@@ -30,6 +30,15 @@
   let editingSensor = $state<Sensor | null>(null);
   let editingIndex= $state<number>(-1);
   let queuedIndex = -1;
+  
+  // Add missing state variables for MapControls
+  let selectedLabjack = $state<string>("Choose Labjack");
+  let labjackArray = $derived.by(() => {
+    const uniqueLabjacks = sensors
+      .map(sensor => sensor.serial)
+      .filter((serial, index, self) => self.indexOf(serial) === index);
+    return uniqueLabjacks;
+  });
           
   let alert = $state<string | null>(null);  
   let cancel_modal = $state<HTMLDialogElement>();
@@ -76,10 +85,10 @@
     
     if(editingSensor && editingIndex){
       sensors[editingIndex] = editingSensor;
-      mapconfig[`labjackd.${editingSensor.labjack_serial}.ch${editingSensor.connected_channel}`] = editingSensor;
+      mapconfig[`labjackd.${editingSensor.serial}.ch${editingSensor.connected_channel}`] = editingSensor;
     } else {
       sensors.forEach((sensor) => {
-        mapconfig[`labjackd.${sensor.labjack_serial}.ch${sensor.connected_channel}`] = sensor;
+        mapconfig[`labjackd.${sensor.serial}.ch${sensor.connected_channel}`] = sensor;
       })
     }
     putKeyValue(nats, selectedCabinet, "mapconfig", JSON.stringify(mapconfig));
@@ -93,7 +102,7 @@
   function handleSensorChanges(sensor?: Sensor, index?: number): void {
     // option: used cancel button
     if((index === undefined || sensor === undefined) && queuedIndex === -1) { 
-      if(sensors[editingIndex].sensor_name == "" || sensors[editingIndex].labjack_serial === "" || sensors[editingIndex].connected_channel === ""){
+      if(sensors[editingIndex].sensor_name == "" || sensors[editingIndex].serial === "" || sensors[editingIndex].connected_channel === ""){
         sensors.pop()
       }
       editingSensor = null;
@@ -130,7 +139,7 @@
   function deleteSensor(): void {
     if(!nats || !selectedCabinet || !editingSensor || editingIndex === -1) throw new Error("Something went wrong with saving changes");
     sensors.splice(editingIndex, 1);
-    delete mapconfig[`labjackd.${editingSensor.labjack_serial}.ch${editingSensor.connected_channel}`];
+    delete mapconfig[`labjackd.${editingSensor.serial}.ch${editingSensor.connected_channel}`];
     editingIndex = -1;
     editingSensor = null;
     putKeyValue(nats, selectedCabinet, "mapconfig", JSON.stringify(mapconfig));
@@ -155,10 +164,43 @@
   //selects the sensor based on its labjack and channel
   function handleManualSelect(selectedLabjack: string, selectedChannel: string): void {
     editingIndex = sensors.findIndex((sensor) => 
-      sensor.labjack_serial === selectedLabjack &&
+      sensor.serial === selectedLabjack &&
       sensor.connected_channel === selectedChannel
     ) ?? null;
     editingSensor = sensors[editingIndex];
+  }
+
+  // Add missing handler functions
+  function handleSensorDrop(event: MouseEvent, sensorType: SensorType): void {
+    // Handle sensor drop logic
+  }
+
+  function handleLabjackChange(labjack: string): void {
+    selectedLabjack = labjack;
+  }
+
+  function handleBackgroundImageChange(imageData: string): void {
+    saveBackgroundChanges(imageData);
+  }
+
+  function handleSensorUpdate(sensor: Sensor): void {
+    editingSensor = sensor;
+  }
+
+  function handleSensorDelete(): void {
+    delete_modal?.showModal();
+  }
+
+  function handleSensorSave(): void {
+    save_modal?.showModal();
+  }
+
+  function handleCancel(): void {
+    handleSensorChanges();
+  }
+
+  function handleMapClick(event: MouseEvent): void {
+    // Handle map click logic
   }
 
   // Get display name for cabinet
@@ -199,23 +241,21 @@
     </div>
   </div>
 
-  <!-- Main Content -->
-  <div class="h-[calc(108vh-8rem)] flex">
-    <!--Map Area-->
-    <div class="relative w-3/4 h-full flex justify-center items-center p-4">
-      {#if backgroundImage} <!-- Checks for valid mapconfig -->
-        <div class="w-full h-full bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 overflow-hidden">
-          <SensorMap
-            {sensors}
-            {editingSensor}
-            {editingIndex}
-            {sensor_types}
-            {backgroundImage}
-            bind:background={background}
-            {handleSensorChanges}
-          />
-        </div>
-      {:else} <!-- Only if invalid mapconfig -->
+  <div class="grid grid-cols-4 gap-6 h-[calc(100vh-8rem)] p-6">
+    <!-- Left Side: Sensor Map (3/4 width) -->
+    <div class="col-span-3 bg-white/5 backdrop-blur-lg rounded-lg border border-white/10 p-4">
+      <h2 class="text-lg font-semibold text-white mb-3">{selectedCabinet} Floor Plan</h2>
+      {#if backgroundImage}
+        <SensorMap 
+          {sensors} 
+          {sensor_types} 
+          {backgroundImage} 
+          {editingIndex} 
+          {editingSensor} 
+          bind:background={background}
+          {handleSensorChanges}
+        />
+      {:else}
         <div class="w-full h-full bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 flex flex-col items-center justify-center">
           <div class="text-center">
             <div class="inline-flex items-center justify-center w-20 h-20 bg-gray-500/20 rounded-full mb-6">
@@ -230,40 +270,34 @@
       {/if}
     </div>
 
-    <!--Configuration Area-->
-    <div class="w-1/4 h-full p-4 space-y-4">
-      <div class="bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 p-2">
-        <MapControls
-          {nats}
-          {selectedCabinet}
-          bind:sensors={sensors}
-          bind:editingSensor={editingSensor}
-          bind:editingIndex={editingIndex}
-          {sensor_types}
-          bind:context_position={context_position}
-          bind:type_modal={type_modal}
-          {background}
-          {saveBackgroundChanges}
-          {handleManualSelect}
-          {saveSensorChanges}
-        />
-      </div>
+    <!-- Right Side: Controls (1/4 width) -->
+    <div class="space-y-4 h-full overflow-y-auto">
+      <!-- Map Controls -->
+      <MapControls 
+        {nats}
+        {selectedCabinet}
+        bind:sensors={sensors}
+        bind:editingSensor={editingSensor}
+        bind:editingIndex={editingIndex}
+        {sensor_types}
+        bind:context_position={context_position}
+        bind:type_modal={type_modal}
+        {background}
+        saveBackgroundChanges={saveBackgroundChanges}
+        {handleManualSelect}
+        {saveSensorChanges}
+      />
 
-      <!-- Sensor Controls for Selected Sensor -->
-      {#if editingIndex !== -1 && save_modal && cancel_modal && delete_modal && sensor_types}
-        <div class="bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 p-2">
-          <SensorControls
-            {sensors}
-            {editingIndex}
-            {editingSensor}
-            bind:alert={alert}
-            {sensor_types}
-            {cancel_modal}
-            {delete_modal}
-            {save_modal}
-            {handleSensorChanges}
-          />
-        </div>
+      <!-- Sensor Controls (only show when editing) -->
+      {#if editingIndex !== -1 && editingSensor}
+        <SensorControls 
+          sensor={editingSensor} 
+          {sensor_types}
+          onSensorUpdate={handleSensorUpdate}
+          onSensorDelete={handleSensorDelete}
+          onSensorSave={handleSensorSave}
+          onCancel={handleCancel}
+        />
       {/if}
     </div>
   </div>

@@ -19,19 +19,18 @@
   }
 
   //when the mouse moves, continue dragging
-  function continueDrag(e: MouseEvent): void {
+  function continueDrag(event: MouseEvent): void {
     if (!background || !editingSensor || !dragging) return;
 
+    const back_loc = background.getBoundingClientRect()
     const scaleX = 100 / background.width;
     const scaleY = 100 / background.height;
-    
-    const back_loc = background.getBoundingClientRect()
 
-    editingSensor.x_pos = (e.clientX - back_loc.x) * scaleX;
-    editingSensor.y_pos = (e.clientY - back_loc.y) * scaleY;
-    
-    editingSensor.x_pos = Math.min(100, Math.max(0, editingSensor.x_pos));
-    editingSensor.y_pos = Math.min(100, Math.max(0, editingSensor.y_pos));
+    editingSensor.x_pos = (event.clientX - back_loc.x) * scaleX;
+    editingSensor.y_pos = (event.clientY - back_loc.y) * scaleY;
+
+    editingSensor.x_pos = Math.round(editingSensor.x_pos * 10) / 10;
+    editingSensor.y_pos = Math.round(editingSensor.y_pos * 10) / 10;
   }
 
   //when the mouse button is back up, stop dragging and round values
@@ -44,6 +43,9 @@
     
     editingSensor.x_pos = Math.min(100, Math.max(0, editingSensor.x_pos));
     editingSensor.y_pos = Math.min(100, Math.max(0, editingSensor.y_pos));
+    
+    // Save the new position to NATS
+    handleSensorChanges(editingSensor, editingIndex);
   }
 
   //gets any sensor type property for use on map
@@ -61,26 +63,35 @@
 
 </script>
 
-<div role="none" class="fixed" onmousemove={continueDrag}>
+<div class="relative w-full h-full" onmousemove={continueDrag}>
   <img 
     alt="Background for Map" 
     src={backgroundImage}
     bind:this={background}
-    style="z-index: -1; height: 90vh; position: relative;"
+    class="w-full h-full object-contain max-h-[85vh]"
+    onclick={(e) => {
+      // Handle background clicks - deselect sensor if clicking on empty area
+      if (e.target === e.currentTarget) {
+        handleSensorChanges();
+      }
+    }}
   />
-  {#if sensors}
+  {#if sensors && background}
     {#each sensors as sensor, index}
       <div
         role="button"
         tabindex=0
+        class="absolute cursor-pointer z-10 hover:scale-110 transition-transform"
         style={`
-          position: absolute; 
-          top: calc(${(index === editingIndex && editingSensor ? editingSensor.y_pos : sensor.y_pos)}% - ${(findSensorProperty(sensor.sensor_type, index, "size_px") as number) / 2}px);
-          left: calc(${(index === editingIndex && editingSensor ? editingSensor.x_pos : sensor.x_pos)}% - ${(findSensorProperty(sensor.sensor_type, index, "size_px") as number) / 2}px);
-          min-width: ${(findSensorProperty(sensor.sensor_type, index, "size_px") as number)}px
-          min-height: ${(findSensorProperty(sensor.sensor_type, index, "size_px") as number)}px
-          border-radius: 8px; 
-          outline: ${index === editingIndex ? "2px solid black" : "none"}; 
+          top: ${(index === editingIndex && editingSensor ? editingSensor.y_pos : sensor.y_pos)}%;
+          left: ${(index === editingIndex && editingSensor ? editingSensor.x_pos : sensor.x_pos)}%;
+          transform: translate(-50%, -50%);
+          width: 24px;
+          height: 24px;
+          border: ${index === editingIndex ? "3px solid #fbbf24" : "2px solid rgba(255,255,255,0.3)"};
+          border-radius: 8px;
+          background: rgba(0,0,0,0.1);
+          backdrop-filter: blur(4px);
         `}
         onmousedown={(event) => {if(editingIndex === index) handleDragStart(event)}}
         onmouseup={() => {if(editingIndex === index) stopDrag()}}
@@ -90,12 +101,13 @@
       >
         <img 
           src={findSensorProperty(sensor.sensor_type, index, "icon")}
-          width={`${findSensorProperty(sensor.sensor_type, index, "size_px")}px`}
-          height={`${findSensorProperty(sensor.sensor_type, index, "size_px")}px`}
           draggable={false}
           alt="sensor icon"
-          style={`min-width: ${findSensorProperty(sensor.sensor_type, index, "size_px")}px; min-height: ${findSensorProperty(sensor.sensor_type, index, "size_px")}px;`}
-          />
+          class="w-full h-full object-contain p-1"
+        />
+        <div class="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white bg-black/50 px-2 py-1 rounded whitespace-nowrap">
+          {sensor.sensor_name || `${sensor.sensor_type} ${sensor.connected_channel}`}
+        </div>
       </div>
     {/each}
   {/if}
