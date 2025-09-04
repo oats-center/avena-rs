@@ -1,0 +1,5 @@
+Comment,Designator,Footprint
+RJ45,J1,RJ45_Amphenol_54602-x08_Horizontal
+P2.54mm_02x04 Pin_Socket,J3,"PinSocket_2x04_P2.54mm_Vertical"";1;""Conn_02x04_Odd_Even"
+P2.54mm_02x15_Pin_Header,J4,"PinHeader_2x15_P2.54mm_Vertical"";1;""Conn_02x15_Odd_Even"
+P2.54mm_02x02_Pin_Header,J5,"PinHeader_2x02_P2.54mm_Vertical"";1;""Conn_02x02_Odd_Even"
