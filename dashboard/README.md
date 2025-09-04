@@ -1,38 +1,54 @@
-# create-svelte
+# Avena-OTR Dashboard
 
-Everything you need to build a Svelte project, powered by [`create-svelte`](https://github.com/sveltejs/kit/tree/main/packages/create-svelte).
+A modern web dashboard for managing and configuring LabJack devices in the Avena-OTR system. Built with SvelteKit and designed for real-time sensor monitoring and configuration.
 
-## Creating a project
+## Features
 
-If you're seeing this, you've probably already done this step. Congrats!
+- **LabJack Device Management**: Configure and monitor LabJack devices across multiple cabinets
+- **Real-time Configuration**: Live updates through NATS messaging system
+- **Multi-Cabinet Support**: Manage devices across different road cabinets
+- **Channel Configuration**: Configure up to N channels per LabJack device
+- **Status Monitoring**: Track cabinet status (online, offline, maintenance)
+- **Responsive Design**: Modern UI optimized for desktop and mobile
 
+## Getting Started
+
+### Prerequisites
+
+- Node.js
+- pnpm
+- NATS server (for development)
+
+### Installation
+
+1. Clone the repository:
 ```bash
-# create a new project in the current directory
-npm create svelte@latest
-
-# create a new project in my-app
-npm create svelte@latest my-app
+git clone <repository-url>
+cd dashboard
 ```
 
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
+2. Install dependencies:
 ```bash
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
+pnpm install
 ```
 
-## Building
-
-To create a production version of your app:
-
+3. Start the development server:
 ```bash
-npm run build
+pnpm dev
 ```
 
-You can preview the production build with `npm run preview`.
+4. Open your browser to `http://localhost:5173`
 
-> To deploy your app, you may need to install an [adapter](https://kit.svelte.dev/docs/adapters) for your target environment.
+### NATS Setup
+
+For local development, you can start a NATS server:
+
+```bash
+# Start NATS server with JetStream enabled
+./setup_nats.sh
+```
+
+To stop the NATS server:
+```bash
+./cleanup_nats.sh
+```

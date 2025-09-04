@@ -1,0 +1,8 @@
+namespace sampler;
+
+table Scan {
+  timestamp: string;
+  values: [double];
+}
+
+root_type Scan;

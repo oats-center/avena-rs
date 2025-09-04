@@ -35,24 +35,37 @@ export async function connect(serverName: string): Promise<NatsService | null> {
 //gets entire list of keys that bucket contains
 export async function getKeys(nats: NatsService, bucket: string, filter?: string): Promise<string[]> {
   if (!nats) throw new Error("NATS connection is not initialized");
+  console.log(`getKeys called with bucket: ${bucket}, filter: ${filter}`);
+  
   const kv = await nats.kvm.open(bucket);
+  console.log(`KV bucket opened: ${bucket}`);
+  
   const keysList: string[] = [];
   const keys = await kv.keys(filter);
+  console.log(`Raw keys from KV:`, keys);
+  
   for await (const key of keys ) {
+    console.log(`Processing key: ${key}`);
     keysList.push(key);
   }
+  
+  console.log(`Final keys list:`, keysList);
   return keysList;
 }
 
 //gets one value in the given bucket at the given key
 export async function getKeyValue(nats: NatsService, bucket: string, key: string): Promise<string> {
   if (!nats) throw new Error("Nats connection is not initialized");
+  console.log(`getKeyValue called with bucket: ${bucket}, key: ${key}`);
+  
   const kv = await nats.kvm.open(bucket);
   let val = await kv.get(key);
+  console.log(`Raw value from KV:`, val);
+  
   const valStr = val?.string() || "Key value does not exist";
+  console.log(`Processed value string:`, valStr);
+  
   return valStr;
-  
-  
 }
 
 //gets multiple values in the given bucket at each of the given keys
