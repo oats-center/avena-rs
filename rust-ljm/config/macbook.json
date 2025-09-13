@@ -1,7 +1,7 @@
 {
   "cabinet_id": "avenabox_001",
   "labjack_name": "Main Sensor Hub",
-  "serial": "macbook",
+  "asset_number": 1,
   "nats_subject": "avenabox",
   "nats_stream": "stream",
   "rotate_secs": 60,

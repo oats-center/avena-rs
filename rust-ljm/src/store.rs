@@ -25,7 +25,10 @@ use serde::{Deserialize, Serialize};
 struct NestedConfig {
     cabinet_id: String,
     labjack_name: String,
-    serial: String,
+    asset_number: u32,
+    nats_subject: String,
+    nats_stream: String,
+    rotate_secs: u64,
     sensor_settings: SensorConfig,
 }
 
@@ -268,22 +271,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let key    = std::env::var("CFG_KEY").unwrap_or_else(|_| "labjackd.config.macbook".into());
     let store = js.get_key_value(bucket.as_str()).await?;
     let entry = store.entry(key.as_str()).await?.ok_or("KV key not found")?;
+
     let cfg: SampleConfig = match serde_json::from_slice::<NestedConfig>(&entry.value) {
         Ok(nested) => {
-            let raw_cfg = nested.sensor_settings;
-            let base = SampleConfig {
-                scans_per_read: raw_cfg.scan_rate,
-                suggested_scan_rate: raw_cfg.sampling_rate,
-                channels: raw_cfg.channels_enabled.clone(),
-                asset_number: 0,
-                nats_subject: "avenabox".into(),
-                nats_stream: "stream".into(),
-                rotate_secs: 60,
-            };
-            SampleConfig::from((raw_cfg, &base))
+            let raw = nested.sensor_settings;
+            SampleConfig {
+                scans_per_read: raw.scan_rate,
+                suggested_scan_rate: raw.sampling_rate,
+                channels: raw.channels_enabled.clone(),
+                asset_number: nested.asset_number,
+                nats_subject: nested.nats_subject,
+                nats_stream: nested.nats_stream,
+                rotate_secs: nested.rotate_secs,
+            }
         }
         Err(_) => serde_json::from_slice::<SampleConfig>(&entry.value)?,
     };
+
+    
 
     println!("[logger] Loaded config: {:?}", cfg);
 
@@ -298,42 +303,58 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         active.insert(*ch, h);
     }
 
-    tokio::spawn(async move {
-        println!("[logger] Watching KV for config changes...");
-        while let Some(ev) = watch.next().await {
-            if let Ok(entry) = ev {
-                if entry.operation == Operation::Put {
-                    if let Ok(new_cfg) = serde_json::from_slice::<NestedConfig>(&entry.value)
-                        .map(|nested| SampleConfig::from((nested.sensor_settings, &cfg)))
-                        .or_else(|_| serde_json::from_slice::<SampleConfig>(&entry.value))
-                    {
-                        println!("[logger] KV config update detected: {:?}", new_cfg);
-
-                        // remove old channels
-                        active.retain(|ch, handle| {
-                            if new_cfg.channels.contains(ch) {
-                                true
-                            } else {
-                                println!("[logger] Removing channel {ch}");
-                                handle.abort();
-                                false
-                            }
-                        });
-
-                        // add new channels
-                        for ch in &new_cfg.channels {
-                            if !active.contains_key(ch) {
-                                println!("[logger] Adding channel {ch}");
-                                let subject = format!("{}.{:03}.data.ch{:02}",
-                                    new_cfg.nats_subject, new_cfg.asset_number, ch);
-                                let h = spawn_channel_logger(
-                                    nc.clone(),
-                                    subject,
-                                    new_cfg.asset_number,
-                                    *ch,
-                                    new_cfg.rotate_secs,
-                                );
-                                active.insert(*ch, h);
+    tokio::spawn({
+        let nc = nc.clone();
+        async move {
+            println!("[logger] Watching KV for config changes...");
+            while let Some(ev) = watch.next().await {
+                if let Ok(entry) = ev {
+                    if entry.operation == Operation::Put {
+                        if let Ok(new_cfg) = serde_json::from_slice::<NestedConfig>(&entry.value)
+                            .map(|nested| {
+                                let raw = nested.sensor_settings;
+                                SampleConfig {
+                                    scans_per_read: raw.scan_rate,
+                                    suggested_scan_rate: raw.sampling_rate,
+                                    channels: raw.channels_enabled.clone(),
+                                    asset_number: nested.asset_number,
+                                    nats_subject: nested.nats_subject,
+                                    nats_stream: nested.nats_stream,
+                                    rotate_secs: nested.rotate_secs,
+                                }
+                            })
+                            .or_else(|_| serde_json::from_slice::<SampleConfig>(&entry.value))
+                        {
+                            println!("[logger] KV config update detected: {:?}", new_cfg);
+    
+                            // remove old channels
+                            active.retain(|ch, handle| {
+                                if new_cfg.channels.contains(ch) {
+                                    true
+                                } else {
+                                    println!("[logger] Removing channel {ch}");
+                                    handle.abort();
+                                    false
+                                }
+                            });
+    
+                            // add new channels
+                            for ch in &new_cfg.channels {
+                                if !active.contains_key(ch) {
+                                    println!("[logger] Adding channel {ch}");
+                                    let subject = format!(
+                                        "{}.{:03}.data.ch{:02}",
+                                        new_cfg.nats_subject, new_cfg.asset_number, ch
+                                    );
+                                    let h = spawn_channel_logger(
+                                        nc.clone(),
+                                        subject,
+                                        new_cfg.asset_number,
+                                        *ch,
+                                        new_cfg.rotate_secs,
+                                    );
+                                    active.insert(*ch, h);
+                                }
                             }
                         }
                     }
@@ -341,6 +362,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     });
+    
 
     tokio::signal::ctrl_c().await?;
     println!("Shutting down logger...");

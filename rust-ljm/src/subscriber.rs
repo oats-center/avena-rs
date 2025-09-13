@@ -1,6 +1,5 @@
 use flatbuffers::root;
-use futures_util::stream::StreamExt; // for .next()
-// use serde_json::json; // uncomment if doing verbose print
+use futures_util::stream::StreamExt;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs::{File, OpenOptions};
@@ -15,12 +14,12 @@ mod sample_data_generated {
 }
 use sample_data_generated::sampler;
 
-fn pad_asset(n: u32) -> String {
-    format!("{n:03}")
-}
-
 fn extract_channel_token(subject: &str) -> Option<String> {
     subject.split('.').last().map(|s| s.to_string())
+}
+
+fn pad_asset(n: u32) -> String {
+    format!("{n:03}")
 }
 
 fn open_csv_for_channel(out_dir: &Path, asset: u32, ch_token: &str) -> std::io::Result<File> {
@@ -37,7 +36,8 @@ fn open_csv_for_channel(out_dir: &Path, asset: u32, ch_token: &str) -> std::io::
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let subject_prefix = std::env::var("SUBJECT_PREFIX").unwrap_or_else(|_| "labjack".to_string());
+    // match JSON config keys
+    let subject_prefix = std::env::var("NATS_SUBJECT").unwrap_or_else(|_| "avenabox".to_string());
     let asset_number: u32 = std::env::var("ASSET_NUMBER")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -54,6 +54,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Subscribe to all per-channel subjects for this asset
     let wildcard = format!("{}.{}.data.*", subject_prefix, pad_asset(asset_number));
+    println!("Subscribing to subject '{}'", wildcard);
 
     // Build server list
     let servers: Vec<ServerAddr> = vec![
@@ -110,10 +111,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 writeln!(file, "{},{}", timestamp, values_str)?;
                 file.flush()?;
             }
-            Err(_) => {
+            Err(e) => {
                 eprintln!(
-                    "Failed to decode FlatBuffer payload for subject '{}'",
-                    msg.subject
+                    "FlatBuffer decode error ({:?}) for subject '{}'",
+                    e, msg.subject
                 );
             }
         }

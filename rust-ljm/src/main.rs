@@ -24,14 +24,17 @@ use sample_data_generated::sampler::{self, ScanArgs};
 struct NestedConfig {
     cabinet_id: String,
     labjack_name: String,
-    serial: String,
+    asset_number: u32,
+    nats_subject: String,
+    nats_stream: String,
+    rotate_secs: u64,
     sensor_settings: SensorSettings,
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 struct SensorSettings {
-    scan_rate: Option<i32>,     // make optional, can default
+    scan_rate: i32,
     sampling_rate: f64,
     channels_enabled: Vec<u8>,
     gains: i32,
@@ -57,7 +60,7 @@ impl From<(NestedConfig, &SampleConfig)> for SampleConfig {
     fn from((nested, base): (NestedConfig, &SampleConfig)) -> Self {
         let raw = nested.sensor_settings;
         SampleConfig {
-            scans_per_read: raw.scan_rate.unwrap_or(200), // sensible default
+            scans_per_read: raw.scan_rate, 
             suggested_scan_rate: raw.sampling_rate,
             channels: raw.channels_enabled,
             asset_number: base.asset_number,
@@ -150,22 +153,23 @@ async fn load_config_from_kv(store: &kv::Store, key: &str) -> Result<SampleConfi
             let nested_cfg: NestedConfig = serde_json::from_slice(entry.value.as_ref())
                 .map_err(|e| LJMError::LibraryError(format!("Config JSON parse error: {}", e)))?;
 
-            let base = SampleConfig {
-                scans_per_read: nested_cfg.sensor_settings.scan_rate.unwrap_or(200),
+            let cfg = SampleConfig {
+                scans_per_read: nested_cfg.sensor_settings.scan_rate,
                 suggested_scan_rate: nested_cfg.sensor_settings.sampling_rate,
                 channels: nested_cfg.sensor_settings.channels_enabled.clone(),
-                asset_number: 0,
-                nats_subject: "avenabox".into(),
-                nats_stream: "stream".into(),
-                rotate_secs: 60,
+                asset_number: nested_cfg.asset_number,
+                nats_subject: nested_cfg.nats_subject.clone(),
+                nats_stream: nested_cfg.nats_stream.clone(),
+                rotate_secs: nested_cfg.rotate_secs,
             };
 
-            Ok(SampleConfig::from((nested_cfg, &base)))
+            Ok(cfg)
         }
         Ok(None) => Err(LJMError::LibraryError(format!("KV key '{}' not found", key))),
         Err(e) => Err(LJMError::LibraryError(format!("KV entry error for '{}': {}", key, e))),
     }
 }
+
 
 
 
@@ -196,7 +200,7 @@ async fn watch_kv_config(
                                     let base = config_tx.borrow().clone();
 
                                     SampleConfig {
-                                        scans_per_read: raw.scan_rate.unwrap_or(200),
+                                        scans_per_read: raw.scan_rate,
                                         suggested_scan_rate: raw.sampling_rate,
                                         channels: raw.channels_enabled,
                                         asset_number: base.asset_number,
