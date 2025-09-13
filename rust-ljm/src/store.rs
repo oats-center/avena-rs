@@ -5,7 +5,8 @@ use parquet::{
     file::{properties::WriterProperties, writer::SerializedFileWriter},
     schema::parser::parse_message_type,
 };
-use async_nats::{self, jetstream};
+use async_nats::{self, jetstream, ServerAddr};
+use async_nats::ConnectOptions;
 use async_nats::jetstream::kv::Operation;
 use futures_util::StreamExt;
 use tokio::time::Duration;
@@ -13,7 +14,7 @@ use chrono::{Utc, NaiveDate};
 
 mod sample_data_generated {
     #![allow(dead_code, unused_imports)]
-    include!("data_generated.rs"); // adjust path if needed
+    include!("data_generated.rs");
 }
 use sample_data_generated::sampler;
 
@@ -46,7 +47,6 @@ struct SampleConfig {
     suggested_scan_rate: f64,
     channels: Vec<u8>,
     asset_number: u32,
-    nats_url: String,
     nats_subject: String,
     nats_stream: String,
     rotate_secs: u64,
@@ -59,13 +59,13 @@ impl From<(SensorConfig, &SampleConfig)> for SampleConfig {
             suggested_scan_rate: raw.sampling_rate,
             channels: raw.channels_enabled,
             asset_number: base.asset_number,
-            nats_url: base.nats_url.clone(),
             nats_subject: base.nats_subject.clone(),
             nats_stream: base.nats_stream.clone(),
             rotate_secs: base.rotate_secs,
         }
     }
 }
+
 
 #[allow(dead_code)]
 struct ParquetLogger {
@@ -242,15 +242,32 @@ fn spawn_channel_logger(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Step 1: bootstrap NATS
-    let bootstrap_url =
-        std::env::var("NATS_BOOTSTRAP_URL").unwrap_or_else(|_| "nats://127.0.0.1:4222".into());
-    let nc = async_nats::connect(&bootstrap_url).await?;
+    
+    let servers: Vec<ServerAddr> = vec![
+        "nats://nats1.oats:4222".parse()?,
+        "nats://nats2.oats:4222".parse()?,
+        "nats://nats3.oats:4222".parse()?,
+    ];
+
+    // Connect using creds
+    let creds_path = std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| ".apt.creds".into());
+    let opts = ConnectOptions::with_credentials_file(creds_path)
+        .await
+        .map_err(|e| format!("Failed to load creds: {}", e))?;
+
+    let nc = opts
+        .connect(servers)
+        .await
+        .map_err(|e| format!("NATS connect failed: {}", e))?;
+
+    println!("Connected to NATS via creds!");
     let js = jetstream::new(nc.clone());
 
     // Step 2: load config from KV
-    let store = js.get_key_value("avenabox_001").await?;
-    let entry = store.entry("labjackd.config.TEST001").await?.ok_or("KV key not found")?;
+    let bucket = std::env::var("CFG_BUCKET").unwrap_or_else(|_| "avenabox".into());
+    let key    = std::env::var("CFG_KEY").unwrap_or_else(|_| "labjackd.config.macbook".into());
+    let store = js.get_key_value(bucket.as_str()).await?;
+    let entry = store.entry(key.as_str()).await?.ok_or("KV key not found")?;
     let cfg: SampleConfig = match serde_json::from_slice::<NestedConfig>(&entry.value) {
         Ok(nested) => {
             let raw_cfg = nested.sensor_settings;
@@ -259,7 +276,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 suggested_scan_rate: raw_cfg.sampling_rate,
                 channels: raw_cfg.channels_enabled.clone(),
                 asset_number: 0,
-                nats_url: std::env::var("NATS_URL").unwrap_or_else(|_| bootstrap_url.clone()),
                 nats_subject: "avenabox".into(),
                 nats_stream: "stream".into(),
                 rotate_secs: 60,
@@ -271,16 +287,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("[logger] Loaded config: {:?}", cfg);
 
-    // Step 3: reconnect if needed
-    let nc = if cfg.nats_url != bootstrap_url {
-        println!("[logger] Reconnecting to {}", cfg.nats_url);
-        async_nats::connect(&cfg.nats_url).await?
-    } else {
-        nc
-    };
-
     // Step 4: spawn dynamic watcher for KV config changes
-    let mut watch = store.watch("labjackd.config.TEST001").await?;
+    let mut watch = store.watch(key.as_str()).await?;
     let mut active: HashMap<u8, tokio::task::JoinHandle<()>> = HashMap::new();
 
     // initial subscriptions

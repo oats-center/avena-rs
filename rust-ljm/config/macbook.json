@@ -1,0 +1,17 @@
+{
+  "cabinet_id": "avenabox_001",
+  "labjack_name": "Main Sensor Hub",
+  "serial": "macbook",
+  "nats_subject": "avenabox",
+  "nats_stream": "stream",
+  "rotate_secs": 60,
+  "sensor_settings": {
+    "scan_rate": 200,
+    "sampling_rate": 1000,
+    "channels_enabled": [1, 2, 3],
+    "gains": 1,
+    "data_formats": ["voltage", "temperature", "pressure"],
+    "measurement_units": ["V", "°C", "PSI"],
+    "labjack_reset": false
+  }
+}

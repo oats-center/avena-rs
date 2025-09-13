@@ -10,7 +10,7 @@ use ljmrs::handle::{DeviceType, ConnectionType};
 use flatbuffers::FlatBufferBuilder;
 use async_nats::jetstream::{self, kv, stream::Config as StreamConfig};
 use async_nats::jetstream::kv::Operation;
-use async_nats::ConnectOptions;
+use async_nats::{ConnectOptions, ServerAddr};
 use futures_util::StreamExt;
 
 mod sample_data_generated {
@@ -47,11 +47,11 @@ struct SampleConfig {
     suggested_scan_rate: f64,
     channels: Vec<u8>,
     asset_number: u32,
-    nats_url: String,
     nats_subject: String,
     nats_stream: String,
     rotate_secs: u64,
 }
+
 
 impl From<(NestedConfig, &SampleConfig)> for SampleConfig {
     fn from((nested, base): (NestedConfig, &SampleConfig)) -> Self {
@@ -61,7 +61,6 @@ impl From<(NestedConfig, &SampleConfig)> for SampleConfig {
             suggested_scan_rate: raw.sampling_rate,
             channels: raw.channels_enabled,
             asset_number: base.asset_number,
-            nats_url: base.nats_url.clone(),
             nats_subject: base.nats_subject.clone(),
             nats_stream: base.nats_stream.clone(),
             rotate_secs: base.rotate_secs,
@@ -156,7 +155,6 @@ async fn load_config_from_kv(store: &kv::Store, key: &str) -> Result<SampleConfi
                 suggested_scan_rate: nested_cfg.sensor_settings.sampling_rate,
                 channels: nested_cfg.sensor_settings.channels_enabled.clone(),
                 asset_number: 0,
-                nats_url: std::env::var("NATS_URL").unwrap_or_else(|_| "nats://0.0.0.0:4222".into()),
                 nats_subject: "avenabox".into(),
                 nats_stream: "stream".into(),
                 rotate_secs: 60,
@@ -202,7 +200,6 @@ async fn watch_kv_config(
                                         suggested_scan_rate: raw.sampling_rate,
                                         channels: raw.channels_enabled,
                                         asset_number: base.asset_number,
-                                        nats_url: base.nats_url,
                                         nats_subject: base.nats_subject,
                                         nats_stream: base.nats_stream,
                                         rotate_secs: base.rotate_secs,
@@ -254,12 +251,9 @@ async fn sample_with_config(
     cfg: SampleConfig,
     config_rx: &mut watch::Receiver<SampleConfig>,
     shutdown_rx: &mut watch::Receiver<bool>,
+    js: &jetstream::Context,
 ) -> Result<(), LJMError> {
-    println!("[run #{run_id}] Connecting to NATS at {}", cfg.nats_url);
-    let nc = async_nats::connect(cfg.nats_url.clone())
-        .await
-        .map_err(|e| LJMError::LibraryError(format!("Failed to connect to NATS: {}", e)))?;
-    let js = async_nats::jetstream::new(nc);
+
 
     ensure_stream_exists(&js, &cfg.nats_stream, &stream_subject_wildcard(&cfg.nats_subject, cfg.asset_number)).await?;
 
@@ -385,6 +379,7 @@ async fn sample_with_config(
 async fn run_sampler(
     mut config_rx: tokio::sync::watch::Receiver<SampleConfig>,
     mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+    js: jetstream::Context,
 ) {
     let mut run_id = 0;
     loop {
@@ -396,7 +391,7 @@ async fn run_sampler(
         let cfg = config_rx.borrow().clone();
         println!("[run_sampler] Starting sampler run #{run_id} with {:?}", cfg);
 
-        if let Err(e) = sample_with_config(run_id, cfg, &mut config_rx, &mut shutdown_rx).await {
+        if let Err(e) = sample_with_config(run_id, cfg, &mut config_rx, &mut shutdown_rx, &js).await {
             eprintln!("[run_sampler] Sampler error: {:?}", e);
         }
 
@@ -411,20 +406,31 @@ async fn run_sampler(
 
 
 
+
 #[tokio::main]
 async fn main() -> Result<(), LJMError> {
     
-    let nc = ConnectOptions::with_credentials_file(".apt.creds")
-                .await?
-                .connect(&[
-                    "nats://nats1.oats:4222",
-                    "nats://nats2.oats:4222",
-                    "nats://nats3.oats:4222",
-                ])
-                .await
-                .map_err(|e| {
-                    LJLError::LibraryError(format!("NATS connect failed: {}", e))
-                })?;
+    let creds_path = std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| ".apt.creds".into());
+    let opts = ConnectOptions::with_credentials_file(creds_path)
+        .await
+        .map_err(|e| LJMError::LibraryError(format!("Failed to load creds: {}", e)))?;
+
+    let servers: Vec<ServerAddr> = vec![
+        "nats://nats1.oats:4222"
+            .parse()
+            .map_err(|e| LJMError::LibraryError(format!("invalid server addr: {}", e)))?,
+        "nats://nats2.oats:4222"
+            .parse()
+            .map_err(|e| LJMError::LibraryError(format!("invalid server addr: {}", e)))?,
+        "nats://nats3.oats:4222"
+            .parse()
+            .map_err(|e| LJMError::LibraryError(format!("invalid server addr: {}", e)))?,
+    ];
+
+    let nc = opts
+        .connect(servers)
+        .await
+        .map_err(|e| LJMError::LibraryError(format!("NATS connect failed: {}", e)))?;
         
     println!("Connected to NATS via creds!");
     let js = jetstream::new(nc);
@@ -447,7 +453,7 @@ async fn main() -> Result<(), LJMError> {
         LJMLibrary::init(path)?;
     }
 
-    tokio::spawn(run_sampler(config_rx.clone(), shutdown_rx.clone()));
+    tokio::spawn(run_sampler(config_rx.clone(), shutdown_rx.clone(), js.clone()));
     tokio::spawn(watch_kv_config(store, key.clone(), config_tx.clone(), shutdown_rx.clone()));
 
     tokio::signal::ctrl_c()
