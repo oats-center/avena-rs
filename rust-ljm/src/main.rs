@@ -10,6 +10,7 @@ use ljmrs::handle::{DeviceType, ConnectionType};
 use flatbuffers::FlatBufferBuilder;
 use async_nats::jetstream::{self, kv, stream::Config as StreamConfig};
 use async_nats::jetstream::kv::Operation;
+use async_nats::ConnectOptions;
 use futures_util::StreamExt;
 
 mod sample_data_generated {
@@ -413,13 +414,23 @@ async fn run_sampler(
 #[tokio::main]
 async fn main() -> Result<(), LJMError> {
     
-    let nats_url = std::env::var("NATS_URL").unwrap_or_else(|_| "nats://0.0.0.0:4222".into());
-    let nc = async_nats::connect(&nats_url).await
-        .map_err(|e| LJMError::LibraryError(format!("NATS connect failed: {}", e)))?;
+    let nc = ConnectOptions::with_credentials_file(".apt.creds")
+                .await?
+                .connect(&[
+                    "nats://nats1.oats:4222",
+                    "nats://nats2.oats:4222",
+                    "nats://nats3.oats:4222",
+                ])
+                .await
+                .map_err(|e| {
+                    LJLError::LibraryError(format!("NATS connect failed: {}", e))
+                })?;
+        
+    println!("Connected to NATS via creds!");
     let js = jetstream::new(nc);
 
-    let bucket = std::env::var("CFG_BUCKET").unwrap_or_else(|_| "avenabox_001".into());
-    let key    = std::env::var("CFG_KEY").unwrap_or_else(|_| "labjackd.config.TEST001".into());
+    let bucket = std::env::var("CFG_BUCKET").unwrap_or_else(|_| "avenabox".into());
+    let key    = std::env::var("CFG_KEY").unwrap_or_else(|_| "labjackd.config.macbook".into());
 
     let store = ensure_kv_bucket(&js, &bucket).await?;
     let cfg = load_config_from_kv(&store, &key).await?;
