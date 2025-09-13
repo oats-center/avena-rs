@@ -13,3 +13,10 @@
 
 # parquet files ignire
 parquet/*
+
+
+# creds
+.apt.creds
+
+# env
+.env

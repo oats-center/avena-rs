@@ -1,13 +1,11 @@
-use async_nats;
 use flatbuffers::root;
-use futures_util::stream::StreamExt; // for .next()
-// use serde_json::json; // uncomment if doing verbose print
+use futures_util::stream::StreamExt;
 use std::collections::HashMap;
-use std::env;
 use std::error::Error;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use async_nats::{self, ConnectOptions, ServerAddr};
 
 // Import your generated FlatBuffers schema
 mod sample_data_generated {
@@ -16,11 +14,14 @@ mod sample_data_generated {
 }
 use sample_data_generated::sampler;
 
-fn pad_asset(n: u32) -> String { format!("{n:03}") }
-
 fn extract_channel_token(subject: &str) -> Option<String> {
     subject.split('.').last().map(|s| s.to_string())
 }
+
+fn pad_asset(n: u32) -> String {
+    format!("{n:03}")
+}
+
 fn open_csv_for_channel(out_dir: &Path, asset: u32, ch_token: &str) -> std::io::Result<File> {
     let fname = format!("labjack_{}_{}.csv", pad_asset(asset), ch_token);
     let path = out_dir.join(fname);
@@ -35,14 +36,14 @@ fn open_csv_for_channel(out_dir: &Path, asset: u32, ch_token: &str) -> std::io::
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let nats_url = env::var("NATS_URL").unwrap_or_else(|_| "nats://0.0.0.0:4222".to_string());
-    let subject_prefix = env::var("SUBJECT_PREFIX").unwrap_or_else(|_| "labjack".to_string());
-    let asset_number: u32 = env::var("ASSET_NUMBER")
+    // match JSON config keys
+    let subject_prefix = std::env::var("NATS_SUBJECT").unwrap_or_else(|_| "avenabox".to_string());
+    let asset_number: u32 = std::env::var("ASSET_NUMBER")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(1);
 
-    let out_dir_str = env::var("OUTPUT_DIR").unwrap_or_else(|_| "outputs".to_string());
+    let out_dir_str = std::env::var("OUTPUT_DIR").unwrap_or_else(|_| "outputs".to_string());
     let out_dir = PathBuf::from(&out_dir_str);
     if !out_dir.exists() {
         std::fs::create_dir_all(&out_dir)?;
@@ -53,18 +54,32 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Subscribe to all per-channel subjects for this asset
     let wildcard = format!("{}.{}.data.*", subject_prefix, pad_asset(asset_number));
+    println!("Subscribing to subject '{}'", wildcard);
 
-    let nc = async_nats::connect(&nats_url).await?;
-    println!("Connected to NATS at {}", nats_url);
+    // Build server list
+    let servers: Vec<ServerAddr> = vec![
+        "nats://nats1.oats:4222".parse()?,
+        "nats://nats2.oats:4222".parse()?,
+        "nats://nats3.oats:4222".parse()?,
+    ];
+
+    // Connect using creds
+    let creds_path = std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| "/Users/anugunj/Downloads/apt.creds".into());
+    let opts = ConnectOptions::with_credentials_file(creds_path)
+        .await
+        .map_err(|e| format!("Failed to load creds: {}", e))?;
+
+    let nc = opts
+        .connect(servers)
+        .await
+        .map_err(|e| format!("NATS connect failed: {}", e))?;
+
+    println!("Connected to NATS with creds, subscribed at '{}'", wildcard);
 
     let mut sub = nc.subscribe(wildcard.clone()).await?;
-    println!("Subscribed to '{}'", wildcard);
-
-
     let mut files: HashMap<String, File> = HashMap::new();
 
     while let Some(msg) = sub.next().await {
-        // Determine channel token from subject (e.g., "ch01")
         let ch_token = match extract_channel_token(&msg.subject) {
             Some(tok) => tok,
             None => {
@@ -73,32 +88,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         };
 
-
         match root::<sampler::Scan>(&msg.payload) {
             Ok(scan) => {
                 let timestamp = scan.timestamp().unwrap_or("<no ts>");
                 let values = scan.values().unwrap();
                 let values_vec: Vec<f64> = values.iter().collect();
 
-                // For quick sanity/logging
-                // println!(
-                //     "[{}] {}  count={}  first={:?}",
-                //     ch_token,
-                //     timestamp,
-                //     values_vec.len(),
-                //     values_vec.first().copied()
-                // );
-
-                // Optional JSON debug
-                // let json_obj = json!({
-                //     "subject": msg.subject,
-                //     "channel": ch_token,
-                //     "timestamp": timestamp,
-                //     "values": values_vec
-                // });
-                // println!("As JSON: {}", json_obj);
-
-                // Open (or reuse) CSV for this channel inside output dir
                 let out_dir_clone = out_dir.clone();
                 let file = files
                     .entry(ch_token.clone())
@@ -107,7 +102,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             .expect("failed to open per-channel csv")
                     });
 
-                // Append one line per batch: timestamp, and all values joined by ';'
                 let values_str = values_vec
                     .iter()
                     .map(|v| v.to_string())
@@ -117,10 +111,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 writeln!(file, "{},{}", timestamp, values_str)?;
                 file.flush()?;
             }
-            Err(_) => {
+            Err(e) => {
                 eprintln!(
-                    "Failed to decode FlatBuffer payload for subject '{}'",
-                    msg.subject
+                    "FlatBuffer decode error ({:?}) for subject '{}'",
+                    e, msg.subject
                 );
             }
         }

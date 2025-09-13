@@ -1,14 +1,14 @@
-# Avena-OTR Dashboard
+# Avena-OTR LabJack Management Dashboard
 
-A modern web dashboard for managing and configuring LabJack devices in the Avena-OTR system. Built with SvelteKit and designed for real-time sensor monitoring and configuration.
+A modern web dashboard for managing LabJack device configurations in the Avena-OTR system. Built with SvelteKit and designed for comprehensive LabJack device management through NATS JetStream.
 
 ## Features
 
-- **LabJack Device Management**: Configure and monitor LabJack devices across multiple cabinets
-- **Real-time Configuration**: Live updates through NATS messaging system
-- **Multi-Cabinet Support**: Manage devices across different road cabinets
-- **Channel Configuration**: Configure up to N channels per LabJack device
-- **Status Monitoring**: Track cabinet status (online, offline, maintenance)
+- **LabJack Configuration Management**: Create, edit, and delete LabJack device configurations
+- **NATS Integration**: Direct integration with NATS JetStream for configuration storage
+- **Comprehensive Settings**: Configure all LabJack parameters including sensor settings, channels, and data formats
+- **Real-time Updates**: Immediate reflection of configuration changes
+- **Secure Authentication**: NATS credentials-based authentication
 - **Responsive Design**: Modern UI optimized for desktop and mobile
 
 ## Getting Started

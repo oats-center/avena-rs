@@ -1,5 +1,5 @@
 import { Kvm } from "@nats-io/kv";
-import { wsconnect, type NatsConnection } from "@nats-io/nats-core";
+import { wsconnect, credsAuthenticator, type NatsConnection } from "@nats-io/nats-core";
 
 export class NatsService {
   public connection: NatsConnection;
@@ -14,11 +14,26 @@ export class NatsService {
 }
 
 //connects to a nats server & initialized kvm
-export async function connect(serverName: string): Promise<NatsService | null> {
+export async function connect(serverName: string, credentialsContent?: string): Promise<NatsService | null> {
   let nc: NatsConnection | null = null;
   if (serverName) {
     try {
-      nc = await wsconnect({ servers: serverName });
+      const connectionOptions: any = { 
+        servers: serverName 
+      };
+      
+      // Add credentials authentication if credentials content is provided
+      if (credentialsContent) {
+        try {
+          const creds = new TextEncoder().encode(credentialsContent);
+          connectionOptions.authenticator = credsAuthenticator(creds);
+        } catch (error) {
+          console.error("Failed to process credentials:", error);
+          return null;
+        }
+      }
+      
+      nc = await wsconnect(connectionOptions);
     } catch (error) {
       console.error("Failed to connect to NATS: ", error);
     }
@@ -68,23 +83,50 @@ export async function getKeyValue(nats: NatsService, bucket: string, key: string
   return valStr;
 }
 
-//gets multiple values in the given bucket at each of the given keys
-export async function getKeyValues(nats: NatsService, bucket: string, keys: string[]): Promise<string[]>{
-  if (!nats) throw new Error("Nats connection is not initialized");
-  const kv = await nats.kvm.open(bucket);
-  const values: string[] = [];
-  for await (const key of keys) {
-    let val = await kv.get(key);
-    console.log(val)
-    const valStr = val?.string() || "";
-    values.push(valStr);
-  }
-  return values;
-}
 
 //puts a values in the given bucket at the given key
 export async function putKeyValue(nats: NatsService, bucket: string, key: string, newValue: string): Promise<void> {
   if (!nats) throw new Error("Nats connection is not initialized");
   const kv = await nats.kvm.open(bucket);
   await kv.put(key, newValue);
+}
+
+//updates a configuration in NATS using credentials
+export async function updateConfig(serverName: string, credentialsContent: string, bucket: string, key: string, configData: any): Promise<boolean> {
+  try {
+    const nats = await connect(serverName, credentialsContent);
+    if (!nats) {
+      console.error("Failed to connect to NATS for update");
+      return false;
+    }
+    
+    const configJson = JSON.stringify(configData, null, 2);
+    await putKeyValue(nats, bucket, key, configJson);
+    
+    nats.connection.close();
+    return true;
+  } catch (error) {
+    console.error("Failed to update config:", error);
+    return false;
+  }
+}
+
+//deletes a key from NATS bucket using credentials
+export async function deleteKey(serverName: string, credentialsContent: string, bucket: string, key: string): Promise<boolean> {
+  try {
+    const nats = await connect(serverName, credentialsContent);
+    if (!nats) {
+      console.error("Failed to connect to NATS for deletion");
+      return false;
+    }
+    
+    const kv = await nats.kvm.open(bucket);
+    await kv.delete(key);
+    
+    nats.connection.close();
+    return true;
+  } catch (error) {
+    console.error("Failed to delete key:", error);
+    return false;
+  }
 }
