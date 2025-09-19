@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 	<head>
 		<meta charset="utf-8" />
 		<link rel="icon" href="%sveltekit.assets%/favicon.png" />
@@ -18,7 +18,7 @@
 		
 		%sveltekit.head%
 	</head>
-	<body data-sveltekit-preload-data="hover">
+	<body data-sveltekit-preload-data="hover" class="bg-base-300">
 		<div style="display: contents">%sveltekit.body%</div>
 		
 		<!-- Service Worker Registration -->
@@ -26,11 +26,8 @@
 			if ('serviceWorker' in navigator) {
 				window.addEventListener('load', () => {
 					navigator.serviceWorker.register('/sw.js')
-						.then((registration) => {
-							console.log('SW registered: ', registration);
-						})
-						.catch((registrationError) => {
-							console.log('SW registration failed: ', registrationError);
+						.catch(() => {
+							// Service worker registration failed - app will still work
 						});
 				});
 			}

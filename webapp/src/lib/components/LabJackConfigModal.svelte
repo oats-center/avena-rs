@@ -180,78 +180,79 @@
 
 <svelte:window on:keydown={handleKeyPress} />
 
-<!-- Modal Backdrop -->
-<div class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onclick={onClose} role="button" tabindex="0" onkeydown={(e) => e.key === 'Escape' && onClose()}>
-    <!-- Modal Content -->
-    <div class="bg-gray-900 rounded-2xl shadow-2xl border border-white/20 w-full max-w-4xl max-h-[90vh] overflow-hidden" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="0" onkeydown={(e) => e.key === 'Escape' && onClose()}>
+<!-- Modal -->
+<div class="modal modal-open" onclick={onClose} role="button" tabindex="0" onkeydown={(e) => e.key === 'Escape' && onClose()}>
+    <div class="modal-box w-11/12 max-w-4xl h-[90vh] flex flex-col bg-base-100 shadow-2xl border border-base-200" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="0" onkeydown={(e) => e.key === 'Escape' && onClose()}>
         <!-- Modal Header -->
-        <div class="bg-white/10 backdrop-blur-lg border-b border-white/20 px-6 py-4">
-            <div class="flex justify-between items-center">
-                <div>
-                    <h2 class="text-2xl font-bold text-white">
-                        {isAddingNew ? 'Add New LabJack' : 'Edit LabJack Configuration'}
-                    </h2>
-                    <p class="text-gray-300 text-sm mt-1">
-                        {isAddingNew ? 'Configure a new LabJack device' : 'Update LabJack settings and sensor configuration'}
-                    </p>
-                </div>
-                <button
-                    onclick={onClose}
-                    class="p-2 hover:bg-white/10 rounded-lg transition-colors duration-200"
-                    aria-label="Close modal"
-                >
-                    <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                    </svg>
-                </button>
+        <div class="flex justify-between items-center mb-6 pb-4 border-b border-base-200 flex-shrink-0">
+            <div>
+                <h2 class="text-2xl font-bold text-base-content">
+                    {isAddingNew ? 'Add New LabJack' : 'Edit LabJack Configuration'}
+                </h2>
+                <p class="text-base-content/70 text-sm mt-1">
+                    {isAddingNew ? 'Configure a new LabJack device' : 'Update LabJack settings and sensor configuration'}
+                </p>
             </div>
+            <button
+                onclick={onClose}
+                class="btn btn-sm btn-circle btn-ghost hover:bg-base-200"
+                aria-label="Close modal"
+            >
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
         </div>
 
         <!-- Modal Body -->
-        <div class="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+        <div class="flex-1 overflow-y-auto">
             <form onsubmit={(e) => { e.preventDefault(); handleSave(); }} class="space-y-8">
                 <!-- Basic Configuration -->
                 <div>
-                    <h3 class="text-lg font-semibold text-white mb-4">Basic Configuration</h3>
+                    <h3 class="text-lg font-semibold mb-6 text-base-content">Basic Configuration</h3>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <!-- LabJack Name -->
-                        <div>
-                            <label for="labjack_name" class="block text-sm font-medium text-gray-300 mb-2">
-                                LabJack Name *
+                        <div class="form-control">
+                            <label class="label" for="labjack_name">
+                                <span class="label-text font-medium">LabJack Name *</span>
                             </label>
                             <input
                                 id="labjack_name"
                                 type="text"
                                 bind:value={formData.labjack_name}
-                                class="w-full px-4 py-3 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition-all duration-200"
+                                class="input input-bordered w-full focus:input-primary"
                                 placeholder="Enter LabJack name"
                             />
                             {#if errors.labjack_name}
-                                <p class="mt-1 text-sm text-red-400">{errors.labjack_name}</p>
+                                <div class="label">
+                                    <span class="label-text-alt text-error">{errors.labjack_name}</span>
+                                </div>
                             {/if}
                         </div>
 
                         <!-- Asset Number -->
-                        <div>
-                            <label for="asset_number" class="block text-sm font-medium text-gray-300 mb-2">
-                                Asset Number *
+                        <div class="form-control">
+                            <label class="label" for="asset_number">
+                                <span class="label-text font-medium">Asset Number *</span>
                             </label>
                             <input
                                 id="asset_number"
                                 type="number"
                                 bind:value={formData.asset_number}
-                                class="w-full px-4 py-3 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition-all duration-200"
+                                class="input input-bordered w-full focus:input-primary"
                                 placeholder="Enter asset number"
                             />
                             {#if errors.asset_number}
-                                <p class="mt-1 text-sm text-red-400">{errors.asset_number}</p>
+                                <div class="label">
+                                    <span class="label-text-alt text-error">{errors.asset_number}</span>
+                                </div>
                             {/if}
                         </div>
 
                         <!-- Max Channels -->
-                        <div>
-                            <label for="max_channels" class="block text-sm font-medium text-gray-300 mb-2">
-                                Max Channels *
+                        <div class="form-control">
+                            <label class="label" for="max_channels">
+                                <span class="label-text font-medium">Max Channels *</span>
                             </label>
                             <input
                                 id="max_channels"
@@ -259,61 +260,69 @@
                                 min="1"
                                 max="16"
                                 bind:value={formData.max_channels}
-                                class="w-full px-4 py-3 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition-all duration-200"
+                                class="input input-bordered w-full focus:input-primary"
                             />
                             {#if errors.max_channels}
-                                <p class="mt-1 text-sm text-red-400">{errors.max_channels}</p>
+                                <div class="label">
+                                    <span class="label-text-alt text-error">{errors.max_channels}</span>
+                                </div>
                             {/if}
                         </div>
 
                         <!-- Rotate Seconds -->
-                        <div>
-                            <label for="rotate_secs" class="block text-sm font-medium text-gray-300 mb-2">
-                                Rotate Interval (seconds) *
+                        <div class="form-control">
+                            <label class="label" for="rotate_secs">
+                                <span class="label-text font-medium">Rotate Interval (seconds) *</span>
                             </label>
                             <input
                                 id="rotate_secs"
                                 type="number"
                                 min="1"
                                 bind:value={formData.rotate_secs}
-                                class="w-full px-4 py-3 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition-all duration-200"
+                                class="input input-bordered w-full focus:input-primary"
                             />
                             {#if errors.rotate_secs}
-                                <p class="mt-1 text-sm text-red-400">{errors.rotate_secs}</p>
+                                <div class="label">
+                                    <span class="label-text-alt text-error">{errors.rotate_secs}</span>
+                                </div>
                             {/if}
                         </div>
 
                         <!-- NATS Subject -->
-                        <div>
-                            <label for="nats_subject" class="block text-sm font-medium text-gray-300 mb-2">
-                                NATS Subject *
+                        <div class="form-control">
+                            <label class="label" for="nats_subject">
+                                <span class="label-text font-medium">NATS Subject *</span>
                             </label>
                             <input
                                 id="nats_subject"
                                 type="text"
                                 bind:value={formData.nats_subject}
-                                class="w-full px-4 py-3 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition-all duration-200"
+                                class="input input-bordered w-full focus:input-primary"
                                 placeholder="e.g., avenabox"
                             />
                             {#if errors.nats_subject}
-                                <p class="mt-1 text-sm text-red-400">{errors.nats_subject}</p>
+                                <div class="label">
+                                    <span class="label-text-alt text-error">{errors.nats_subject}</span>
+                                </div>
                             {/if}
                         </div>
 
                         <!-- NATS Stream -->
-                        <div>
-                            <label for="nats_stream" class="block text-sm font-medium text-gray-300 mb-2">
-                                NATS Stream *
+                        <div class="form-control">
+                            <label class="label" for="nats_stream">
+                                <span class="label-text font-medium">NATS Stream *</span>
                             </label>
                             <input
                                 id="nats_stream"
                                 type="text"
                                 bind:value={formData.nats_stream}
-                                class="w-full px-4 py-3 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition-all duration-200"
+                                class="input input-bordered w-full focus:input-primary"
                                 placeholder="e.g., labjacks"
                             />
                             {#if errors.nats_stream}
-                                <p class="mt-1 text-sm text-red-400">{errors.nats_stream}</p>
+                                <div class="label">
+                                    <span class="label-text-alt text-error">{errors.nats_stream}</span>
+                                </div>
                             {/if}
                         </div>
                     </div>
@@ -321,82 +330,88 @@
 
                 <!-- Sensor Settings -->
                 <div>
-                    <h3 class="text-lg font-semibold text-white mb-4">Sensor Settings</h3>
+                    <h3 class="text-lg font-semibold mb-6 text-base-content">Sensor Settings</h3>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <!-- Scan Rate -->
-                        <div>
-                            <label for="scan_rate" class="block text-sm font-medium text-gray-300 mb-2">
-                                Scan Rate (Hz) *
+                        <div class="form-control">
+                            <label class="label" for="scan_rate">
+                                <span class="label-text font-medium">Scan Rate (Hz) *</span>
                             </label>
                             <input
                                 id="scan_rate"
                                 type="number"
                                 min="1"
                                 bind:value={formData.sensor_settings.scan_rate}
-                                class="w-full px-4 py-3 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition-all duration-200"
+                                class="input input-bordered w-full focus:input-primary"
                             />
                             {#if errors.scan_rate}
-                                <p class="mt-1 text-sm text-red-400">{errors.scan_rate}</p>
+                                <div class="label">
+                                    <span class="label-text-alt text-error">{errors.scan_rate}</span>
+                                </div>
                             {/if}
                         </div>
 
                         <!-- Sampling Rate -->
-                        <div>
-                            <label for="sampling_rate" class="block text-sm font-medium text-gray-300 mb-2">
-                                Sampling Rate (Hz) *
+                        <div class="form-control">
+                            <label class="label" for="sampling_rate">
+                                <span class="label-text font-medium">Sampling Rate (Hz) *</span>
                             </label>
                             <input
                                 id="sampling_rate"
                                 type="number"
                                 min="1"
                                 bind:value={formData.sensor_settings.sampling_rate}
-                                class="w-full px-4 py-3 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition-all duration-200"
+                                class="input input-bordered w-full focus:input-primary"
                             />
                             {#if errors.sampling_rate}
-                                <p class="mt-1 text-sm text-red-400">{errors.sampling_rate}</p>
+                                <div class="label">
+                                    <span class="label-text-alt text-error">{errors.sampling_rate}</span>
+                                </div>
                             {/if}
                         </div>
 
                         <!-- Gains -->
-                        <div>
-                            <label for="gains" class="block text-sm font-medium text-gray-300 mb-2">
-                                Gains *
+                        <div class="form-control">
+                            <label class="label" for="gains">
+                                <span class="label-text font-medium">Gains *</span>
                             </label>
                             <input
                                 id="gains"
                                 type="number"
                                 min="1"
                                 bind:value={formData.sensor_settings.gains}
-                                class="w-full px-4 py-3 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition-all duration-200"
+                                class="input input-bordered w-full focus:input-primary"
                             />
                             {#if errors.gains}
-                                <p class="mt-1 text-sm text-red-400">{errors.gains}</p>
+                                <div class="label">
+                                    <span class="label-text-alt text-error">{errors.gains}</span>
+                                </div>
                             {/if}
                         </div>
 
                         <!-- LabJack Status -->
-                        <div>
-                            <div class="block text-sm font-medium text-gray-300 mb-2">
-                                LabJack Status
+                        <div class="form-control">
+                            <div class="label">
+                                <span class="label-text font-medium">LabJack Status</span>
                             </div>
-                            <div class="flex items-center space-x-4">
-                                <label class="flex items-center">
+                            <div class="flex items-center space-x-6">
+                                <label class="label cursor-pointer">
                                     <input
                                         type="radio"
                                         bind:group={formData.sensor_settings.labjack_on_off}
                                         value={true}
-                                        class="w-4 h-4 text-yellow-600 bg-gray-800 border-gray-600 focus:ring-yellow-500 focus:ring-2"
+                                        class="radio radio-primary"
                                     />
-                                    <span class="ml-2 text-white">Online</span>
+                                    <span class="label-text ml-2">Online</span>
                                 </label>
-                                <label class="flex items-center">
+                                <label class="label cursor-pointer">
                                     <input
                                         type="radio"
                                         bind:group={formData.sensor_settings.labjack_on_off}
                                         value={false}
-                                        class="w-4 h-4 text-yellow-600 bg-gray-800 border-gray-600 focus:ring-yellow-500 focus:ring-2"
+                                        class="radio radio-primary"
                                     />
-                                    <span class="ml-2 text-white">Offline</span>
+                                    <span class="label-text ml-2">Offline</span>
                                 </label>
                             </div>
                         </div>
@@ -405,77 +420,81 @@
 
                 <!-- Enabled Channels -->
                 <div>
-                    <h3 class="text-lg font-semibold text-white mb-4">Enabled Channels *</h3>
+                    <h3 class="text-lg font-semibold mb-6 text-base-content">Enabled Channels *</h3>
                     <div class="grid grid-cols-4 md:grid-cols-8 gap-3">
                         {#each Array.from({length: formData.max_channels}, (_, i) => i) as channel}
-                            <label class="flex items-center justify-center p-3 bg-gray-800/50 border border-gray-600/50 rounded-lg cursor-pointer hover:bg-gray-700/50 transition-colors duration-200 {formData.sensor_settings.channels_enabled.includes(channel) ? 'border-yellow-500 bg-yellow-500/20' : ''}">
+                            <label class="btn btn-outline btn-sm {formData.sensor_settings.channels_enabled.includes(channel) ? 'btn-primary' : 'btn-ghost'}">
                                 <input
                                     type="checkbox"
                                     checked={formData.sensor_settings.channels_enabled.includes(channel)}
                                     onchange={() => handleChannelToggle(channel)}
                                     class="sr-only"
                                 />
-                                <span class="text-white font-medium">{channel}</span>
+                                {channel}
                             </label>
                         {/each}
                     </div>
                     {#if errors.channels_enabled}
-                        <p class="mt-2 text-sm text-red-400">{errors.channels_enabled}</p>
+                        <div class="label">
+                            <span class="label-text-alt text-error">{errors.channels_enabled}</span>
+                        </div>
                     {/if}
                 </div>
 
                 <!-- Channel Configuration -->
                 {#if formData.sensor_settings.channels_enabled.length > 0}
                     <div>
-                        <h3 class="text-lg font-semibold text-white mb-4">Channel Configuration *</h3>
+                        <h3 class="text-lg font-semibold mb-6 text-base-content">Channel Configuration *</h3>
                         <div class="space-y-4">
                             {#each formData.sensor_settings.channels_enabled as channel, index}
-                                <div class="bg-gray-800/30 rounded-lg p-4 border border-gray-600/30">
-                                    <h4 class="text-md font-medium text-white mb-3">Channel {channel}</h4>
-                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <!-- Data Format for this channel -->
-                                        <div>
-                                            <label for="data-format-{channel}" class="block text-sm font-medium text-gray-300 mb-2">
-                                                Data Format
-                                            </label>
-                                            <select
-                                                id="data-format-{channel}"
-                                                bind:value={formData.sensor_settings.data_formats[index]}
-                                                class="w-full px-3 py-2 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition-all duration-200"
-                                            >
-                                                {#each dataFormats as format}
-                                                    <option value={format} class="bg-gray-800 text-white">
-                                                        {format.charAt(0).toUpperCase() + format.slice(1)}
-                                                    </option>
-                                                {/each}
-                                            </select>
-                                        </div>
-                                        
-                                        <!-- Measurement Unit for this channel -->
-                                        <div>
-                                            <label for="measurement-unit-{channel}" class="block text-sm font-medium text-gray-300 mb-2">
-                                                Measurement Unit
-                                            </label>
-                                            <select
-                                                id="measurement-unit-{channel}"
-                                                bind:value={formData.sensor_settings.measurement_units[index]}
-                                                class="w-full px-3 py-2 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition-all duration-200"
-                                            >
-                                                {#each measurementUnits as unit}
-                                                    <option value={unit} class="bg-gray-800 text-white">
-                                                        {unit}
-                                                    </option>
-                                                {/each}
-                                            </select>
+                                <div class="card bg-base-200 border border-base-300">
+                                    <div class="card-body p-4">
+                                        <h4 class="card-title text-md text-base-content">Channel {channel}</h4>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <!-- Data Format for this channel -->
+                                            <div class="form-control">
+                                                <label class="label" for="data-format-{channel}">
+                                                    <span class="label-text font-medium">Data Format</span>
+                                                </label>
+                                                <select
+                                                    id="data-format-{channel}"
+                                                    bind:value={formData.sensor_settings.data_formats[index]}
+                                                    class="select select-bordered w-full focus:select-primary"
+                                                >
+                                                    {#each dataFormats as format}
+                                                        <option value={format}>
+                                                            {format.charAt(0).toUpperCase() + format.slice(1)}
+                                                        </option>
+                                                    {/each}
+                                                </select>
+                                            </div>
+                                            
+                                            <!-- Measurement Unit for this channel -->
+                                            <div class="form-control">
+                                                <label class="label" for="measurement-unit-{channel}">
+                                                    <span class="label-text font-medium">Measurement Unit</span>
+                                                </label>
+                                                <select
+                                                    id="measurement-unit-{channel}"
+                                                    bind:value={formData.sensor_settings.measurement_units[index]}
+                                                    class="select select-bordered w-full focus:select-primary"
+                                                >
+                                                    {#each measurementUnits as unit}
+                                                        <option value={unit}>{unit}</option>
+                                                    {/each}
+                                                </select>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             {/each}
                         </div>
                         {#if errors.data_formats || errors.measurement_units}
-                            <p class="mt-2 text-sm text-red-400">
-                                {errors.data_formats || errors.measurement_units}
-                            </p>
+                            <div class="label">
+                                <span class="label-text-alt text-error">
+                                    {errors.data_formats || errors.measurement_units}
+                                </span>
+                            </div>
                         {/if}
                     </div>
                 {/if}
@@ -483,63 +502,30 @@
         </div>
 
         <!-- Modal Footer -->
-        <div class="bg-white/10 backdrop-blur-lg border-t border-white/20 px-6 py-4">
-            <div class="flex justify-end space-x-4">
-                <button
-                    type="button"
-                    onclick={onClose}
-                    class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg transition-colors duration-200"
-                >
-                    Cancel
-                </button>
-                <button
-                    type="button"
-                    onclick={handleSave}
-                    disabled={saving}
-                    class="px-6 py-3 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold rounded-lg transition-all duration-200 transform hover:scale-[1.02] disabled:transform-none disabled:cursor-not-allowed shadow-lg hover:shadow-xl flex items-center"
-                >
-                    {#if saving}
-                        <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Saving...
-                    {:else}
-                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                        </svg>
-                        {isAddingNew ? 'Add LabJack' : 'Save Changes'}
-                    {/if}
-                </button>
-            </div>
+        <div class="modal-action pt-4 border-t border-base-200 flex-shrink-0">
+            <button
+                type="button"
+                onclick={onClose}
+                class="btn btn-ghost"
+            >
+                Cancel
+            </button>
+            <button
+                type="button"
+                onclick={handleSave}
+                disabled={saving}
+                class="btn btn-primary"
+            >
+                {#if saving}
+                    <span class="loading loading-spinner loading-sm"></span>
+                    Saving...
+                {:else}
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    {isAddingNew ? 'Add LabJack' : 'Save Changes'}
+                {/if}
+            </button>
         </div>
     </div>
 </div>
-
-<style>
-    /* Custom scrollbar for webkit browsers */
-    ::-webkit-scrollbar {
-        width: 8px;
-    }
-    
-    ::-webkit-scrollbar-track {
-        background: rgba(255, 255, 255, 0.1);
-        border-radius: 4px;
-    }
-    
-    ::-webkit-scrollbar-thumb {
-        background: rgba(206, 184, 136, 0.5);
-        border-radius: 4px;
-    }
-    
-    ::-webkit-scrollbar-thumb:hover {
-        background: rgba(206, 184, 136, 0.7);
-    }
-    
-    /* Smooth transitions */
-    * {
-        transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
-        transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-        transition-duration: 150ms;
-    }
-</style>
