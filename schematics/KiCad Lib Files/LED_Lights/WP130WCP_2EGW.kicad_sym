@@ -1,0 +1,214 @@
+
+(kicad_symbol_lib (version 20211014) (generator kicad_symbol_editor)
+  (symbol "WP130WCP_2EGW" (pin_names (offset 1.016)) (in_bom yes) (on_board yes)
+    (property "Reference" "D" (id 0) (at -7.62 17.78 0)
+      (effects (font (size 1.27 1.27)) (justify bottom left))
+    )
+    (property "Value" "WP130WCP_2EGW" (id 1) (at -7.62 -17.78 0)
+      (effects (font (size 1.27 1.27)) (justify bottom left))
+    )
+    (property "Footprint" "WP130WCP_2EGW:LED_WP130WCP_2EGW" (id 2) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "PARTREV" "V.10A" (id 4) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "SNAPEDA_PN" "WP130WCP/2EGW" (id 5) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "MANUFACTURER" "Kingbright" (id 6) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "MAXIMUM_PACKAGE_HEIGHT" "9.65 mm" (id 7) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "STANDARD" "Manufacturer Recommendations" (id 8) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (symbol "WP130WCP_2EGW_0_0"
+      (polyline
+        (pts (xy -5.08 9.144) (xy -5.08 7.62)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy -5.08 7.62) (xy -5.08 6.096)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy -5.08 6.096) (xy -2.54 7.62)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy -2.54 7.62) (xy -5.08 9.144)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy -2.54 9.144) (xy -2.54 7.62)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy -2.54 7.62) (xy -2.54 6.096)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy -5.08 7.62) (xy -7.62 7.62)) (stroke (width 0.1524))
+      )
+      (polyline
+        (pts (xy 5.08 6.096) (xy 5.08 7.62)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 5.08 7.62) (xy 5.08 9.144)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 5.08 9.144) (xy 2.54 7.62)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 2.54 7.62) (xy 5.08 6.096)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 2.54 6.096) (xy 2.54 7.62)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 2.54 7.62) (xy 2.54 9.144)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 5.08 7.62) (xy 7.62 7.62)) (stroke (width 0.1524))
+      )
+      (polyline
+        (pts (xy -2.54 7.62) (xy 0.0 7.62)) (stroke (width 0.1524))
+      )
+      (polyline
+        (pts (xy 0.0 7.62) (xy 2.54 7.62)) (stroke (width 0.1524))
+      )
+      (polyline
+        (pts (xy -5.08 -3.556) (xy -5.08 -5.08)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy -5.08 -5.08) (xy -5.08 -6.604)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy -5.08 -6.604) (xy -2.54 -5.08)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy -2.54 -5.08) (xy -5.08 -3.556)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy -2.54 -3.556) (xy -2.54 -5.08)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy -2.54 -5.08) (xy -2.54 -6.604)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy -5.08 -5.08) (xy -7.62 -5.08)) (stroke (width 0.1524))
+      )
+      (polyline
+        (pts (xy 5.08 -6.604) (xy 5.08 -5.08)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 5.08 -5.08) (xy 5.08 -3.556)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 5.08 -3.556) (xy 2.54 -5.08)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 2.54 -5.08) (xy 5.08 -6.604)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 2.54 -6.604) (xy 2.54 -5.08)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 2.54 -5.08) (xy 2.54 -3.556)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 5.08 -5.08) (xy 7.62 -5.08)) (stroke (width 0.1524))
+      )
+      (polyline
+        (pts (xy -2.54 -5.08) (xy 0.0 -5.08)) (stroke (width 0.1524))
+      )
+      (text "RED" (at -5.08 10.16 0)
+        (effects (font (size 1.27 1.27)) (justify bottom left))
+      )
+      (text "Green" (at 2.54 10.16 0)
+        (effects (font (size 1.27 1.27)) (justify bottom left))
+      )
+      (text "Green" (at 2.54 -2.54 0)
+        (effects (font (size 1.27 1.27)) (justify bottom left))
+      )
+      (text "RED" (at -5.08 -2.54 0)
+        (effects (font (size 1.27 1.27)) (justify bottom left))
+      )
+      (polyline
+        (pts (xy 0.0 -5.08) (xy 2.54 -5.08)) (stroke (width 0.1524))
+      )
+      (polyline
+        (pts (xy 0.0 7.62) (xy 0.0 2.54)) (stroke (width 0.1524))
+      )
+      (polyline
+        (pts (xy 0.0 2.54) (xy -7.62 2.54)) (stroke (width 0.1524))
+      )
+      (polyline
+        (pts (xy 0.0 -5.08) (xy 0.0 -10.16)) (stroke (width 0.1524))
+      )
+      (polyline
+        (pts (xy 0.0 -10.16) (xy -7.62 -10.16)) (stroke (width 0.1524))
+      )
+      (circle (center 0.0 7.62) (radius 0.254)
+        (stroke (width 0.508)) (fill (type none))
+      )
+      (circle (center 0.0 -5.08) (radius 0.254)
+        (stroke (width 0.508)) (fill (type none))
+      )
+      (text "LED1" (at -2.54 12.7 0)
+        (effects (font (size 1.27 1.27)) (justify bottom left))
+      )
+      (text "LED2" (at -2.54 0.0 0)
+        (effects (font (size 1.27 1.27)) (justify bottom left))
+      )
+      (rectangle (start -7.62 -12.7) (end 7.62 15.24)
+        (stroke (width 0.254)) (fill (type background))
+      )
+      (pin passive line (at 10.16 7.62 180.0) (length 2.54)
+        (name "~"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "3"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin passive line (at -10.16 7.62 0) (length 2.54)
+        (name "~"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "1"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin passive line (at 10.16 -5.08 180.0) (length 2.54)
+        (name "~"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "6"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin passive line (at -10.16 -5.08 0) (length 2.54)
+        (name "~"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "4"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin passive line (at -10.16 2.54 0) (length 2.54)
+        (name "~"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "2"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin passive line (at -10.16 -10.16 0) (length 2.54)
+        (name "~"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "5"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+    )
+  )
+)

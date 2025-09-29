@@ -1,0 +1,26 @@
+EESchema-LIBRARY Version 2.3
+#encoding utf-8
+#SamacSys ECAD Model 1844223
+#/12846534/506064/2.50/3/2/Connector
+DEF 1844223 J 0 30 Y Y 1 F N
+F0 "J" 650 300 50 H V L CNN
+F1 "1844223" 650 200 50 H V L CNN
+F2 "SHDRRA3W80P0X350_1X3_1190X920X825P" 650 100 50 H I L CNN
+F3 "http://www.phoenixcontact.com/gb/produkte/1844223" 650 0 50 H I L CNN
+F4 "PCB header, nominal cross section: 1.5 mm?, color: green, nominal current: 8 A, rated voltage (III/2): 160 V, contact surface: Tin, type of contact: Male connector, Number of potentials: 3, Number of rows: 1, Number of positions per row: 3, number of connections: 3, product range: MC 1,5/..-G, pitch: 3.5 mm, mounting: Wave soldering, pin layout: Linear pinning, solder pin [P]: 3.4 mm, Stecksystem: MINI COMBICON, Locking: without, type of packaging: packed in cardboard" 650 -100 50 H I L CNN "Description"
+F5 "8.25" 650 -200 50 H I L CNN "Height"
+F6 "Phoenix Contact" 650 -300 50 H I L CNN "Manufacturer_Name"
+F7 "1844223" 650 -400 50 H I L CNN "Manufacturer_Part_Number"
+F8 "651-1844223" 650 -500 50 H I L CNN "Mouser Part Number"
+F9 "https://www.mouser.co.uk/ProductDetail/Phoenix-Contact/1844223?qs=wd%252Bw3mUqFrk%2FWYTriCDAgA%3D%3D" 650 -600 50 H I L CNN "Mouser Price/Stock"
+F10 "1844223" 650 -700 50 H I L CNN "Arrow Part Number"
+F11 "https://www.arrow.com/en/products/1844223/phoenix-contact?utm_currency=USD&region=nac" 650 -800 50 H I L CNN "Arrow Price/Stock"
+DRAW
+X 1 1 0 0 200 R 50 50 0 0 P
+X 2 2 0 -100 200 R 50 50 0 0 P
+X 3 3 0 -200 200 R 50 50 0 0 P
+P 5 0 1 6 200 100 600 100 600 -300 200 -300 200 100 N
+ENDDRAW
+ENDDEF
+#
+#End Library
