@@ -1,0 +1,17 @@
+{
+  "labjack_name": "Macbook",
+  "asset_number": 1456,
+  "max_channels": 8,
+  "nats_subject": "avenabox",
+  "nats_stream": "labjacks",
+  "rotate_secs": 60,
+  "sensor_settings": {
+    "scan_rate": 200,
+    "sampling_rate": 1000,
+    "channels_enabled": [1, 2, 3],
+    "gains": 1,
+    "data_formats": ["voltage", "temperature", "pressure"],
+    "measurement_units": ["V", "°C", "PSI"],
+    "labjack_on_off": false
+  }
+}
