@@ -1,0 +1,17 @@
+{
+  "labjack_name": "APT",
+  "asset_number": 2256,
+  "max_channels": 8,
+  "nats_subject": "avenabox",
+  "nats_stream": "labjacks",
+  "rotate_secs": 600,
+  "sensor_settings": {
+    "scan_rate": 400,
+    "sampling_rate": 8000,
+    "channels_enabled": [5, 6, 7],
+    "gains": 1,
+    "data_formats": ["voltage", "temperature", "pressure"],
+    "measurement_units": ["V", "°C", "PSI"],
+    "labjack_on_off": false
+  }
+}
