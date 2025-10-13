@@ -1,9 +1,9 @@
-(footprint "SAMTEC_PCIE_1x"
+(footprint "PCIE-036-02-F-D-TH"
 	(version 20241229)
 	(generator "pcbnew")
 	(generator_version "9.0")
 	(layer "F.Cu")
-	(property "Reference" "REF**"
+	(property "Reference" "J**"
 		(at -7.425 -5.65 0)
 		(layer "F.SilkS")
 		(uuid "58ffb090-e052-4045-af73-50074ed4d023")
@@ -14,9 +14,10 @@
 			)
 		)
 	)
-	(property "Value" "SAMTEC_PCIE_1x"
+	(property "Value" "PCIE-036-02-F-D-TH"
 		(at 5.575 5.85 0)
 		(layer "F.Fab")
+		(hide yes)
 		(uuid "6b60d076-f559-46ba-83c6-3cb5f8328c1f")
 		(effects
 			(font
@@ -25,7 +26,7 @@
 			)
 		)
 	)
-	(property "Datasheet" ""
+	(property "Datasheet" "https://mm.digikey.com/Volume0/opasdata/d220001/medias/docus/6129/pcie-xxx-02-x-d-th-mkt.pdf"
 		(at 0 0 0)
 		(layer "F.Fab")
 		(hide yes)
@@ -37,7 +38,7 @@
 			)
 		)
 	)
-	(property "Description" ""
+	(property "Description" "CONN PCI EXP FMALE 36POS 0.039"
 		(at 0 0 0)
 		(layer "F.Fab")
 		(hide yes)
@@ -551,4 +552,15 @@
 		(uuid "32cfcf90-b567-43b3-b510-e14675ed8775")
 	)
 	(embedded_fonts no)
+	(model "${KIPRJMOD}/../models/PCIE-036-02-F-D-TH.stp"
+		(offset
+			(xyz 0 -0.6 0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz -90 -0 -0)
+		)
+	)
 )
