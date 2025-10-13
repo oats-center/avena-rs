@@ -37,9 +37,15 @@
         "other_text_thickness": 0.15,
         "other_text_upright": false,
         "pads": {
+<<<<<<< HEAD
           "drill": 0.0,
           "height": 1.78,
           "width": 3.43
+=======
+          "drill": 0.8,
+          "height": 1.27,
+          "width": 2.54
+>>>>>>> 8436d7c1412a22b45feaa3f0348a9f616fa8b1cb
         },
         "silk_line_width": 0.1,
         "silk_text_italic": false,
@@ -48,7 +54,11 @@
         "silk_text_thickness": 0.1,
         "silk_text_upright": false,
         "zones": {
+<<<<<<< HEAD
           "min_clearance": 0.0
+=======
+          "min_clearance": 0.5
+>>>>>>> 8436d7c1412a22b45feaa3f0348a9f616fa8b1cb
         }
       },
       "diff_pair_dimensions": [],
@@ -440,6 +450,7 @@
       "single_global_label": "warning",
       "unannotated": "error",
       "unconnected_wire_endpoint": "warning",
+      "undefined_netclass": "error",
       "unit_value_mismatch": "error",
       "unresolved_variable": "error",
       "wire_dangling": "error"
