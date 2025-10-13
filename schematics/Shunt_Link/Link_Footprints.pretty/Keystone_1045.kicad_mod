@@ -197,7 +197,7 @@
 		(uuid "6f46654b-4bc7-42f3-9d70-7a2872cc447b")
 	)
 	(embedded_fonts no)
-	(model "C:/Users/smbea/OneDrive/Personal Files/School/Summer 2025/KiCad Lib Files/Keystone_1045/Keystone_1045.step"
+	(model "C:/Users/smbea/OneDrive/Personal_Files/School/Fall_2025/OATS/avena-rs/schematics/KiCad Lib Files/Keystone_1045/Keystone_1045.step"
 		(offset
 			(xyz -10.15 0.4 5)
 		)

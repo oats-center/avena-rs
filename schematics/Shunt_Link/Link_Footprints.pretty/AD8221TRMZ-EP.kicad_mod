@@ -264,7 +264,7 @@
 		(uuid "22fed6bc-d180-4878-b995-1ae7738a778d")
 	)
 	(embedded_fonts no)
-	(model "C:/Users/smbea/OneDrive/Personal Files/School/Summer 2025/KiCad Lib Files/AD8221TRMZ/AD8221.step"
+	(model "C:/Users/smbea/OneDrive/Personal_Files/School/Fall_2025/OATS/avena-rs/schematics/KiCad Lib Files/AD8221TRMZ/AD8221TRMZ-EP.step"
 		(offset
 			(xyz 0 0 0)
 		)
