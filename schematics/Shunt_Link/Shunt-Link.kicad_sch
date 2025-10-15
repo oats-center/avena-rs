@@ -2677,6 +2677,12 @@
 		(uuid "04b961a5-7b95-4e8a-94fd-60e8be458f52")
 	)
 	(junction
+		(at 173.99 95.25)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "0cfa786f-54d3-46a0-9399-f2f208a79294")
+	)
+	(junction
 		(at 86.36 120.65)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -2695,10 +2701,22 @@
 		(uuid "251293bb-fe05-4224-a568-0db7f9bc05f0")
 	)
 	(junction
+		(at 176.53 64.77)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "3c17aaa7-d002-4f2c-bcdb-3022157b7098")
+	)
+	(junction
 		(at 100.33 34.29)
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "3d19bc1d-4f16-4724-bfb2-f90f7789b2ce")
+	)
+	(junction
+		(at 176.53 133.35)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "40f582a5-d109-4e4e-bcff-fb33986efdb3")
 	)
 	(junction
 		(at 104.14 77.47)
@@ -2749,6 +2767,12 @@
 		(uuid "91dda70d-737f-457c-88fe-11e8f66c1c1b")
 	)
 	(junction
+		(at 167.64 125.73)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "956d32c8-e234-4b67-86d8-feb5dbd9cf35")
+	)
+	(junction
 		(at 86.36 59.69)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -2761,10 +2785,40 @@
 		(uuid "a1d77c5b-c7ba-4979-bdf7-0476521acc66")
 	)
 	(junction
+		(at 176.53 72.39)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "b36b3a7c-0278-494a-b2a7-78ce8e12f707")
+	)
+	(junction
+		(at 167.64 64.77)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "c303abe2-6c24-4981-a4f0-f83df1da56c9")
+	)
+	(junction
 		(at 100.33 95.25)
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "c3b27ab9-454d-4160-81b9-6fe4f047188c")
+	)
+	(junction
+		(at 176.53 125.73)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "d0909363-1425-44d7-a7c6-88ea09b3477c")
+	)
+	(junction
+		(at 173.99 102.87)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "e074f9a1-3cbf-456c-be40-6e5e0afb5a6c")
+	)
+	(junction
+		(at 165.1 95.25)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "e138684e-427d-43d6-b2a1-90c80e6fc155")
 	)
 	(junction
 		(at 86.36 138.43)
@@ -2922,6 +2976,16 @@
 	)
 	(wire
 		(pts
+			(xy 165.1 95.25) (xy 173.99 95.25)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "02f5285e-33c2-4731-bc8b-eee60cb1e674")
+	)
+	(wire
+		(pts
 			(xy 92.71 58.42) (xy 92.71 59.69)
 		)
 		(stroke
@@ -3012,6 +3076,26 @@
 	)
 	(wire
 		(pts
+			(xy 167.64 64.77) (xy 176.53 64.77)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "10dd2d8c-36d2-4054-8ea2-be5ca1f59403")
+	)
+	(wire
+		(pts
+			(xy 176.53 133.35) (xy 167.64 133.35)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "15b30de1-d242-42f8-825e-614c948b6216")
+	)
+	(wire
+		(pts
 			(xy 165.1 34.29) (xy 173.99 34.29)
 		)
 		(stroke
@@ -3029,6 +3113,16 @@
 			(type default)
 		)
 		(uuid "1ad3ad05-0ebe-424f-88cf-cd7e5afb6822")
+	)
+	(wire
+		(pts
+			(xy 193.04 133.35) (xy 176.53 133.35)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1b7b870d-7723-43c5-82b7-54a2380270ff")
 	)
 	(wire
 		(pts
@@ -3322,6 +3416,26 @@
 	)
 	(wire
 		(pts
+			(xy 149.86 64.77) (xy 167.64 64.77)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "57244e2d-6f7c-4be4-80eb-8a3c63836bf4")
+	)
+	(wire
+		(pts
+			(xy 176.53 125.73) (xy 201.93 125.73)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "5760ed1f-e034-43ca-8eaf-c665cdfb199a")
+	)
+	(wire
+		(pts
 			(xy 26.67 35.56) (xy 26.67 34.29)
 		)
 		(stroke
@@ -3389,6 +3503,16 @@
 			(type default)
 		)
 		(uuid "6cbd150d-5051-4a45-8389-4be08a74224c")
+	)
+	(wire
+		(pts
+			(xy 173.99 102.87) (xy 165.1 102.87)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "6f00ba38-3d23-4419-91b5-e031344d56c7")
 	)
 	(wire
 		(pts
@@ -3522,6 +3646,26 @@
 	)
 	(wire
 		(pts
+			(xy 173.99 95.25) (xy 199.39 95.25)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "7cbfdc91-1d95-4a53-b075-dd3188ed51cc")
+	)
+	(wire
+		(pts
+			(xy 176.53 72.39) (xy 167.64 72.39)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "7d1a6802-f790-4c60-90ca-465a5874ad30")
+	)
+	(wire
+		(pts
 			(xy 104.14 138.43) (xy 121.92 138.43)
 		)
 		(stroke
@@ -3549,6 +3693,16 @@
 			(type default)
 		)
 		(uuid "87a74090-7c0a-407c-bab9-329cb105503a")
+	)
+	(wire
+		(pts
+			(xy 147.32 95.25) (xy 165.1 95.25)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "8a148a03-814c-4d00-9cad-87e27c047bff")
 	)
 	(wire
 		(pts
@@ -3602,6 +3756,16 @@
 	)
 	(wire
 		(pts
+			(xy 193.04 72.39) (xy 176.53 72.39)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "98a67d68-00ce-4e8a-a4a8-a9b7520c6323")
+	)
+	(wire
+		(pts
 			(xy 121.92 53.34) (xy 86.36 53.34)
 		)
 		(stroke
@@ -3609,6 +3773,16 @@
 			(type default)
 		)
 		(uuid "9a3ed08a-9c51-4b79-b446-e479c534c039")
+	)
+	(wire
+		(pts
+			(xy 176.53 64.77) (xy 201.93 64.77)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "9a70729c-5542-4ce4-b3bb-4bee58d1eb76")
 	)
 	(wire
 		(pts
@@ -3782,6 +3956,16 @@
 	)
 	(wire
 		(pts
+			(xy 167.64 125.73) (xy 176.53 125.73)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "bea41d09-aa40-4b28-93fe-3a3516ff8f63")
+	)
+	(wire
+		(pts
 			(xy 119.38 71.12) (xy 121.92 71.12)
 		)
 		(stroke
@@ -3789,6 +3973,16 @@
 			(type default)
 		)
 		(uuid "c3f04829-e16b-4faf-a4b5-b01ea00c2763")
+	)
+	(wire
+		(pts
+			(xy 190.5 102.87) (xy 173.99 102.87)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "c49a1f7e-ff3d-48e4-b7d9-4dbb5f9c5f00")
 	)
 	(wire
 		(pts
@@ -3969,6 +4163,16 @@
 			(type default)
 		)
 		(uuid "e83cef26-1017-42f9-b745-9c861002684d")
+	)
+	(wire
+		(pts
+			(xy 149.86 125.73) (xy 167.64 125.73)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "e99bccbc-2225-43b0-be2e-510e5b08f77f")
 	)
 	(wire
 		(pts
@@ -4467,7 +4671,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_2512_6332Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 115.57 38.1 0)
 			(effects
 				(font
@@ -4536,7 +4740,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_2512_6332Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 101.346 99.314 90)
 			(effects
 				(font
@@ -4895,6 +5099,71 @@
 		)
 	)
 	(symbol
+		(lib_id "power:+12V")
+		(at 201.93 64.77 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "155be7d3-3d5a-4ab2-b633-887cf151237e")
+		(property "Reference" "#PWR09"
+			(at 201.93 68.58 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "+12V"
+			(at 201.93 59.69 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 201.93 64.77 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 201.93 64.77 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"+12V\""
+			(at 201.93 64.77 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "4d5a22ed-6f20-457a-b411-b52d25a3162f")
+		)
+		(instances
+			(project "Shunt-Link"
+				(path "/044df771-0288-4dc4-a604-257e905d1378"
+					(reference "#PWR09")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "Device:R_US")
 		(at 95.25 138.43 270)
 		(unit 1)
@@ -4921,7 +5190,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_2512_6332Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 94.996 139.446 90)
 			(effects
 				(font
@@ -4958,6 +5227,72 @@
 			(project "Shunt-Link"
 				(path "/044df771-0288-4dc4-a604-257e905d1378"
 					(reference "R11")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 193.04 133.35 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "1fa2e42d-ce1f-4f94-b760-a9c26a6070d6")
+		(property "Reference" "#PWR028"
+			(at 193.04 139.7 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "GND"
+			(at 193.04 138.43 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 193.04 133.35 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 193.04 133.35 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 193.04 133.35 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "dff96902-1b20-4389-ae42-ff19d8c38246")
+		)
+		(instances
+			(project "Shunt-Link"
+				(path "/044df771-0288-4dc4-a604-257e905d1378"
+					(reference "#PWR028")
 					(unit 1)
 				)
 			)
@@ -5123,7 +5458,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_2512_6332Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 87.376 129.794 90)
 			(effects
 				(font
@@ -5364,6 +5699,144 @@
 		)
 	)
 	(symbol
+		(lib_id "Device:C_US")
+		(at 176.53 129.54 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "3104f738-2719-4dce-91c4-cd121b076877")
+		(property "Reference" "C8"
+			(at 180.086 127.508 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "10 uF"
+			(at 180.086 130.048 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+			(at 176.53 129.54 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 176.53 129.54 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "capacitor, US symbol"
+			(at 176.53 129.54 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "d56ebcf3-a2a6-4ab9-b020-5c830cb01296")
+		)
+		(pin "2"
+			(uuid "2af4e841-a3f7-4812-923b-adb3157bbd8d")
+		)
+		(instances
+			(project "Shunt-Link"
+				(path "/044df771-0288-4dc4-a604-257e905d1378"
+					(reference "C8")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C_US")
+		(at 176.53 68.58 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "32612fb9-4193-462c-8317-543c3db74a4f")
+		(property "Reference" "C4"
+			(at 180.086 66.548 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "10 uF"
+			(at 180.086 69.088 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+			(at 176.53 68.58 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 176.53 68.58 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "capacitor, US symbol"
+			(at 176.53 68.58 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "3a221965-73ec-4228-8b1d-1186bb251ec9")
+		)
+		(pin "2"
+			(uuid "6804a1d7-0764-45ee-88e5-b721bdf0ee47")
+		)
+		(instances
+			(project "Shunt-Link"
+				(path "/044df771-0288-4dc4-a604-257e905d1378"
+					(reference "C4")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "Device:R_US")
 		(at 86.36 68.58 0)
 		(unit 1)
@@ -5390,7 +5863,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_2512_6332Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 87.376 68.834 90)
 			(effects
 				(font
@@ -5459,7 +5932,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_1210_3225Metric"
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
 			(at 173.99 38.1 0)
 			(effects
 				(font
@@ -5724,7 +6197,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_2512_6332Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 101.346 38.354 90)
 			(effects
 				(font
@@ -5833,6 +6306,76 @@
 		)
 	)
 	(symbol
+		(lib_id "Device:C")
+		(at 167.64 68.58 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "618e62a6-dac5-4b80-8a26-6e4b527da10b")
+		(property "Reference" "C3"
+			(at 171.45 67.3099 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0.1 uF"
+			(at 171.45 69.8499 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+			(at 168.6052 72.39 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 167.64 68.58 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 167.64 68.58 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "2"
+			(uuid "75cd910a-642f-4ac0-b4ea-64db8cdb8834")
+		)
+		(pin "1"
+			(uuid "328d7e85-d22a-4458-a859-9f96cc6cade8")
+		)
+		(instances
+			(project "Shunt-Link"
+				(path "/044df771-0288-4dc4-a604-257e905d1378"
+					(reference "C3")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "Connector:TestPoint")
 		(at 228.6 120.65 270)
 		(unit 1)
@@ -5926,7 +6469,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_2512_6332Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 105.156 68.834 90)
 			(effects
 				(font
@@ -5995,7 +6538,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_2512_6332Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 115.57 99.06 0)
 			(effects
 				(font
@@ -6132,7 +6675,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_1210_3225Metric"
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
 			(at 166.0652 41.91 0)
 			(effects
 				(font
@@ -6201,7 +6744,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_2512_6332Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 94.996 78.486 90)
 			(effects
 				(font
@@ -6534,6 +7077,136 @@
 		)
 	)
 	(symbol
+		(lib_id "power:+12V")
+		(at 201.93 125.73 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "87168cc4-96fd-453f-b4ef-213515a83bc2")
+		(property "Reference" "#PWR029"
+			(at 201.93 129.54 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "+12V"
+			(at 201.93 120.65 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 201.93 125.73 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 201.93 125.73 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"+12V\""
+			(at 201.93 125.73 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "a7370239-b748-4b5c-9e0a-c9e63992d4a4")
+		)
+		(instances
+			(project "Shunt-Link"
+				(path "/044df771-0288-4dc4-a604-257e905d1378"
+					(reference "#PWR029")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:+12V")
+		(at 199.39 95.25 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "88674469-4e79-4329-afcb-8a0a542b60f7")
+		(property "Reference" "#PWR027"
+			(at 199.39 99.06 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "+12V"
+			(at 199.39 90.17 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 199.39 95.25 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 199.39 95.25 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"+12V\""
+			(at 199.39 95.25 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "9e373f75-c876-4d4a-a159-4e73586083c1")
+		)
+		(instances
+			(project "Shunt-Link"
+				(path "/044df771-0288-4dc4-a604-257e905d1378"
+					(reference "#PWR027")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "Connector:TestPoint")
 		(at 228.6 107.95 270)
 		(unit 1)
@@ -6662,6 +7335,142 @@
 			(project "Shunt-Link"
 				(path "/044df771-0288-4dc4-a604-257e905d1378"
 					(reference "#PWR010")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 165.1 99.06 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "8eb1f1e7-64f1-42ea-8387-dc928e331fdd")
+		(property "Reference" "C5"
+			(at 168.91 97.7899 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0.1 uF"
+			(at 168.91 100.3299 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+			(at 166.0652 102.87 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 165.1 99.06 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 165.1 99.06 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "2"
+			(uuid "67259e2e-ab7d-4966-a0d9-38e2497a2676")
+		)
+		(pin "1"
+			(uuid "80aed933-fdc6-40ec-906f-3d2bc9ebaf60")
+		)
+		(instances
+			(project "Shunt-Link"
+				(path "/044df771-0288-4dc4-a604-257e905d1378"
+					(reference "C5")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 190.5 102.87 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "91cce98f-ad3e-4d2d-8623-6308f72991d5")
+		(property "Reference" "#PWR026"
+			(at 190.5 109.22 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "GND"
+			(at 190.5 107.95 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 190.5 102.87 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 190.5 102.87 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 190.5 102.87 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "bfd8e773-8181-4ed2-b288-3fc5f5862d4d")
+		)
+		(instances
+			(project "Shunt-Link"
+				(path "/044df771-0288-4dc4-a604-257e905d1378"
+					(reference "#PWR026")
 					(unit 1)
 				)
 			)
@@ -7093,6 +7902,75 @@
 		)
 	)
 	(symbol
+		(lib_id "Device:C_US")
+		(at 173.99 99.06 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "c002e8de-4077-4b8f-87a0-ee20e0131f9c")
+		(property "Reference" "C6"
+			(at 177.546 97.028 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "10 uF"
+			(at 177.546 99.568 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+			(at 173.99 99.06 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 173.99 99.06 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "capacitor, US symbol"
+			(at 173.99 99.06 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "fb832efc-53a2-455f-b477-455679015624")
+		)
+		(pin "2"
+			(uuid "ab3ec29c-91d3-4f3f-b475-524711a90aad")
+		)
+		(instances
+			(project "Shunt-Link"
+				(path "/044df771-0288-4dc4-a604-257e905d1378"
+					(reference "C6")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "Link_Components:PCIE-036-02-X-D-TH")
 		(at 232.41 57.15 0)
 		(unit 1)
@@ -7464,7 +8342,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_2512_6332Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 119.38 129.54 0)
 			(effects
 				(font
@@ -7507,6 +8385,72 @@
 		)
 	)
 	(symbol
+		(lib_id "power:GND")
+		(at 193.04 72.39 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "c48e565e-73f6-4a73-b310-a0fbd9a235a3")
+		(property "Reference" "#PWR025"
+			(at 193.04 78.74 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "GND"
+			(at 193.04 77.47 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 193.04 72.39 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 193.04 72.39 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 193.04 72.39 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "ef603d43-7baf-46ab-8df4-118e9735d0c1")
+		)
+		(instances
+			(project "Shunt-Link"
+				(path "/044df771-0288-4dc4-a604-257e905d1378"
+					(reference "#PWR025")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "Device:R_Small_US")
 		(at 119.38 68.58 0)
 		(unit 1)
@@ -7533,7 +8477,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_2512_6332Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 119.38 68.58 0)
 			(effects
 				(font
@@ -8123,7 +9067,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_2512_6332Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 105.156 129.794 90)
 			(effects
 				(font
@@ -8424,6 +9368,76 @@
 			(project "Shunt-Link"
 				(path "/044df771-0288-4dc4-a604-257e905d1378"
 					(reference "#FLG02")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 167.64 129.54 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "ff960012-e29a-488a-ba0f-a333963647d1")
+		(property "Reference" "C7"
+			(at 171.45 128.2699 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0.1 uF"
+			(at 171.45 130.8099 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+			(at 168.6052 133.35 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 167.64 129.54 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 167.64 129.54 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "2"
+			(uuid "a66e927a-23e1-40c7-932d-4cee896e1c26")
+		)
+		(pin "1"
+			(uuid "091183d1-87fc-4856-9957-250b367ee202")
+		)
+		(instances
+			(project "Shunt-Link"
+				(path "/044df771-0288-4dc4-a604-257e905d1378"
+					(reference "C7")
 					(unit 1)
 				)
 			)
