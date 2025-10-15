@@ -130,7 +130,7 @@
 		(layer "F.Fab")
 		(uuid "4f089600-cd36-455d-9a05-02fcae963d38")
 	)
-	(pad "TP" smd rect
+	(pad "1" smd rect
 		(at 0 0)
 		(size 3.43 1.78)
 		(layers "F.Cu" "F.Mask" "F.Paste")
