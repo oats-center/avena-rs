@@ -5,7 +5,7 @@
 	(uuid "95469dea-851e-4724-988e-7a6acaa4cbf0")
 	(paper "A4")
 	(lib_symbols
-		(symbol "PCIE-036-02-X-D-TH:PCIE-036-02-X-D-TH"
+		(symbol "Link_Components:PCIE-036-02-X-D-TH"
 			(pin_names
 				(offset 1.016)
 			)
@@ -1189,7 +1189,7 @@
 		(uuid "fd516da0-4d2c-47f8-9b81-9e7cc608f903")
 	)
 	(symbol
-		(lib_id "PCIE-036-02-X-D-TH:PCIE-036-02-X-D-TH")
+		(lib_id "Link_Components:PCIE-036-02-X-D-TH")
 		(at 251.46 82.55 0)
 		(unit 1)
 		(exclude_from_sim no)
@@ -1214,7 +1214,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Link_Footprints:PCIE-036-02-F-D-TH"
+		(property "Footprint" "Link_Footprints:SAMTEC_PCIE-036-02-X-D-TH"
 			(at 251.46 82.55 0)
 			(effects
 				(font
@@ -1400,7 +1400,7 @@
 		)
 	)
 	(symbol
-		(lib_id "PCIE-036-02-X-D-TH:PCIE-036-02-X-D-TH")
+		(lib_id "Link_Components:PCIE-036-02-X-D-TH")
 		(at 199.39 83.82 0)
 		(unit 1)
 		(exclude_from_sim no)
@@ -1425,7 +1425,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Link_Footprints:PCIE-036-02-F-D-TH"
+		(property "Footprint" "Link_Footprints:SAMTEC_PCIE-036-02-X-D-TH"
 			(at 199.39 83.82 0)
 			(effects
 				(font
@@ -1875,7 +1875,7 @@
 		)
 	)
 	(symbol
-		(lib_id "PCIE-036-02-X-D-TH:PCIE-036-02-X-D-TH")
+		(lib_id "Link_Components:PCIE-036-02-X-D-TH")
 		(at 143.51 83.82 0)
 		(unit 1)
 		(exclude_from_sim no)
@@ -1900,7 +1900,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Link_Footprints:PCIE-036-02-F-D-TH"
+		(property "Footprint" "Link_Footprints:SAMTEC_PCIE-036-02-X-D-TH"
 			(at 143.51 83.82 0)
 			(effects
 				(font
@@ -2416,7 +2416,7 @@
 		)
 	)
 	(symbol
-		(lib_id "PCIE-036-02-X-D-TH:PCIE-036-02-X-D-TH")
+		(lib_id "Link_Components:PCIE-036-02-X-D-TH")
 		(at 93.98 83.82 0)
 		(unit 1)
 		(exclude_from_sim no)
@@ -2441,7 +2441,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Link_Footprints:PCIE-036-02-F-D-TH"
+		(property "Footprint" "Link_Footprints:SAMTEC_PCIE-036-02-X-D-TH"
 			(at 93.98 83.82 0)
 			(effects
 				(font
@@ -2627,7 +2627,7 @@
 		)
 	)
 	(symbol
-		(lib_id "PCIE-036-02-X-D-TH:PCIE-036-02-X-D-TH")
+		(lib_id "Link_Components:PCIE-036-02-X-D-TH")
 		(at 41.91 83.82 0)
 		(unit 1)
 		(exclude_from_sim no)
@@ -2652,7 +2652,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Link_Footprints:PCIE-036-02-F-D-TH"
+		(property "Footprint" "Link_Footprints:SAMTEC_PCIE-036-02-X-D-TH"
 			(at 41.91 83.82 0)
 			(effects
 				(font
