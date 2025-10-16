@@ -1,4 +1,4 @@
-25224789904483720
+25226563362319373
 Audio_Module
 Reverb_BTDR-1H
 Digital Reverberation Unit, http://www.belton.co.kr/inc/downfile.php?seq=17&file=pdf (footprint from http://www.uk-electronic.de/PDF/BTDR-1.pdf)
@@ -66681,69 +66681,76 @@ Yellow 5381 Series LED
 0
 2
 2
-Link_Footprints
-1818517
-1818517
-Connector
-0
-6
-6
-Link_Footprints
-AD8221TRMZ-EP
+Link Footprints
+AD8221TRMZ
 RM-08-2022
 Integrated Circuit
 0
 8
 8
-Link_Footprints
+Link Footprints
 AD8244ARMZ
 RM-10(MSOP)
 Inductor
 0
 10
 10
-Link_Footprints
+Link Footprints
 INA849
 
 INA849DR 
 0
 8
 8
-Link_Footprints
-KEYSTONE_5017
-
-
-0
-1
-1
-Link_Footprints
+Link Footprints
 Keystone_1045
 
 
 0
-1
-1
-Link_Footprints
-LED_Lights
+2
+2
+Link Footprints
+Keystone_5017
 
 
 0
-6
-6
-Link_Footprints
-PCIE-036-02-F-D-TH
+1
+1
+Link Footprints
+LM340A
 
-
+LM340AT-5.0 
 0
-36
-36
-Link_Footprints
-Phoenix_Contact_MSTBA,5-LR
-1809102
+3
+3
+Link Footprints
+PC-1053864
+1053864
 Connector
 0
-5
-5
+4
+4
+Link Footprints
+PC-1818517
+1818517
+Connector
+0
+6
+6
+Link Footprints
+PC-1844223
+1844223
+Connector
+0
+3
+3
+Link Footprints
+SAMTEC_PCIE-036-02-X-D-TH
+
+
+0
+36
+36
 Module
 A20_OLINUXINO_LIME2
 A20 Olinuxino LIME2, 1.2GHz, 512-1024MB RAM, Micro-SD, NAND or eMMC, 1000Mbit Ethernet
