@@ -1,5 +1,4 @@
-<<<<<<< HEAD
-25223029188370115
+25226563703762238
 Audio_Module
 Reverb_BTDR-1H
 Digital Reverberation Unit, http://www.belton.co.kr/inc/downfile.php?seq=17&file=pdf (footprint from http://www.uk-electronic.de/PDF/BTDR-1.pdf)
@@ -66682,57 +66681,71 @@ Yellow 5381 Series LED
 0
 2
 2
-Link_Footprints
-1818517
-1818517
-Connector
-0
-6
-6
-Link_Footprints
-AD8221TRMZ-EP
+Link Footprints
+AD8221TRMZ
 RM-08-2022
 Integrated Circuit
 0
 8
 8
-Link_Footprints
+Link Footprints
 AD8244ARMZ
 RM-10(MSOP)
 Inductor
 0
 10
 10
-Link_Footprints
-KEYSTONE_5017
+Link Footprints
+INA849
 
-
+INA849DR 
 0
-1
-1
-Link_Footprints
+8
+8
+Link Footprints
 Keystone_1045
 
 
 0
-1
-1
-Link_Footprints
-LED_Lights
+2
+2
+Link Footprints
+Keystone_5017
 
 
 0
-6
-6
-Link_Footprints
-Phoenix_Contact_MSTBA,5-LR
-1809102
+1
+1
+Link Footprints
+LM340A
+
+LM340AT-5.0 
+0
+3
+3
+Link Footprints
+PC-1053864
+1053864
 Connector
 0
-5
-5
-Link_Footprints
-SAMTEC_PCIE_1x
+4
+4
+Link Footprints
+PC-1818517
+1818517
+Connector
+0
+6
+6
+Link Footprints
+PC-1844223
+1844223
+Connector
+0
+3
+3
+Link Footprints
+SAMTEC_PCIE-036-02-X-D-TH
 
 
 0
@@ -101332,6 +101345,3 @@ Varistor VF
 0
 2
 2
-=======
-0
->>>>>>> 8436d7c1412a22b45feaa3f0348a9f616fa8b1cb

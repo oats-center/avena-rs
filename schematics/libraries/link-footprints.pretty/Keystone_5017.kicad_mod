@@ -4,7 +4,7 @@
 	(generator_version "9.0")
 	(layer "F.Cu")
 	(property "Reference" "REF**"
-		(at 1.21 -2.775 0)
+		(at 0.465 -2.64 0)
 		(layer "F.SilkS")
 		(uuid "91950841-329e-4bb8-8715-125d078cd018")
 		(effects
@@ -15,8 +15,8 @@
 		)
 	)
 	(property "Value" "KEYSTONE_5017"
-		(at 6.29 2.775 0)
-		(layer "F.Fab")
+		(at 0.465 2.36 0)
+		(layer "F.SilkS")
 		(uuid "ab17b7b3-d481-43e2-82c3-eab2f66fee7e")
 		(effects
 			(font
@@ -130,7 +130,7 @@
 		(layer "F.Fab")
 		(uuid "d7ed59d5-98fc-4671-98bc-019e823a936c")
 	)
-	(pad "TP" smd rect
+	(pad "1" smd rect
 		(at 0 0)
 		(size 3.43 1.78)
 		(layers "F.Cu" "F.Mask" "F.Paste")
