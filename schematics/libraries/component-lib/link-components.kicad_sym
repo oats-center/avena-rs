@@ -596,51 +596,31 @@
 		)
 		(embedded_fonts no)
 	)
-	(symbol "INA849DR"
+	(symbol "INA849D"
 		(pin_names
-			(offset 0.254)
+			(offset 0.127)
 		)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
-		(property "Reference" "U"
-			(at 0 2.54 0)
-			(effects
-				(font
-					(size 1.524 1.524)
-				)
-			)
-		)
-		(property "Value" "INA849DR"
-			(at 0 0 0)
-			(effects
-				(font
-					(size 1.524 1.524)
-				)
-			)
-		)
-		(property "Footprint" "D0008A-IPC_A"
-			(at 0 0 0)
+		(property "Reference" "U1"
+			(at 8.382 7.366 0)
 			(effects
 				(font
 					(size 1.27 1.27)
-					(italic yes)
 				)
-				(hide yes)
 			)
 		)
-		(property "Datasheet" "https://www.ti.com/lit/gpn/ina849"
-			(at 0 0 0)
+		(property "Value" "INA849D"
+			(at 8.382 4.826 0)
 			(effects
 				(font
 					(size 1.27 1.27)
-					(italic yes)
 				)
-				(hide yes)
 			)
 		)
-		(property "Description" ""
-			(at 0 0 0)
+		(property "Footprint" ""
+			(at 0.254 -27.432 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -648,15 +628,25 @@
 				(hide yes)
 			)
 		)
-		(property "ki_locked" ""
-			(at 0 0 0)
+		(property "Datasheet" "https://www.ti.com/lit/ds/symlink/ina849.pdf"
+			(at 0.508 -29.972 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "ki_keywords" "INA849DR"
+		(property "Description" "Ultra-Low-Noise (1 nV/√Hz), 28 MHz Bandwidth, Instrumentation Amplifier, Supply Range 8V to 36V, SOIC-8"
+			(at 0 -24.892 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "ki_keywords" "high-common-mode-rejection low-offset-drift low-gain-drift"
 			(at 0 0 0)
 			(effects
 				(font
@@ -665,7 +655,7 @@
 				(hide yes)
 			)
 		)
-		(property "ki_fp_filters" "D0008A-IPC_A D0008A-IPC_B D0008A-IPC_C D0008A-MFG"
+		(property "ki_fp_filters" "SOIC*3.9x4.9mm*P1.27mm*"
 			(at 0 0 0)
 			(effects
 				(font
@@ -674,203 +664,25 @@
 				(hide yes)
 			)
 		)
-		(symbol "INA849DR_0_1"
+		(symbol "INA849D_0_1"
 			(polyline
 				(pts
-					(xy 5.08 5.08) (xy 5.08 -20.32)
+					(xy -5.08 7.62) (xy -5.08 -7.62) (xy 10.16 0) (xy -5.08 7.62)
 				)
 				(stroke
-					(width 0.2032)
+					(width 0.254)
 					(type default)
 				)
 				(fill
-					(type none)
+					(type background)
 				)
 			)
-			(polyline
-				(pts
-					(xy 5.08 -20.32) (xy 27.94 -20.32)
-				)
-				(stroke
-					(width 0.2032)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(polyline
-				(pts
-					(xy 12.7 -2.54) (xy 20.32 -7.62)
-				)
-				(stroke
-					(width 0.2032)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(polyline
-				(pts
-					(xy 12.7 -5.08) (xy 5.08 -5.08)
-				)
-				(stroke
-					(width 0.2032)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(polyline
-				(pts
-					(xy 12.7 -10.16) (xy 5.08 -10.16)
-				)
-				(stroke
-					(width 0.2032)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(polyline
-				(pts
-					(xy 12.7 -12.7) (xy 12.7 -2.54)
-				)
-				(stroke
-					(width 0.2032)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(polyline
-				(pts
-					(xy 12.7 -12.7) (xy 20.32 -7.62)
-				)
-				(stroke
-					(width 0.2032)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(polyline
-				(pts
-					(xy 13.462 -5.08) (xy 14.478 -5.08)
-				)
-				(stroke
-					(width 0.2032)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(polyline
-				(pts
-					(xy 13.462 -10.16) (xy 14.224 -10.16)
-				)
-				(stroke
-					(width 0.2032)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(polyline
-				(pts
-					(xy 13.97 -4.572) (xy 13.97 -5.588)
-				)
-				(stroke
-					(width 0.2032)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(polyline
-				(pts
-					(xy 20.32 -7.62) (xy 27.94 -7.62)
-				)
-				(stroke
-					(width 0.2032)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(polyline
-				(pts
-					(xy 27.94 5.08) (xy 5.08 5.08)
-				)
-				(stroke
-					(width 0.2032)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(polyline
-				(pts
-					(xy 27.94 -20.32) (xy 27.94 5.08)
-				)
-				(stroke
-					(width 0.2032)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(pin power_in line
-				(at 0 0 0)
-				(length 5.08)
-				(name "+VS"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-				(number "8"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-			)
-			(pin tri_state line
-				(at 0 -5.08 0)
-				(length 5.08)
-				(name "+IN"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-				(number "4"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-			)
-			(pin tri_state line
-				(at 0 -10.16 0)
-				(length 5.08)
-				(name "-IN"
+		)
+		(symbol "INA849D_1_1"
+			(pin input line
+				(at -7.62 5.08 0)
+				(length 2.54)
+				(name "-"
 					(effects
 						(font
 							(size 1.27 1.27)
@@ -885,10 +697,10 @@
 					)
 				)
 			)
-			(pin unspecified line
-				(at 0 -15.24 0)
-				(length 5.08)
-				(name "1_RG"
+			(pin passive line
+				(at -7.62 2.54 0)
+				(length 2.54)
+				(name "Rg"
 					(effects
 						(font
 							(size 1.27 1.27)
@@ -903,10 +715,10 @@
 					)
 				)
 			)
-			(pin unspecified line
-				(at 0 -17.78 0)
-				(length 5.08)
-				(name "2_RG"
+			(pin passive line
+				(at -7.62 -2.54 0)
+				(length 2.54)
+				(name "Rg"
 					(effects
 						(font
 							(size 1.27 1.27)
@@ -921,17 +733,17 @@
 					)
 				)
 			)
-			(pin unspecified line
-				(at 33.02 -7.62 180)
-				(length 5.08)
-				(name "OUT"
+			(pin input line
+				(at -7.62 -5.08 0)
+				(length 2.54)
+				(name "+"
 					(effects
 						(font
 							(size 1.27 1.27)
 						)
 					)
 				)
-				(number "7"
+				(number "4"
 					(effects
 						(font
 							(size 1.27 1.27)
@@ -939,10 +751,46 @@
 					)
 				)
 			)
-			(pin unspecified line
-				(at 33.02 -12.7 180)
+			(pin power_in line
+				(at 0 7.62 270)
+				(length 2.54)
+				(name "Vs+"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(number "8"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+			)
+			(pin power_in line
+				(at 0 -7.62 90)
+				(length 2.54)
+				(name "Vs-"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(number "5"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+			)
+			(pin passive line
+				(at 5.08 -7.62 90)
 				(length 5.08)
-				(name "REF"
+				(name "Ref"
 					(effects
 						(font
 							(size 1.27 1.27)
@@ -957,17 +805,17 @@
 					)
 				)
 			)
-			(pin power_in line
-				(at 33.02 -17.78 180)
-				(length 5.08)
-				(name "-VS"
+			(pin output line
+				(at 12.7 0 180)
+				(length 2.54)
+				(name "~"
 					(effects
 						(font
 							(size 1.27 1.27)
 						)
 					)
 				)
-				(number "5"
+				(number "7"
 					(effects
 						(font
 							(size 1.27 1.27)
