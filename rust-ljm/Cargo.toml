@@ -22,6 +22,7 @@ time = "0.3"
 parquet = "56.1.0"
 arrow-array = "56.1.0"
 arrow-schema = "56.1.0"
+uuid = { version = "1.11.0", features = ["v4"] }
 
 [features]
 # Default: use static linking (safe & simple)
@@ -45,7 +46,7 @@ path = "src/store.rs"
 name = "subscriber"
 path = "src/subscriber.rs"
 
-
-
-
+[[bin]]
+name = "exporter"
+path = "src/exporter.rs"
 

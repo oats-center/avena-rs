@@ -1,3 +1,4 @@
+use async_nats::{self, ConnectOptions, ServerAddr};
 use flatbuffers::root;
 use futures_util::stream::StreamExt;
 use std::collections::HashMap;
@@ -5,7 +6,6 @@ use std::error::Error;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use async_nats::{self, ConnectOptions, ServerAddr};
 
 // Import your generated FlatBuffers schema
 mod sample_data_generated {
@@ -64,7 +64,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     ];
 
     // Connect using creds
-    let creds_path = std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| "/Users/anugunj/Downloads/apt.creds".into());
+    let creds_path = std::env::var("NATS_CREDS_FILE")
+        .unwrap_or_else(|_| "/Users/anugunj/Downloads/apt.creds".into());
     let opts = ConnectOptions::with_credentials_file(creds_path)
         .await
         .map_err(|e| format!("Failed to load creds: {}", e))?;
@@ -95,12 +96,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let values_vec: Vec<f64> = values.iter().collect();
 
                 let out_dir_clone = out_dir.clone();
-                let file = files
-                    .entry(ch_token.clone())
-                    .or_insert_with(move || {
-                        open_csv_for_channel(&out_dir_clone, asset_number, &ch_token)
-                            .expect("failed to open per-channel csv")
-                    });
+                let file = files.entry(ch_token.clone()).or_insert_with(move || {
+                    open_csv_for_channel(&out_dir_clone, asset_number, &ch_token)
+                        .expect("failed to open per-channel csv")
+                });
 
                 let values_str = values_vec
                     .iter()
