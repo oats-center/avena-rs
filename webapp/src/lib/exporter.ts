@@ -43,7 +43,7 @@ type CompleteFrame = {
 
 type Frame = SummaryFrame | MetaFrame | ErrorFrame | CompleteFrame | Record<string, unknown>;
 
-const DEFAULT_WS_URL = "ws://127.0.0.1:9001/export";
+const DEFAULT_WS_URL = import.meta.env.VITE_EXPORT_WS_URL ?? "ws://127.0.0.1:9001/export";;
 
 export async function downloadExportViaWebSocket(
   payload: ExportRequestPayload,
