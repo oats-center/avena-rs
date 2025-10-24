@@ -1,7 +1,7 @@
+use ljmrs::handle::{ConnectionType, DeviceType};
+use ljmrs::{LJMError, LJMLibrary};
 use std::thread;
 use std::time::Duration;
-use ljmrs::{LJMLibrary, LJMError};
-use ljmrs::handle::{ConnectionType, DeviceType};
 
 fn main() -> Result<(), LJMError> {
     // Choose one feature at build time
@@ -29,12 +29,14 @@ fn main() -> Result<(), LJMError> {
         // 199 = single-ended
         LJMLibrary::write_name(handle, "AIN_ALL_NEGATIVE_CH", 199_u32)?;
     }
-    LJMLibrary::write_name(handle, "AIN_ALL_RANGE", 1.0_f64)?;         // ±10 V (±11 V on T8)
+    LJMLibrary::write_name(handle, "AIN_ALL_RANGE", 1.0_f64)?; // ±10 V (±11 V on T8)
     LJMLibrary::write_name(handle, "AIN_ALL_RESOLUTION_INDEX", 0_u32)?; // default
 
     println!(
         "Opened {:?} (serial {}), reading AIN0..AIN{} — Ctrl+C to stop.",
-        info.device_type, info.serial_number, num_ains - 1
+        info.device_type,
+        info.serial_number,
+        num_ains - 1
     );
 
     loop {

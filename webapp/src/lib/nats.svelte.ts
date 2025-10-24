@@ -121,3 +121,108 @@ export async function deleteKey(serverName: string, credentialsContent: string, 
     return false;
   }
 }
+
+export interface ExportRequestPayload {
+  asset: number;
+  channels: number[];
+  start: string;
+  end: string;
+  format: "csv" | "parquet";
+  bucket?: string;
+  download_name?: string;
+}
+
+export interface ExportResponsePayload {
+  status: string;
+  request_id?: string;
+  object?: string;
+  bucket?: string;
+  size_bytes?: number;
+  download_name?: string;
+  control_subject?: string;
+  data_subject?: string;
+  chunk_size?: number;
+  content_type?: string;
+  missing_channels?: number[];
+  error?: string;
+}
+
+interface DownloadMetaPayload {
+  bucket: string;
+  download_name: string;
+  size_bytes: number;
+  format: string;
+  chunk_size: number;
+}
+
+export interface DownloadResult {
+  blob: Blob;
+  fileName: string;
+  size: number;
+}
+
+export async function requestExport(
+  nats: NatsService,
+  payload: ExportRequestPayload,
+  subject = "avenabox.export.request",
+  timeoutMs = 60000
+): Promise<ExportResponsePayload> {
+  const data = new TextEncoder().encode(JSON.stringify(payload));
+  const msg = await nats.connection.request(subject, data, { timeout: timeoutMs });
+  const text = new TextDecoder().decode(msg.data);
+  return JSON.parse(text) as ExportResponsePayload;
+}
+
+export async function downloadExport(
+  nats: NatsService,
+  response: ExportResponsePayload,
+  onProgress?: (received: number, total?: number) => void
+): Promise<DownloadResult> {
+  if (!response.control_subject || !response.data_subject) {
+    throw new Error("Export response missing download subjects");
+  }
+
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  let meta: DownloadMetaPayload | null = null;
+
+  const subscription = nats.connection.subscribe(response.data_subject);
+  const handshake = nats.connection.request(
+    response.control_subject,
+    encoder.encode(JSON.stringify({ start: true }))
+  );
+
+  for await (const msg of subscription) {
+    const event = msg.headers?.get("Nats-Download-Event") ?? "chunk";
+    if (event === "meta") {
+      meta = JSON.parse(decoder.decode(msg.data)) as DownloadMetaPayload;
+    } else if (event === "chunk") {
+      chunks.push(msg.data);
+      received += msg.data.length;
+      onProgress?.(received, response.size_bytes ?? meta?.size_bytes);
+    } else if (event === "complete") {
+      subscription.unsubscribe();
+      break;
+    } else if (event === "error") {
+      subscription.unsubscribe();
+      const details = JSON.parse(decoder.decode(msg.data));
+      throw new Error(details?.error ?? "Export failed");
+    }
+  }
+
+  await handshake;
+
+  const fileName =
+    meta?.download_name ?? response.download_name ?? "labjack-export";
+  const mimeType =
+    response.content_type ??
+    (meta?.format === "csv" ? "text/csv" : "application/octet-stream");
+  const blob = new Blob(chunks, { type: mimeType });
+  return {
+    blob,
+    fileName,
+    size: meta?.size_bytes ?? blob.size,
+  };
+}
