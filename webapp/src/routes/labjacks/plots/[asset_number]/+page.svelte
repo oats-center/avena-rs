@@ -1,7 +1,8 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
     import { page } from "$app/stores";
-    import { connect, getKeyValue, getKeys, requestExport, downloadExport, type ExportRequestPayload } from "$lib/nats.svelte";
+    import { connect, getKeyValue, getKeys } from "$lib/nats.svelte";
+    import { downloadExportViaWebSocket, type ExportRequestPayload } from "$lib/exporter";
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
     import { FlatBufferParser, calculateSampleTimestamps } from "$lib/flatbuffer-parser";
     // @ts-ignore - No type definitions available for downsample-lttb
@@ -53,7 +54,6 @@
     let timeWindow = $state<number>(5); // seconds
     let maxDataPoints = $state<number>(10000);
     let showExportModal = $state<boolean>(false);
-    let exportFormat = $state<"csv" | "parquet">("csv");
     let exportStart = $state<string>("");
     let exportEnd = $state<string>("");
     let exportChannels = $state<Set<number>>(new Set());
@@ -414,7 +414,6 @@
         exportEnd = toLocalInputValue(now);
         const start = new Date(now.getTime() - 5 * 60 * 1000);
         exportStart = toLocalInputValue(start);
-        exportFormat = "csv";
         exportError = "";
         exportWarning = "";
         exporting = false;
@@ -452,8 +451,8 @@
 
     async function handleExportSubmit(event: Event) {
         event.preventDefault();
-        if (!labjackConfig || !natsService) {
-            exportError = "NATS connection is not ready";
+        if (!labjackConfig) {
+            exportError = "Configuration not loaded";
             return;
         }
 
@@ -494,36 +493,29 @@
                 channels: Array.from(exportChannels).sort((a, b) => a - b),
                 start: startIso,
                 end: endIso,
-                format: exportFormat,
                 download_name: labjackConfig.labjack_name
-                    ? `${labjackConfig.labjack_name.replace(/\s+/g, "_")}.${exportFormat}`
+                    ? `${labjackConfig.labjack_name.replace(/\s+/g, "_")}.csv`
                     : undefined,
             };
 
-            const resp = await requestExport(natsService, payload);
-            if (resp.status === "empty") {
-                exportError = resp.missing_channels && resp.missing_channels.length > 0
-                    ? `No data found. Missing channels: ${resp.missing_channels.map((ch) => ch.toString().padStart(2, "0")).join(", ")}`
-                    : "No data found for the selected window";
-                exporting = false;
-                return;
-            }
-
-            if (resp.status !== "ok") {
-                throw new Error(resp.error || "Export failed");
-            }
-
-            if (resp.missing_channels && resp.missing_channels.length > 0) {
-                const formatted = resp.missing_channels
-                    .map((ch) => ch.toString().padStart(2, "0"))
-                    .join(", ");
-                exportWarning = `No samples found for channels: ${formatted}. Continuing with remaining channels.`;
-            }
-
-            const result = await downloadExport(natsService, resp, (received, total) => {
-                exportProgress = received;
-                exportTotal = total ?? null;
+            const result = await downloadExportViaWebSocket(payload, {
+                onProgress: (received) => {
+                    exportProgress = received;
+                },
+                onSummary: (missing) => {
+                    if (missing.length > 0) {
+                        const formatted = missing
+                            .map((ch) => ch.toString().padStart(2, "0"))
+                            .join(", ");
+                        exportWarning = `No samples found for channels: ${formatted}. Continuing with remaining channels.`;
+                    } else {
+                        exportWarning = "";
+                    }
+                },
             });
+
+            exportTotal = result.size;
+            exportProgress = result.size;
 
             const url = URL.createObjectURL(result.blob);
             const link = document.createElement("a");
@@ -889,21 +881,6 @@
                                         disabled={exporting}
                                     />
                                 </div>
-                            </div>
-
-                            <div class="form-control">
-                                <label class="label" for="export-format">
-                                    <span class="label-text">File Format</span>
-                                </label>
-                                <select
-                                    id="export-format"
-                                    class="select select-bordered"
-                                    bind:value={exportFormat}
-                                    disabled={exporting}
-                                >
-                                    <option value="csv">CSV</option>
-                                    <option value="parquet">Parquet</option>
-                                </select>
                             </div>
 
                             <div>
