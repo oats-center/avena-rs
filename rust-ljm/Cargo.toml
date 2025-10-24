@@ -23,6 +23,7 @@ parquet = "56.1.0"
 arrow-array = "56.1.0"
 arrow-schema = "56.1.0"
 uuid = { version = "1.11.0", features = ["v4"] }
+axum = { version = "0.7.5", features = ["ws", "macros"] }
 
 [features]
 # Default: use static linking (safe & simple)
@@ -50,3 +51,5 @@ path = "src/subscriber.rs"
 name = "exporter"
 path = "src/exporter.rs"
 
+[dev-dependencies]
+tokio-tungstenite = "0.21"
