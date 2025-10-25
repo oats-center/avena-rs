@@ -161,7 +161,7 @@
                                 class="file-input file-input-bordered w-full pl-10"
                             />
                         </div>
-                        <label class="label">
+                        <div class="label">
                             <span class="label-text-alt">
                                 {#if credentialsFile}
                                     ✅ {credentialsFile.name} uploaded
@@ -169,7 +169,7 @@
                                     Upload your NATS credentials file (.creds)
                                 {/if}
                             </span>
-                        </label>
+                        </div>
                         
                     </div>
 

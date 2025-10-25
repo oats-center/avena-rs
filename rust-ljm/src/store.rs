@@ -1,16 +1,16 @@
-use std::{fs, path::Path, sync::Arc, collections::HashMap};
+use async_nats::ConnectOptions;
+use async_nats::jetstream::kv::Operation;
+use async_nats::{self, ServerAddr, jetstream};
+use chrono::{NaiveDate, Utc};
+use futures_util::StreamExt;
 use parquet::{
     column::writer::ColumnWriter,
     data_type::ByteArray,
     file::{properties::WriterProperties, writer::SerializedFileWriter},
     schema::parser::parse_message_type,
 };
-use async_nats::{self, jetstream, ServerAddr};
-use async_nats::ConnectOptions;
-use async_nats::jetstream::kv::Operation;
-use futures_util::StreamExt;
+use std::{collections::HashMap, fs, path::Path, sync::Arc};
 use tokio::time::Duration;
-use chrono::{Utc, NaiveDate};
 
 mod sample_data_generated {
     #![allow(dead_code, unused_imports)]
@@ -68,7 +68,6 @@ impl From<(SensorConfig, &SampleConfig)> for SampleConfig {
         }
     }
 }
-
 
 #[allow(dead_code)]
 struct ParquetLogger {
@@ -131,8 +130,11 @@ impl ParquetLogger {
             let mut scw = rg.next_column().unwrap().expect("timestamp col");
             let mut cw = scw.untyped();
             if let ColumnWriter::ByteArrayColumnWriter(typed) = &mut cw {
-                let values: Vec<ByteArray> =
-                    self.buffer.iter().map(|(ts, _)| ByteArray::from(ts.as_str())).collect();
+                let values: Vec<ByteArray> = self
+                    .buffer
+                    .iter()
+                    .map(|(ts, _)| ByteArray::from(ts.as_str()))
+                    .collect();
                 typed.write_batch(&values, None, None).unwrap();
             }
             scw.close().unwrap();
@@ -245,7 +247,6 @@ fn spawn_channel_logger(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    
     let servers: Vec<ServerAddr> = vec![
         "nats://nats1.oats:4222".parse()?,
         "nats://nats2.oats:4222".parse()?,
@@ -253,7 +254,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     // Connect using creds
-    let creds_path = std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| "/Users/anugunj/Downloads/apt.creds".into());
+    let creds_path = std::env::var("NATS_CREDS_FILE")
+        .unwrap_or_else(|_| "/Users/anugunj/Downloads/apt.creds".into());
     let opts = ConnectOptions::with_credentials_file(creds_path)
         .await
         .map_err(|e| format!("Failed to load creds: {}", e))?;
@@ -268,7 +270,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 2: load config from KV
     let bucket = std::env::var("CFG_BUCKET").unwrap_or_else(|_| "avenabox".into());
-    let key    = std::env::var("CFG_KEY").unwrap_or_else(|_| "labjackd.config.macbook".into());
+    let key = std::env::var("CFG_KEY").unwrap_or_else(|_| "labjackd.config.macbook".into());
     let store = js.get_key_value(bucket.as_str()).await?;
     let entry = store.entry(key.as_str()).await?.ok_or("KV key not found")?;
 
@@ -297,10 +299,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 nats_stream: nested.nats_stream,
                 rotate_secs: nested.rotate_secs,
             }
-        },
+        }
     };
-
-    
 
     println!("[logger] Loaded config: {:?}", cfg);
 
@@ -310,7 +310,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // initial subscriptions
     for ch in &cfg.channels {
-        let subject = format!("{}.{:03}.data.ch{:02}", cfg.nats_subject, cfg.asset_number, ch);
+        let subject = format!(
+            "{}.{:03}.data.ch{:02}",
+            cfg.nats_subject, cfg.asset_number, ch
+        );
         let h = spawn_channel_logger(nc.clone(), subject, cfg.asset_number, *ch, cfg.rotate_secs);
         active.insert(*ch, h);
     }
@@ -336,23 +339,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             })
                             .or_else(|_| {
-                                serde_json::from_slice::<NestedConfig>(&entry.value)
-                                    .map(|nested| {
-                                        let raw = nested.sensor_settings;
-                                        SampleConfig {
-                                            scans_per_read: raw.scan_rate,
-                                            suggested_scan_rate: raw.sampling_rate,
-                                            channels: raw.channels_enabled,
-                                            asset_number: nested.asset_number,
-                                            nats_subject: nested.nats_subject,
-                                            nats_stream: nested.nats_stream,
-                                            rotate_secs: nested.rotate_secs,
-                                        }
-                                    })
+                                serde_json::from_slice::<NestedConfig>(&entry.value).map(|nested| {
+                                    let raw = nested.sensor_settings;
+                                    SampleConfig {
+                                        scans_per_read: raw.scan_rate,
+                                        suggested_scan_rate: raw.sampling_rate,
+                                        channels: raw.channels_enabled,
+                                        asset_number: nested.asset_number,
+                                        nats_subject: nested.nats_subject,
+                                        nats_stream: nested.nats_stream,
+                                        rotate_secs: nested.rotate_secs,
+                                    }
+                                })
                             })
                         {
                             println!("[logger] KV config update detected: {:?}", new_cfg);
-    
+
                             // remove old channels
                             active.retain(|ch, handle| {
                                 if new_cfg.channels.contains(ch) {
@@ -363,7 +365,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     false
                                 }
                             });
-    
+
                             // add new channels
                             for ch in &new_cfg.channels {
                                 if !active.contains_key(ch) {
@@ -388,7 +390,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     });
-    
 
     tokio::signal::ctrl_c().await?;
     println!("Shutting down logger...");

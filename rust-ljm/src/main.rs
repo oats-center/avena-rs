@@ -1,16 +1,16 @@
-use tokio::sync::{watch, mpsc};
-use serde::{Deserialize, Serialize};
-use chrono::{Utc, TimeZone};
+use chrono::{TimeZone, Utc};
 use chrono_tz::America::New_York;
+use serde::{Deserialize, Serialize};
+use tokio::sync::{mpsc, watch};
 use tokio::time::Duration;
 
-use ljmrs::{LJMLibrary, LJMError};
-use ljmrs::handle::{DeviceType, ConnectionType};
+use ljmrs::handle::{ConnectionType, DeviceType};
+use ljmrs::{LJMError, LJMLibrary};
 
-use flatbuffers::FlatBufferBuilder;
-use async_nats::jetstream::{self, kv, stream::Config as StreamConfig};
 use async_nats::jetstream::kv::Operation;
+use async_nats::jetstream::{self, kv, stream::Config as StreamConfig};
 use async_nats::{ConnectOptions, ServerAddr};
+use flatbuffers::FlatBufferBuilder;
 use futures_util::StreamExt;
 
 mod sample_data_generated {
@@ -43,7 +43,6 @@ struct SensorSettings {
     labjack_on_off: bool,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct SampleConfig {
     scans_per_read: i32,
@@ -55,12 +54,11 @@ struct SampleConfig {
     rotate_secs: u64,
 }
 
-
 impl From<(NestedConfig, &SampleConfig)> for SampleConfig {
     fn from((nested, base): (NestedConfig, &SampleConfig)) -> Self {
         let raw = nested.sensor_settings;
         SampleConfig {
-            scans_per_read: raw.scan_rate, 
+            scans_per_read: raw.scan_rate,
             suggested_scan_rate: raw.sampling_rate,
             channels: raw.channels_enabled,
             asset_number: base.asset_number,
@@ -70,7 +68,6 @@ impl From<(NestedConfig, &SampleConfig)> for SampleConfig {
         }
     }
 }
-
 
 struct LabJackGuard {
     handle: i32,
@@ -109,7 +106,10 @@ async fn ensure_stream_exists(
         return Ok(());
     }
 
-    println!("Creating JetStream stream '{}' for subject '{}'", stream_name, subject);
+    println!(
+        "Creating JetStream stream '{}' for subject '{}'",
+        stream_name, subject
+    );
 
     let config = StreamConfig {
         name: stream_name.to_string(),
@@ -129,7 +129,6 @@ async fn ensure_stream_exists(
 
     Ok(())
 }
-
 
 async fn ensure_kv_bucket(js: &jetstream::Context, bucket: &str) -> Result<kv::Store, LJMError> {
     if let Ok(store) = js.get_key_value(bucket).await {
@@ -165,15 +164,16 @@ async fn load_config_from_kv(store: &kv::Store, key: &str) -> Result<SampleConfi
 
             Ok(cfg)
         }
-        Ok(None) => Err(LJMError::LibraryError(format!("KV key '{}' not found", key))),
-        Err(e) => Err(LJMError::LibraryError(format!("KV entry error for '{}': {}", key, e))),
+        Ok(None) => Err(LJMError::LibraryError(format!(
+            "KV key '{}' not found",
+            key
+        ))),
+        Err(e) => Err(LJMError::LibraryError(format!(
+            "KV entry error for '{}': {}",
+            key, e
+        ))),
     }
 }
-
-
-
-
-
 
 async fn watch_kv_config(
     store: kv::Store,
@@ -183,7 +183,10 @@ async fn watch_kv_config(
 ) {
     let mut watch = match store.watch(&key).await {
         Ok(w) => w,
-        Err(e) => { eprintln!("[watch_kv_config] watch error: {}", e); return; }
+        Err(e) => {
+            eprintln!("[watch_kv_config] watch error: {}", e);
+            return;
+        }
     };
     println!("[watch_kv_config] Watching KV key '{}'", key);
 
@@ -255,11 +258,9 @@ async fn watch_kv_config(
     }
 }
 
-
-
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, Ordering}
+    atomic::{AtomicBool, Ordering},
 };
 
 async fn sample_with_config(
@@ -269,9 +270,12 @@ async fn sample_with_config(
     shutdown_rx: &mut watch::Receiver<bool>,
     js: &jetstream::Context,
 ) -> Result<(), LJMError> {
-
-
-    ensure_stream_exists(&js, &cfg.nats_stream, &stream_subject_wildcard(&cfg.nats_subject, cfg.asset_number)).await?;
+    ensure_stream_exists(
+        &js,
+        &cfg.nats_stream,
+        &stream_subject_wildcard(&cfg.nats_subject, cfg.asset_number),
+    )
+    .await?;
 
     let handle = LJMLibrary::open_jack(DeviceType::ANY, ConnectionType::ANY, "ANY")?;
     let _guard = LabJackGuard { handle };
@@ -289,7 +293,9 @@ async fn sample_with_config(
     LJMLibrary::write_name(handle, "AIN_ALL_RESOLUTION_INDEX", 0_u32)?;
     LJMLibrary::write_name(handle, "STREAM_SETTLING_US", 0_u32)?;
 
-    let channel_addresses: Result<Vec<i32>, LJMError> = cfg.channels.iter()
+    let channel_addresses: Result<Vec<i32>, LJMError> = cfg
+        .channels
+        .iter()
         .map(|ch| {
             LJMLibrary::name_to_address(&format!("AIN{}", ch))
                 .map(|(addr, _)| addr)
@@ -405,9 +411,13 @@ async fn run_sampler(
         }
         run_id += 1;
         let cfg = config_rx.borrow().clone();
-        println!("[run_sampler] Starting sampler run #{run_id} with {:?}", cfg);
+        println!(
+            "[run_sampler] Starting sampler run #{run_id} with {:?}",
+            cfg
+        );
 
-        if let Err(e) = sample_with_config(run_id, cfg, &mut config_rx, &mut shutdown_rx, &js).await {
+        if let Err(e) = sample_with_config(run_id, cfg, &mut config_rx, &mut shutdown_rx, &js).await
+        {
             eprintln!("[run_sampler] Sampler error: {:?}", e);
         }
 
@@ -420,12 +430,8 @@ async fn run_sampler(
     }
 }
 
-
-
-
 #[tokio::main]
 async fn main() -> Result<(), LJMError> {
-    
     let creds_path = std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| "apt.creds".into());
     let opts = ConnectOptions::with_credentials_file(creds_path)
         .await
@@ -447,30 +453,44 @@ async fn main() -> Result<(), LJMError> {
         .connect(servers)
         .await
         .map_err(|e| LJMError::LibraryError(format!("NATS connect failed: {}", e)))?;
-        
+
     println!("Connected to NATS via creds!");
     let js = jetstream::new(nc);
 
     let bucket = std::env::var("CFG_BUCKET").unwrap_or_else(|_| "avenabox".into());
-    let key    = std::env::var("CFG_KEY").unwrap_or_else(|_| "labjackd.config.macbook".into());
+    let key = std::env::var("CFG_KEY").unwrap_or_else(|_| "labjackd.config.macbook".into());
 
     let store = ensure_kv_bucket(&js, &bucket).await?;
     let cfg = load_config_from_kv(&store, &key).await?;
-    println!("[bootstrap] Loaded initial config from KV '{}:{}': {:?}", bucket, key, cfg);
+    println!(
+        "[bootstrap] Loaded initial config from KV '{}:{}': {:?}",
+        bucket, key, cfg
+    );
 
     let (config_tx, config_rx) = watch::channel(cfg);
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
     #[cfg(feature = "staticlib")]
-    unsafe { LJMLibrary::init()?; }
+    unsafe {
+        LJMLibrary::init()?;
+    }
     #[cfg(all(feature = "dynlink", not(feature = "staticlib")))]
     unsafe {
         let path = std::env::var("LJM_PATH").ok();
         LJMLibrary::init(path)?;
     }
 
-    tokio::spawn(run_sampler(config_rx.clone(), shutdown_rx.clone(), js.clone()));
-    tokio::spawn(watch_kv_config(store, key.clone(), config_tx.clone(), shutdown_rx.clone()));
+    tokio::spawn(run_sampler(
+        config_rx.clone(),
+        shutdown_rx.clone(),
+        js.clone(),
+    ));
+    tokio::spawn(watch_kv_config(
+        store,
+        key.clone(),
+        config_tx.clone(),
+        shutdown_rx.clone(),
+    ));
 
     tokio::signal::ctrl_c()
         .await

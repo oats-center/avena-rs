@@ -1,8 +1,10 @@
-use ljmrs::{LJMLibrary, DeviceType, ConnectionType};
+use ljmrs::{ConnectionType, DeviceType, LJMLibrary};
 
 fn main() {
     #[cfg(feature = "staticlib")]
-    unsafe { LJMLibrary::init().expect("Failed to init LJM (static)"); }
+    unsafe {
+        LJMLibrary::init().expect("Failed to init LJM (static)");
+    }
 
     // If you enable dynlink instead:
     // #[cfg(all(feature = "dynlink", not(feature = "staticlib")))]
@@ -11,11 +13,8 @@ fn main() {
     //     LJMLibrary::init(path).expect("Failed to init LJM (dynlink)");
     // }
 
-    let handle = LJMLibrary::open_jack(
-        DeviceType::ANY,
-        ConnectionType::ANY,
-        "ANY"
-    ).expect("Could not open LabJack");
+    let handle = LJMLibrary::open_jack(DeviceType::ANY, ConnectionType::ANY, "ANY")
+        .expect("Could not open LabJack");
 
     println!("Opened LabJack, got handle: {}", handle);
 
