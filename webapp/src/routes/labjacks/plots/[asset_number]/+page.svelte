@@ -2,6 +2,7 @@
     import { onMount, onDestroy } from "svelte";
     import { page } from "$app/stores";
     import { connect, getKeyValue, getKeys } from "$lib/nats.svelte";
+    import { downloadExportViaWebSocket, type ExportRequestPayload } from "$lib/exporter";
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
     import { FlatBufferParser, calculateSampleTimestamps } from "$lib/flatbuffer-parser";
     // @ts-ignore - No type definitions available for downsample-lttb
@@ -52,6 +53,15 @@
     let channelTriggerTime = $state<Map<number, number>>(new Map());
     let timeWindow = $state<number>(5); // seconds
     let maxDataPoints = $state<number>(10000);
+    let showExportModal = $state<boolean>(false);
+    let exportStart = $state<string>("");
+    let exportEnd = $state<string>("");
+    let exportChannels = $state<Set<number>>(new Set());
+    let exportError = $state<string>("");
+    let exportWarning = $state<string>("");
+    let exporting = $state<boolean>(false);
+    let exportProgress = $state<number>(0);
+    let exportTotal = $state<number | null>(null);
     
     // Get asset number from URL params
     $effect(() => {
@@ -382,6 +392,149 @@
     function goBack() {
         window.location.href = "/labjacks";
     }
+
+    function toLocalInputValue(date: Date): string {
+        const pad = (value: number) => value.toString().padStart(2, "0");
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }
+
+    function toRfc3339(value: string): string {
+        const date = new Date(value);
+        if (isNaN(date.getTime())) {
+            throw new Error("Invalid date/time value");
+        }
+        return date.toISOString();
+    }
+
+    function openExportModal() {
+        if (!labjackConfig) return;
+        const defaults = new Set(labjackConfig.sensor_settings.channels_enabled);
+        exportChannels = defaults;
+        const now = new Date();
+        exportEnd = toLocalInputValue(now);
+        const start = new Date(now.getTime() - 5 * 60 * 1000);
+        exportStart = toLocalInputValue(start);
+        exportError = "";
+        exportWarning = "";
+        exporting = false;
+        exportProgress = 0;
+        exportTotal = null;
+        showExportModal = true;
+    }
+
+    function closeExportModal() {
+        showExportModal = false;
+        exporting = false;
+        exportWarning = "";
+    }
+
+    function toggleExportChannel(channel: number, checked: boolean) {
+        const updated = new Set(exportChannels);
+        if (checked) {
+            updated.add(channel);
+        } else {
+            updated.delete(channel);
+        }
+        exportChannels = updated;
+    }
+
+    function formatBytes(value: number): string {
+        const units = ["B", "KB", "MB", "GB"];
+        let size = value;
+        let unitIndex = 0;
+        while (size >= 1024 && unitIndex < units.length - 1) {
+            size /= 1024;
+            unitIndex += 1;
+        }
+        return `${size.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+    }
+
+    async function handleExportSubmit(event: Event) {
+        event.preventDefault();
+        if (!labjackConfig) {
+            exportError = "Configuration not loaded";
+            return;
+        }
+
+        if (!exportStart || !exportEnd) {
+            exportError = "Please select a start and end time";
+            return;
+        }
+
+        if (exportChannels.size === 0) {
+            exportError = "Select at least one channel";
+            return;
+        }
+
+        let startIso: string;
+        let endIso: string;
+        try {
+            startIso = toRfc3339(exportStart);
+            endIso = toRfc3339(exportEnd);
+        } catch (err) {
+            exportError = "Invalid date/time selection";
+            return;
+        }
+
+        if (new Date(startIso) > new Date(endIso)) {
+            exportError = "Start time must be before end time";
+            return;
+        }
+
+        exporting = true;
+        exportError = "";
+        exportWarning = "";
+        exportProgress = 0;
+        exportTotal = null;
+
+        try {
+            const payload: ExportRequestPayload = {
+                asset: labjackConfig.asset_number,
+                channels: Array.from(exportChannels).sort((a, b) => a - b),
+                start: startIso,
+                end: endIso,
+                download_name: labjackConfig.labjack_name
+                    ? `${labjackConfig.labjack_name.replace(/\s+/g, "_")}.csv`
+                    : undefined,
+            };
+
+            const result = await downloadExportViaWebSocket(payload, {
+                onProgress: (received) => {
+                    exportProgress = received;
+                },
+                onSummary: (missing) => {
+                    if (missing.length > 0) {
+                        const formatted = missing
+                            .map((ch) => ch.toString().padStart(2, "0"))
+                            .join(", ");
+                        exportWarning = `No samples found for channels: ${formatted}. Continuing with remaining channels.`;
+                    } else {
+                        exportWarning = "";
+                    }
+                },
+            });
+
+            exportTotal = result.size;
+            exportProgress = result.size;
+
+            const url = URL.createObjectURL(result.blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = result.fileName;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+
+            showExportModal = false;
+            exportWarning = "";
+        } catch (err) {
+            console.error("Export failed", err);
+            exportError = err instanceof Error ? err.message : "Export failed";
+        } finally {
+            exporting = false;
+        }
+    }
     
     onDestroy(() => {
         // Clean up subscriptions
@@ -523,6 +676,16 @@
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <div class="flex justify-end mb-6">
+                <button
+                    class="btn btn-warning"
+                    onclick={openExportModal}
+                    disabled={!isConnected || exporting}
+                >
+                    Download Historical Data
+                </button>
             </div>
 
 
@@ -683,7 +846,122 @@
                     </div>
                 {/each}
             </div>
+
+            {#if showExportModal}
+                <div class="modal modal-open">
+                    <div class="modal-box max-w-2xl">
+                        <h3 class="font-bold text-lg text-base-content mb-4">Export Historical Data</h3>
+                        <form class="space-y-5" onsubmit={handleExportSubmit}>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="form-control">
+                                    <label class="label" for="export-start">
+                                        <span class="label-text">Start Time</span>
+                                    </label>
+                                    <input
+                                        id="export-start"
+                                        type="datetime-local"
+                                        class="input input-bordered"
+                                        bind:value={exportStart}
+                                        max={exportEnd || undefined}
+                                        required
+                                        disabled={exporting}
+                                    />
+                                </div>
+                                <div class="form-control">
+                                    <label class="label" for="export-end">
+                                        <span class="label-text">End Time</span>
+                                    </label>
+                                    <input
+                                        id="export-end"
+                                        type="datetime-local"
+                                        class="input input-bordered"
+                                        bind:value={exportEnd}
+                                        min={exportStart || undefined}
+                                        required
+                                        disabled={exporting}
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <h4 class="font-semibold text-base-content mb-2">Channels</h4>
+                                <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                    {#each labjackConfig.sensor_settings.channels_enabled as ch}
+                                        <label class="flex items-center space-x-2 text-sm">
+                                            <input
+                                                type="checkbox"
+                                                class="checkbox checkbox-warning checkbox-sm"
+                                                checked={exportChannels.has(ch)}
+                                                onchange={(event) => toggleExportChannel(ch, (event.target as HTMLInputElement).checked)}
+                                                disabled={exporting}
+                                            />
+                                            <span>Channel {ch}</span>
+                                        </label>
+                                    {/each}
+                                </div>
+                            </div>
+
+                            {#if exportError}
+                                <div class="alert alert-error text-sm">
+                                    <span>{exportError}</span>
+                                </div>
+                            {/if}
+
+                            {#if exportWarning}
+                                <div class="alert alert-warning text-sm">
+                                    <span>{exportWarning}</span>
+                                </div>
+                            {/if}
+
+                            {#if exporting}
+                                <div class="space-y-2">
+                                    <progress
+                                        class="progress progress-warning w-full"
+                                        value={exportProgress}
+                                        max={exportTotal ?? Math.max(exportProgress, 1)}
+                                    ></progress>
+                                    <p class="text-sm text-base-content/70">
+                                        Downloaded {formatBytes(exportProgress)}
+                                        {#if exportTotal}
+                                            / {formatBytes(exportTotal)}
+                                        {/if}
+                                    </p>
+                                </div>
+                            {/if}
+
+                            <div class="modal-action">
+                                <button
+                                    type="button"
+                                    class="btn btn-ghost"
+                                    onclick={closeExportModal}
+                                    disabled={exporting}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    class="btn btn-warning"
+                                    disabled={exporting}
+                                >
+                                    {exporting ? "Preparing..." : "Start Download"}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                    <div
+                        class="modal-backdrop bg-black/40"
+                        role="button"
+                        tabindex="0"
+                        onclick={closeExportModal}
+                        onkeydown={(event) => {
+                            if (event.key === "Escape" || event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                closeExportModal();
+                            }
+                        }}
+                    ></div>
+                </div>
+            {/if}
         {/if}
     </div>
 </div>
-
