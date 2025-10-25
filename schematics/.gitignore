@@ -1,0 +1,50 @@
+# KiCad autosave and backup files
+*.bak
+*.bck
+*.kicad_pcb-bak
+*-bak.kicad_pcb
+*.kicad_sch-bak
+*-bak.kicad_sch
+*-bak.kicad_prl
+*.tmp
+*.lck
+
+# Generated files (e.g., netlists, BOMs, etc.)
+*.xml
+*.net
+*.csv
+*.tsv
+*.bom
+*.gbr
+*.gbl
+*.gbs
+*.gtl
+*.gto
+*.gts
+*.drl
+*.map
+*.pos
+*.step
+*.stp
+*.wrl
+
+# Intermediate project files
+*_autosave.kicad_pcb
+*_autosave.kicad_sch
+*-save.kicad_pcb
+*-save.kicad_sch
+fp-info-cache
+sym-lib-table-bak
+
+# Simulation and temporary data
+*.log
+*.raw
+*.spice
+
+# Cache and symbol library linking
+*-cache.lib
+*-rescue.lib
+*.kicad_prl
+*.kicad_sch-bak
+*-backups/
+you export JSON board data
