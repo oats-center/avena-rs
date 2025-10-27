@@ -47,7 +47,7 @@ fn main() -> Result<(), LJMError> {
 
     // Start stream
     let scans_per_read = 2; // small batch, similar to your per-loop reads
-    let scan_rate = 5.0; // ~same as your 200 ms delay (5 Hz)
+    let scan_rate = 500.0; // ~same as your 200 ms delay (5 Hz)
     let actual_rate = LJMLibrary::stream_start(handle, scans_per_read, scan_rate, chans.clone())?;
     println!("Streaming started @ {:.2} Hz", actual_rate);
 
