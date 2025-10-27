@@ -16,7 +16,7 @@ parquet/*
 
 
 # creds
-.apt.creds
+apt.creds
 
 # env
 .env
