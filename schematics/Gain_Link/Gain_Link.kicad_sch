@@ -8372,6 +8372,150 @@
 			)
 		)
 	)
+	(sheet
+		(at 97.79 165.1)
+		(size 12.7 12.7)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "29e23884-00eb-4347-84cd-7ea262f6381a")
+		(property "Sheetname" "Sig_2"
+			(at 97.79 164.3884 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "signal.kicad_sch"
+			(at 97.79 178.3846 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(pin "Vin_m" input
+			(at 97.79 168.91 180)
+			(uuid "0e5ad7a6-d742-41ad-ba68-c5ed94247210")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(pin "Vout" input
+			(at 110.49 171.45 0)
+			(uuid "977a6795-6e71-45bb-a5ad-89f441342892")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+		(pin "Vin_p" input
+			(at 97.79 173.99 180)
+			(uuid "958d19ee-fc4a-4124-b28f-418b1f0d42fd")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(instances
+			(project "Gain_Link"
+				(path "/044df771-0288-4dc4-a604-257e905d1378"
+					(page "3")
+				)
+			)
+		)
+	)
+	(sheet
+		(at 64.77 163.83)
+		(size 12.7 12.7)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "affa2006-5f24-4ade-8162-6fb4324f1dc2")
+		(property "Sheetname" "Sig_1"
+			(at 64.77 163.1184 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "signal.kicad_sch"
+			(at 64.77 177.1146 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(pin "Vin_m" input
+			(at 64.77 167.64 180)
+			(uuid "33dc11d7-a9b3-4416-852e-4d3944458323")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(pin "Vout" input
+			(at 77.47 170.18 0)
+			(uuid "40fcec3d-5462-4c2d-8f9b-29f8c2a8ad06")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+		(pin "Vin_p" input
+			(at 64.77 172.72 180)
+			(uuid "b5a2414b-f746-4cce-b272-0a10194644bc")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(instances
+			(project "Gain_Link"
+				(path "/044df771-0288-4dc4-a604-257e905d1378"
+					(page "2")
+				)
+			)
+		)
+	)
 	(sheet_instances
 		(path "/"
 			(page "1")
