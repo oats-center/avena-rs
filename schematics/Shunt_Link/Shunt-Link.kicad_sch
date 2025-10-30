@@ -9441,6 +9441,48 @@
 			)
 		)
 	)
+	(sheet
+		(at 125.73 166.37)
+		(size 13.97 7.62)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "9e62e72d-21ab-456d-aae4-6f4444a249d2")
+		(property "Sheetname" "S_1"
+			(at 125.73 165.6584 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "signal_chain.kicad_sch"
+			(at 125.73 174.5746 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "Shunt-Link"
+				(path "/044df771-0288-4dc4-a604-257e905d1378"
+					(page "2")
+				)
+			)
+		)
+	)
 	(sheet_instances
 		(path "/"
 			(page "1")

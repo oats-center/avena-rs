@@ -440,6 +440,7 @@
       "single_global_label": "ignore",
       "unannotated": "error",
       "unconnected_wire_endpoint": "warning",
+      "undefined_netclass": "error",
       "unit_value_mismatch": "error",
       "unresolved_variable": "error",
       "wire_dangling": "error"
@@ -613,6 +614,14 @@
     [
       "044df771-0288-4dc4-a604-257e905d1378",
       "Root"
+    ],
+    [
+      "affa2006-5f24-4ade-8162-6fb4324f1dc2",
+      "Sig_1"
+    ],
+    [
+      "29e23884-00eb-4347-84cd-7ea262f6381a",
+      "Sig_2"
     ]
   ],
   "text_variables": {}
