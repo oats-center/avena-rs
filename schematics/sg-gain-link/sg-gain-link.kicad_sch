@@ -2797,7 +2797,7 @@
 		)
 		(uuid "25557c74-382a-459c-827f-6c4f22e771b0")
 	)
-	(label "S_{1-}"
+	(label "S_{1+}"
 		(at 34.29 39.37 180)
 		(effects
 			(font
@@ -2807,7 +2807,7 @@
 		)
 		(uuid "45dbced2-5c0a-4028-8ce1-1704508c880f")
 	)
-	(label "S_{1+}"
+	(label "S_{1-}"
 		(at 69.85 39.37 0)
 		(effects
 			(font
@@ -2867,7 +2867,7 @@
 		)
 		(uuid "a9e27a25-9f99-46af-8a1e-6a714c9ce36c")
 	)
-	(label "S_{2+}"
+	(label "S_{2-}"
 		(at 69.85 76.2 0)
 		(effects
 			(font
@@ -2887,7 +2887,7 @@
 		)
 		(uuid "b55a7fab-54a6-4d6b-8b32-4eae0e0e4df5")
 	)
-	(label "S_{2-}"
+	(label "S_{2+}"
 		(at 34.29 76.2 180)
 		(effects
 			(font
@@ -3756,7 +3756,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "74ff00e2-50eb-4bc0-8d28-1161eb58cc4e")
-		(property "Reference" "D3"
+		(property "Reference" "D2"
 			(at 69.85 48.2599 90)
 			(effects
 				(font
@@ -3810,7 +3810,7 @@
 		(instances
 			(project "Gain_Link"
 				(path "/044df771-0288-4dc4-a604-257e905d1378"
-					(reference "D3")
+					(reference "D2")
 					(unit 1)
 				)
 			)
@@ -4444,7 +4444,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "c1be206b-7df8-4854-8afe-d86b5bba4ecf")
-		(property "Reference" "D2"
+		(property "Reference" "D3"
 			(at 32.512 85.598 90)
 			(effects
 				(font
@@ -4498,7 +4498,7 @@
 		(instances
 			(project "Gain_Link"
 				(path "/044df771-0288-4dc4-a604-257e905d1378"
-					(reference "D2")
+					(reference "D3")
 					(unit 1)
 				)
 			)
@@ -4865,7 +4865,7 @@
 			)
 		)
 		(instances
-			(project "gain-link"
+			(project "sg-gain-link"
 				(path "/044df771-0288-4dc4-a604-257e905d1378"
 					(page "3")
 				)
@@ -4937,7 +4937,7 @@
 			)
 		)
 		(instances
-			(project "gain-link"
+			(project "sg-gain-link"
 				(path "/044df771-0288-4dc4-a604-257e905d1378"
 					(page "2")
 				)
