@@ -1,0 +1,6 @@
+* A dual opamp ngspice model
+.subckt OPA1612 OUT1 IN1- IN1+ VEE IN2+ IN2- OUT2 VCC 
+.include OPA161x.LIB
+XU1A IN1+ IN1- VCC VEE OUT1 OPA161x
+XU1B IN2+ IN2- VCC VEE OUT2 OPA161x
+.ends
