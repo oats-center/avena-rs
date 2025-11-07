@@ -1,10 +1,10 @@
 {
-  "last_sch_text_sim_command": ".dc V3 0 65mV 1mV",
+  "last_sch_text_sim_command": "",
   "tabs": [
     {
-      "analysis": "DC",
+      "analysis": "TRAN",
       "commands": [
-        ".dc V3 0 65mV 1mV",
+        ".tran 10u 10m 0",
         ".kicad adjustpaths",
         ".save all",
         ".probe alli",
@@ -21,18 +21,74 @@
       "showGrid": true,
       "traces": [
         {
-          "color": "rgb(228, 26, 28)",
-          "signal": "V(/S0)",
-          "trace_type": 2049
+          "color": "rgb(231, 138, 195)",
+          "signal": "V(/Vf)",
+          "trace_type": 257
         },
         {
-          "color": "rgb(247, 129, 191)",
-          "signal": "V(Net-_U3A-+_)",
-          "trace_type": 2049
+          "color": "rgb(166, 86, 40)",
+          "signal": "V(/Vout)",
+          "trace_type": 257
         }
+      ]
+    },
+    {
+      "analysis": "AC",
+      "commands": [
+        ".ac dec 100 10 100k",
+        ".kicad adjustpaths",
+        ".save all",
+        ".probe alli",
+        ".probe allp"
+      ],
+      "dottedSecondary": true,
+      "legend": {
+        "x": 162,
+        "y": 143
+      },
+      "margins": {
+        "bottom": 45,
+        "left": 70,
+        "right": 70,
+        "top": 30
+      },
+      "measurements": [],
+      "showGrid": true,
+      "traces": [
+        {
+          "color": "rgb(255, 255, 51)",
+          "signal": "V(/Vf)/V(/Vout) (phase)",
+          "trace_type": 517
+        },
+        {
+          "color": "rgb(255, 255, 51)",
+          "cursor1": {
+            "position": 8111.3083078967975,
+            "x_format": "3~Hz",
+            "y_format": "3~dB"
+          },
+          "cursorD": {
+            "x_format": "3~s",
+            "y_format": "3~V"
+          },
+          "signal": "V(/Vf)/V(/Vout) (gain)",
+          "trace_type": 521
+        }
+      ]
+    },
+    {
+      "analysis": "OP",
+      "commands": [
+        ".op",
+        ".kicad adjustpaths",
+        ".save all",
+        ".probe alli",
+        ".probe allp"
       ]
     }
   ],
-  "user_defined_signals": [],
+  "user_defined_signals": [
+    "V(/Vf)/V(/Vout)"
+  ],
   "version": 6
 }
