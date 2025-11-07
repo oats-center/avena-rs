@@ -1598,12 +1598,6 @@
 		(uuid "45f2429f-ef05-477a-b90c-e2227c00047b")
 	)
 	(junction
-		(at 64.77 157.48)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "0e1826d4-6108-4358-bd04-585eda842ebb")
-	)
-	(junction
 		(at 153.67 62.23)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -1614,12 +1608,6 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "3b2299c6-0ba2-4b11-a3c5-208010c5ed93")
-	)
-	(junction
-		(at 96.52 67.31)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "3c867bc9-b637-429b-b926-65f069962ea1")
 	)
 	(junction
 		(at 158.75 78.74)
@@ -1641,16 +1629,6 @@
 	)
 	(wire
 		(pts
-			(xy 96.52 67.31) (xy 96.52 127)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "06eeb3ee-84d6-4f83-a0da-040f68c05f21")
-	)
-	(wire
-		(pts
 			(xy 179.07 64.77) (xy 179.07 78.74)
 		)
 		(stroke
@@ -1658,16 +1636,6 @@
 			(type default)
 		)
 		(uuid "0d79c392-33b7-427b-89ed-d352d664f624")
-	)
-	(wire
-		(pts
-			(xy 64.77 127) (xy 64.77 157.48)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "11a975fa-f6d0-45a6-9c8f-632f78601bcc")
 	)
 	(wire
 		(pts
@@ -1781,16 +1749,6 @@
 	)
 	(wire
 		(pts
-			(xy 96.52 127) (xy 64.77 127)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "49694d90-4751-49f0-8d72-dabf555ef23f")
-	)
-	(wire
-		(pts
 			(xy 95.25 142.24) (xy 95.25 144.78)
 		)
 		(stroke
@@ -1881,7 +1839,7 @@
 	)
 	(wire
 		(pts
-			(xy 68.58 157.48) (xy 64.77 157.48)
+			(xy 58.42 157.48) (xy 68.58 157.48)
 		)
 		(stroke
 			(width 0)
@@ -1911,7 +1869,7 @@
 	)
 	(wire
 		(pts
-			(xy 76.2 67.31) (xy 96.52 67.31)
+			(xy 76.2 67.31) (xy 100.33 67.31)
 		)
 		(stroke
 			(width 0)
@@ -1978,16 +1936,6 @@
 			(type default)
 		)
 		(uuid "d2730e97-31cc-4d7d-a618-2ec238a82a51")
-	)
-	(wire
-		(pts
-			(xy 64.77 157.48) (xy 58.42 157.48)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "d4b18a2b-487e-4c10-90d3-b5d4a7800351")
 	)
 	(wire
 		(pts
@@ -2068,16 +2016,6 @@
 			(type default)
 		)
 		(uuid "f7ece1f7-c794-45bc-8ce1-e533d9b12647")
-	)
-	(wire
-		(pts
-			(xy 96.52 67.31) (xy 100.33 67.31)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "ff2f65cb-52f0-4ede-88c6-13564277dbd2")
 	)
 	(label "vp"
 		(at 154.94 62.23 0)
