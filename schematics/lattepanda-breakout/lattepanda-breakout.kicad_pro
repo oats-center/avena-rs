@@ -450,7 +450,7 @@
     "pinned_symbol_libs": []
   },
   "meta": {
-    "filename": "LP_breakout.kicad_pro",
+    "filename": "lattepanda-breakout.kicad_pro",
     "version": 3
   },
   "net_settings": {
@@ -486,8 +486,8 @@
       "gencad": "",
       "idf": "",
       "netlist": "",
-      "plot": "C:/Users/smbea/OneDrive/Personal_Files/School/Fall_2025/OATS/avena-rs/schematics/LP_breakout/JLCPCB/",
-      "pos_files": "./",
+      "plot": "jlcpcb/",
+      "pos_files": "jlcpcb/",
       "specctra_dsn": "",
       "step": "LP_breakout.step",
       "svg": "",
