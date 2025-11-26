@@ -3719,7 +3719,7 @@
 		(descr "1053864")
 		(tags "Connector")
 		(property "Reference" "J2"
-			(at -13.7345 6.223 90)
+			(at -13.7345 2.5 90)
 			(layer "F.SilkS")
 			(uuid "cc66bb5a-0600-40ef-aeb2-d15a602933e2")
 			(effects
@@ -3771,7 +3771,7 @@
 		(sheetfile "tc-link.kicad_sch")
 		(attr through_hole)
 		(fp_line
-			(start -15 12.6)
+			(start -15 5.5)
 			(end -15 1)
 			(stroke
 				(width 0.1)
@@ -3781,24 +3781,24 @@
 			(uuid "4ba1f7a8-397b-428f-b78b-e18111bc3476")
 		)
 		(fp_line
-			(start -1 12.6)
-			(end -15 12.6)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.SilkS")
-			(uuid "81f93247-7928-40c2-8d4c-73a4b1952e0f")
-		)
-		(fp_line
 			(start -1 1)
-			(end -1 12.6)
+			(end -1 5.5)
 			(stroke
 				(width 0.1)
 				(type solid)
 			)
 			(layer "F.SilkS")
 			(uuid "e14d5b2d-b5bd-4f6e-b865-597dedbbb3c6")
+		)
+		(fp_line
+			(start -1 1)
+			(end -15 1)
+			(stroke
+				(width 0.1)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "81f93247-7928-40c2-8d4c-73a4b1952e0f")
 		)
 		(fp_circle
 			(center -15.6 2.1)
