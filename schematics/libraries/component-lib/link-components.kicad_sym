@@ -3227,8 +3227,8 @@
 		)
 		(symbol "link-edge-connector_0_0"
 			(rectangle
-				(start -7.62 -25.4)
-				(end 7.62 25.4)
+				(start -13.97 25.4)
+				(end 12.7 -25.4)
 				(stroke
 					(width 0.254)
 					(type default)
@@ -3238,7 +3238,7 @@
 				)
 			)
 			(pin passive line
-				(at -12.7 22.86 0)
+				(at -19.05 22.86 0)
 				(length 5.08)
 				(name "A1"
 					(effects
@@ -3256,7 +3256,7 @@
 				)
 			)
 			(pin passive line
-				(at -12.7 20.32 0)
+				(at -19.05 20.32 0)
 				(length 5.08)
 				(name "A2"
 					(effects
@@ -3274,7 +3274,7 @@
 				)
 			)
 			(pin passive line
-				(at -12.7 17.78 0)
+				(at -19.05 17.78 0)
 				(length 5.08)
 				(name "A3"
 					(effects
@@ -3292,7 +3292,7 @@
 				)
 			)
 			(pin passive line
-				(at -12.7 15.24 0)
+				(at -19.05 15.24 0)
 				(length 5.08)
 				(name "A4"
 					(effects
@@ -3310,7 +3310,7 @@
 				)
 			)
 			(pin passive line
-				(at -12.7 12.7 0)
+				(at -19.05 12.7 0)
 				(length 5.08)
 				(name "A5"
 					(effects
@@ -3328,7 +3328,7 @@
 				)
 			)
 			(pin passive line
-				(at -12.7 10.16 0)
+				(at -19.05 10.16 0)
 				(length 5.08)
 				(name "A6"
 					(effects
@@ -3346,7 +3346,7 @@
 				)
 			)
 			(pin passive line
-				(at -12.7 7.62 0)
+				(at -19.05 7.62 0)
 				(length 5.08)
 				(name "A7"
 					(effects
@@ -3364,7 +3364,7 @@
 				)
 			)
 			(pin passive line
-				(at -12.7 5.08 0)
+				(at -19.05 5.08 0)
 				(length 5.08)
 				(name "A8"
 					(effects
@@ -3382,7 +3382,7 @@
 				)
 			)
 			(pin passive line
-				(at -12.7 2.54 0)
+				(at -19.05 2.54 0)
 				(length 5.08)
 				(name "A9"
 					(effects
@@ -3400,7 +3400,7 @@
 				)
 			)
 			(pin passive line
-				(at -12.7 0 0)
+				(at -19.05 0 0)
 				(length 5.08)
 				(name "A10"
 					(effects
@@ -3418,7 +3418,7 @@
 				)
 			)
 			(pin passive line
-				(at -12.7 -2.54 0)
+				(at -19.05 -2.54 0)
 				(length 5.08)
 				(name "A11"
 					(effects
@@ -3436,7 +3436,7 @@
 				)
 			)
 			(pin passive line
-				(at -12.7 -5.08 0)
+				(at -19.05 -5.08 0)
 				(length 5.08)
 				(name "A12"
 					(effects
@@ -3454,7 +3454,7 @@
 				)
 			)
 			(pin passive line
-				(at -12.7 -7.62 0)
+				(at -19.05 -7.62 0)
 				(length 5.08)
 				(name "A13"
 					(effects
@@ -3472,115 +3472,7 @@
 				)
 			)
 			(pin passive line
-				(at -12.7 -10.16 0)
-				(length 5.08)
-				(name "A14"
-					(effects
-						(font
-							(size 1.016 1.016)
-						)
-					)
-				)
-				(number "A14"
-					(effects
-						(font
-							(size 1.016 1.016)
-						)
-					)
-				)
-			)
-			(pin passive line
-				(at -12.7 -12.7 0)
-				(length 5.08)
-				(name "A15"
-					(effects
-						(font
-							(size 1.016 1.016)
-						)
-					)
-				)
-				(number "A15"
-					(effects
-						(font
-							(size 1.016 1.016)
-						)
-					)
-				)
-			)
-			(pin passive line
-				(at -12.7 -15.24 0)
-				(length 5.08)
-				(name "A16"
-					(effects
-						(font
-							(size 1.016 1.016)
-						)
-					)
-				)
-				(number "A16"
-					(effects
-						(font
-							(size 1.016 1.016)
-						)
-					)
-				)
-			)
-			(pin passive line
-				(at -12.7 -17.78 0)
-				(length 5.08)
-				(name "A17"
-					(effects
-						(font
-							(size 1.016 1.016)
-						)
-					)
-				)
-				(number "A17"
-					(effects
-						(font
-							(size 1.016 1.016)
-						)
-					)
-				)
-			)
-			(pin passive line
-				(at -12.7 -20.32 0)
-				(length 5.08)
-				(name "A18"
-					(effects
-						(font
-							(size 1.016 1.016)
-						)
-					)
-				)
-				(number "A18"
-					(effects
-						(font
-							(size 1.016 1.016)
-						)
-					)
-				)
-			)
-			(pin passive line
-				(at 12.7 22.86 180)
-				(length 5.08)
-				(name "B1"
-					(effects
-						(font
-							(size 1.016 1.016)
-						)
-					)
-				)
-				(number "B1"
-					(effects
-						(font
-							(size 1.016 1.016)
-						)
-					)
-				)
-			)
-			(pin passive line
-				(at 12.7 20.32 180)
+				(at 17.78 20.32 180)
 				(length 5.08)
 				(name "B2"
 					(effects
@@ -3598,25 +3490,7 @@
 				)
 			)
 			(pin passive line
-				(at 12.7 17.78 180)
-				(length 5.08)
-				(name "B3"
-					(effects
-						(font
-							(size 1.016 1.016)
-						)
-					)
-				)
-				(number "B3"
-					(effects
-						(font
-							(size 1.016 1.016)
-						)
-					)
-				)
-			)
-			(pin passive line
-				(at 12.7 15.24 180)
+				(at 17.78 15.24 180)
 				(length 5.08)
 				(name "B4"
 					(effects
@@ -3634,7 +3508,7 @@
 				)
 			)
 			(pin passive line
-				(at 12.7 12.7 180)
+				(at 17.78 12.7 180)
 				(length 5.08)
 				(name "B5"
 					(effects
@@ -3652,7 +3526,7 @@
 				)
 			)
 			(pin passive line
-				(at 12.7 10.16 180)
+				(at 17.78 10.16 180)
 				(length 5.08)
 				(name "B6"
 					(effects
@@ -3670,7 +3544,7 @@
 				)
 			)
 			(pin passive line
-				(at 12.7 7.62 180)
+				(at 17.78 7.62 180)
 				(length 5.08)
 				(name "B7"
 					(effects
@@ -3688,7 +3562,7 @@
 				)
 			)
 			(pin passive line
-				(at 12.7 5.08 180)
+				(at 17.78 5.08 180)
 				(length 5.08)
 				(name "B8"
 					(effects
@@ -3706,7 +3580,7 @@
 				)
 			)
 			(pin passive line
-				(at 12.7 2.54 180)
+				(at 17.78 2.54 180)
 				(length 5.08)
 				(name "B9"
 					(effects
@@ -3724,7 +3598,7 @@
 				)
 			)
 			(pin passive line
-				(at 12.7 0 180)
+				(at 17.78 0 180)
 				(length 5.08)
 				(name "B10"
 					(effects
@@ -3742,7 +3616,7 @@
 				)
 			)
 			(pin passive line
-				(at 12.7 -5.08 180)
+				(at 17.78 -5.08 180)
 				(length 5.08)
 				(name "B12"
 					(effects
@@ -3760,7 +3634,7 @@
 				)
 			)
 			(pin passive line
-				(at 12.7 -7.62 180)
+				(at 17.78 -7.62 180)
 				(length 5.08)
 				(name "B13"
 					(effects
@@ -3778,7 +3652,7 @@
 				)
 			)
 			(pin passive line
-				(at 12.7 -10.16 180)
+				(at 17.78 -10.16 180)
 				(length 5.08)
 				(name "B14"
 					(effects
@@ -3797,10 +3671,136 @@
 			)
 		)
 		(symbol "link-edge-connector_1_0"
-			(pin power_out line
-				(at 12.7 -2.54 180)
+			(pin output line
+				(at -19.05 -10.16 0)
 				(length 5.08)
-				(name "B11"
+				(name "CTRL_I2C_SCL"
+					(effects
+						(font
+							(size 1.016 1.016)
+						)
+					)
+				)
+				(number "A14"
+					(effects
+						(font
+							(size 1.016 1.016)
+						)
+					)
+				)
+			)
+			(pin bidirectional line
+				(at -19.05 -12.7 0)
+				(length 5.08)
+				(name "CTRL_I2C_SDA"
+					(effects
+						(font
+							(size 1.016 1.016)
+						)
+					)
+				)
+				(number "A15"
+					(effects
+						(font
+							(size 1.016 1.016)
+						)
+					)
+				)
+			)
+			(pin output line
+				(at -19.05 -15.24 0)
+				(length 5.08)
+				(name "ID0"
+					(effects
+						(font
+							(size 1.016 1.016)
+						)
+					)
+				)
+				(number "A16"
+					(effects
+						(font
+							(size 1.016 1.016)
+						)
+					)
+				)
+			)
+			(pin output line
+				(at -19.05 -17.78 0)
+				(length 5.08)
+				(name "ID1"
+					(effects
+						(font
+							(size 1.016 1.016)
+						)
+					)
+				)
+				(number "A17"
+					(effects
+						(font
+							(size 1.016 1.016)
+						)
+					)
+				)
+			)
+			(pin output line
+				(at -19.05 -20.32 0)
+				(length 5.08)
+				(name "ID2"
+					(effects
+						(font
+							(size 1.016 1.016)
+						)
+					)
+				)
+				(number "A18"
+					(effects
+						(font
+							(size 1.016 1.016)
+						)
+					)
+				)
+			)
+			(pin input line
+				(at 17.78 22.86 180)
+				(length 5.08)
+				(name "S1"
+					(effects
+						(font
+							(size 1.016 1.016)
+						)
+					)
+				)
+				(number "B1"
+					(effects
+						(font
+							(size 1.016 1.016)
+						)
+					)
+				)
+			)
+			(pin input line
+				(at 17.78 17.78 180)
+				(length 5.08)
+				(name "S2"
+					(effects
+						(font
+							(size 1.016 1.016)
+						)
+					)
+				)
+				(number "B3"
+					(effects
+						(font
+							(size 1.016 1.016)
+						)
+					)
+				)
+			)
+			(pin power_out line
+				(at 17.78 -2.54 180)
+				(length 5.08)
+				(name "GNDPWR"
 					(effects
 						(font
 							(size 1.016 1.016)
@@ -3816,9 +3816,9 @@
 				)
 			)
 			(pin power_out line
-				(at 12.7 -12.7 180)
+				(at 17.78 -12.7 180)
 				(length 5.08)
-				(name "B15"
+				(name "3V3"
 					(effects
 						(font
 							(size 1.016 1.016)
@@ -3834,9 +3834,9 @@
 				)
 			)
 			(pin power_out line
-				(at 12.7 -15.24 180)
+				(at 17.78 -15.24 180)
 				(length 5.08)
-				(name "B16"
+				(name "-12V"
 					(effects
 						(font
 							(size 1.016 1.016)
@@ -3852,9 +3852,9 @@
 				)
 			)
 			(pin power_out line
-				(at 12.7 -17.78 180)
+				(at 17.78 -17.78 180)
 				(length 5.08)
-				(name "B17"
+				(name "+12V"
 					(effects
 						(font
 							(size 1.016 1.016)
@@ -3870,9 +3870,9 @@
 				)
 			)
 			(pin power_out line
-				(at 12.7 -20.32 180)
+				(at 17.78 -20.32 180)
 				(length 5.08)
-				(name "B18"
+				(name "GND"
 					(effects
 						(font
 							(size 1.016 1.016)
