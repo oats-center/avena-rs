@@ -639,6 +639,10 @@
     [
       "cf0945b2-2b77-4b7a-9180-f6abb82eccbe",
       "Signal1"
+    ],
+    [
+      "bdf193ef-6059-4abc-a6b3-d39eb3528132",
+      "Link Controller"
     ]
   ],
   "text_variables": {}
