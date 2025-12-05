@@ -76,9 +76,9 @@
         "duplicate_footprints": "warning",
         "extra_footprint": "warning",
         "footprint": "error",
-        "footprint_filters_mismatch": "warning",
+        "footprint_filters_mismatch": "ignore",
         "footprint_symbol_mismatch": "warning",
-        "footprint_type_mismatch": "warning",
+        "footprint_type_mismatch": "ignore",
         "hole_clearance": "error",
         "hole_to_hole": "warning",
         "holes_co_located": "warning",
@@ -92,15 +92,15 @@
         "malformed_courtyard": "error",
         "microvia_drill_out_of_range": "error",
         "mirrored_text_on_front_layer": "warning",
-        "missing_courtyard": "warning",
+        "missing_courtyard": "ignore",
         "missing_footprint": "warning",
         "net_conflict": "warning",
         "nonmirrored_text_on_back_layer": "warning",
-        "npth_inside_courtyard": "warning",
+        "npth_inside_courtyard": "ignore",
         "padstack": "warning",
-        "pth_inside_courtyard": "warning",
+        "pth_inside_courtyard": "ignore",
         "shorting_items": "error",
-        "silk_edge_clearance": "warning",
+        "silk_edge_clearance": "ignore",
         "silk_over_copper": "warning",
         "silk_overlap": "warning",
         "skew_out_of_range": "error",
@@ -633,16 +633,12 @@
       "Root"
     ],
     [
-      "185e9162-a4b5-4726-9859-051bc197beb3",
-      "Signal"
+      "d82a3210-8cdf-44cf-8f3c-363268ea9818",
+      "TC1"
     ],
     [
       "cf0945b2-2b77-4b7a-9180-f6abb82eccbe",
-      "Signal1"
-    ],
-    [
-      "bdf193ef-6059-4abc-a6b3-d39eb3528132",
-      "Link Controller"
+      "TC2"
     ]
   ],
   "text_variables": {}

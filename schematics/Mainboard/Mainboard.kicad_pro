@@ -652,31 +652,35 @@
     ],
     [
       "f2ea68a3-2f97-468a-b389-3ab4f6f69b4c",
-      "PCIe"
+      "Link1"
     ],
     [
       "cb71298d-97a0-4e8f-8f70-a71c72aa34b0",
-      "PCIe1"
+      "Link2"
     ],
     [
       "6666f923-ecd1-41ba-b415-9159854ff0f7",
-      "PCIe2"
+      "Link3"
     ],
     [
       "456e6296-7f66-4068-b37d-7d488811ac16",
-      "PCIe3"
+      "Link4"
     ],
     [
       "50cdef63-ea64-4dab-9c52-a1274c19acc9",
-      "PCIe4"
+      "Link5"
     ],
     [
       "fbc5e039-8802-4ad4-918f-b2244530eabf",
-      "PCIe5"
+      "Link6"
     ],
     [
       "c31142e9-652d-4ef1-b7c1-4ebff02b5ca8",
-      "PCIe6"
+      "Link7"
+    ],
+    [
+      "4d738d37-6463-438f-b983-18ca4c02b52a",
+      "Link8"
     ]
   ],
   "text_variables": {}

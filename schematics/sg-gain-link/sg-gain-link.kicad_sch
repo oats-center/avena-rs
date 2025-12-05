@@ -1222,30 +1222,32 @@
 			)
 			(embedded_fonts no)
 		)
-		(symbol "Link_Components:PCIE-036-02-X-D-TH"
+		(symbol "Link_Components:link-edge-connector"
 			(pin_names
 				(offset 1.016)
 			)
 			(exclude_from_sim no)
 			(in_bom yes)
 			(on_board yes)
-			(property "Reference" "J1"
-				(at 0 30.48 0)
+			(property "Reference" "J"
+				(at -7.62 26.162 0)
 				(effects
 					(font
 						(size 1.27 1.27)
 					)
+					(justify left bottom)
 				)
 			)
-			(property "Value" "PCIE-036-02-X-D-TH"
-				(at 0 27.94 0)
+			(property "Value" "link-edge-connector"
+				(at -7.62 -27.94 0)
 				(effects
 					(font
 						(size 1.27 1.27)
 					)
+					(justify left bottom)
 				)
 			)
-			(property "Footprint" ""
+			(property "Footprint" "PCIE-036-02-X-D-TH:SAMTEC_PCIE-036-02-X-D-TH"
 				(at 0 0 0)
 				(effects
 					(font
@@ -1313,10 +1315,10 @@
 					(hide yes)
 				)
 			)
-			(symbol "PCIE-036-02-X-D-TH_0_0"
+			(symbol "link-edge-connector_0_0"
 				(rectangle
-					(start -7.62 -25.4)
-					(end 7.62 25.4)
+					(start -13.97 25.4)
+					(end 12.7 -25.4)
 					(stroke
 						(width 0.254)
 						(type default)
@@ -1326,7 +1328,7 @@
 					)
 				)
 				(pin passive line
-					(at -12.7 22.86 0)
+					(at -19.05 22.86 0)
 					(length 5.08)
 					(name "A1"
 						(effects
@@ -1344,7 +1346,7 @@
 					)
 				)
 				(pin passive line
-					(at -12.7 20.32 0)
+					(at -19.05 20.32 0)
 					(length 5.08)
 					(name "A2"
 						(effects
@@ -1362,7 +1364,7 @@
 					)
 				)
 				(pin passive line
-					(at -12.7 17.78 0)
+					(at -19.05 17.78 0)
 					(length 5.08)
 					(name "A3"
 						(effects
@@ -1380,7 +1382,7 @@
 					)
 				)
 				(pin passive line
-					(at -12.7 15.24 0)
+					(at -19.05 15.24 0)
 					(length 5.08)
 					(name "A4"
 						(effects
@@ -1398,7 +1400,7 @@
 					)
 				)
 				(pin passive line
-					(at -12.7 12.7 0)
+					(at -19.05 12.7 0)
 					(length 5.08)
 					(name "A5"
 						(effects
@@ -1416,7 +1418,7 @@
 					)
 				)
 				(pin passive line
-					(at -12.7 10.16 0)
+					(at -19.05 10.16 0)
 					(length 5.08)
 					(name "A6"
 						(effects
@@ -1434,7 +1436,7 @@
 					)
 				)
 				(pin passive line
-					(at -12.7 7.62 0)
+					(at -19.05 7.62 0)
 					(length 5.08)
 					(name "A7"
 						(effects
@@ -1452,7 +1454,7 @@
 					)
 				)
 				(pin passive line
-					(at -12.7 5.08 0)
+					(at -19.05 5.08 0)
 					(length 5.08)
 					(name "A8"
 						(effects
@@ -1470,7 +1472,7 @@
 					)
 				)
 				(pin passive line
-					(at -12.7 2.54 0)
+					(at -19.05 2.54 0)
 					(length 5.08)
 					(name "A9"
 						(effects
@@ -1488,7 +1490,7 @@
 					)
 				)
 				(pin passive line
-					(at -12.7 0 0)
+					(at -19.05 0 0)
 					(length 5.08)
 					(name "A10"
 						(effects
@@ -1506,7 +1508,7 @@
 					)
 				)
 				(pin passive line
-					(at -12.7 -2.54 0)
+					(at -19.05 -2.54 0)
 					(length 5.08)
 					(name "A11"
 						(effects
@@ -1524,7 +1526,7 @@
 					)
 				)
 				(pin passive line
-					(at -12.7 -5.08 0)
+					(at -19.05 -5.08 0)
 					(length 5.08)
 					(name "A12"
 						(effects
@@ -1542,7 +1544,7 @@
 					)
 				)
 				(pin passive line
-					(at -12.7 -7.62 0)
+					(at -19.05 -7.62 0)
 					(length 5.08)
 					(name "A13"
 						(effects
@@ -1560,115 +1562,7 @@
 					)
 				)
 				(pin passive line
-					(at -12.7 -10.16 0)
-					(length 5.08)
-					(name "A14"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "A14"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at -12.7 -12.7 0)
-					(length 5.08)
-					(name "A15"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "A15"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at -12.7 -15.24 0)
-					(length 5.08)
-					(name "A16"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "A16"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at -12.7 -17.78 0)
-					(length 5.08)
-					(name "A17"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "A17"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at -12.7 -20.32 0)
-					(length 5.08)
-					(name "A18"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "A18"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at 12.7 22.86 180)
-					(length 5.08)
-					(name "B1"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "B1"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at 12.7 20.32 180)
+					(at 17.78 20.32 180)
 					(length 5.08)
 					(name "B2"
 						(effects
@@ -1686,25 +1580,7 @@
 					)
 				)
 				(pin passive line
-					(at 12.7 17.78 180)
-					(length 5.08)
-					(name "B3"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "B3"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at 12.7 15.24 180)
+					(at 17.78 15.24 180)
 					(length 5.08)
 					(name "B4"
 						(effects
@@ -1722,7 +1598,7 @@
 					)
 				)
 				(pin passive line
-					(at 12.7 12.7 180)
+					(at 17.78 12.7 180)
 					(length 5.08)
 					(name "B5"
 						(effects
@@ -1740,7 +1616,7 @@
 					)
 				)
 				(pin passive line
-					(at 12.7 10.16 180)
+					(at 17.78 10.16 180)
 					(length 5.08)
 					(name "B6"
 						(effects
@@ -1758,7 +1634,7 @@
 					)
 				)
 				(pin passive line
-					(at 12.7 7.62 180)
+					(at 17.78 7.62 180)
 					(length 5.08)
 					(name "B7"
 						(effects
@@ -1776,7 +1652,7 @@
 					)
 				)
 				(pin passive line
-					(at 12.7 5.08 180)
+					(at 17.78 5.08 180)
 					(length 5.08)
 					(name "B8"
 						(effects
@@ -1794,7 +1670,7 @@
 					)
 				)
 				(pin passive line
-					(at 12.7 2.54 180)
+					(at 17.78 2.54 180)
 					(length 5.08)
 					(name "B9"
 						(effects
@@ -1812,7 +1688,7 @@
 					)
 				)
 				(pin passive line
-					(at 12.7 0 180)
+					(at 17.78 0 180)
 					(length 5.08)
 					(name "B10"
 						(effects
@@ -1830,25 +1706,7 @@
 					)
 				)
 				(pin passive line
-					(at 12.7 -2.54 180)
-					(length 5.08)
-					(name "B11"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "B11"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at 12.7 -5.08 180)
+					(at 17.78 -5.08 180)
 					(length 5.08)
 					(name "B12"
 						(effects
@@ -1866,7 +1724,7 @@
 					)
 				)
 				(pin passive line
-					(at 12.7 -7.62 180)
+					(at 17.78 -7.62 180)
 					(length 5.08)
 					(name "B13"
 						(effects
@@ -1884,7 +1742,7 @@
 					)
 				)
 				(pin passive line
-					(at 12.7 -10.16 180)
+					(at 17.78 -10.16 180)
 					(length 5.08)
 					(name "B14"
 						(effects
@@ -1901,10 +1759,156 @@
 						)
 					)
 				)
-				(pin passive line
-					(at 12.7 -12.7 180)
+			)
+			(symbol "link-edge-connector_1_0"
+				(pin output line
+					(at -19.05 -10.16 0)
 					(length 5.08)
-					(name "B15"
+					(name "CTRL_I2C_SCL"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+					(number "A14"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+				)
+				(pin bidirectional line
+					(at -19.05 -12.7 0)
+					(length 5.08)
+					(name "CTRL_I2C_SDA"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+					(number "A15"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+				)
+				(pin output line
+					(at -19.05 -15.24 0)
+					(length 5.08)
+					(name "ID0"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+					(number "A16"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+				)
+				(pin output line
+					(at -19.05 -17.78 0)
+					(length 5.08)
+					(name "ID1"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+					(number "A17"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+				)
+				(pin output line
+					(at -19.05 -20.32 0)
+					(length 5.08)
+					(name "ID2"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+					(number "A18"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at 17.78 22.86 180)
+					(length 5.08)
+					(name "S1"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+					(number "B1"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at 17.78 17.78 180)
+					(length 5.08)
+					(name "S2"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+					(number "B3"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+				)
+				(pin power_out line
+					(at 17.78 -2.54 180)
+					(length 5.08)
+					(name "GNDPWR"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+					(number "B11"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+				)
+				(pin power_out line
+					(at 17.78 -12.7 180)
+					(length 5.08)
+					(name "3V3"
 						(effects
 							(font
 								(size 1.016 1.016)
@@ -1919,10 +1923,10 @@
 						)
 					)
 				)
-				(pin passive line
-					(at 12.7 -15.24 180)
+				(pin power_out line
+					(at 17.78 -15.24 180)
 					(length 5.08)
-					(name "B16"
+					(name "-12V"
 						(effects
 							(font
 								(size 1.016 1.016)
@@ -1937,30 +1941,10 @@
 						)
 					)
 				)
-				(pin passive line
-					(at 12.7 -20.32 180)
+				(pin power_out line
+					(at 17.78 -17.78 180)
 					(length 5.08)
-					(name "B18"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "B18"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-			)
-			(symbol "PCIE-036-02-X-D-TH_1_0"
-				(pin passive line
-					(at 12.7 -17.78 180)
-					(length 5.08)
-					(name "B17"
+					(name "+12V"
 						(effects
 							(font
 								(size 1.016 1.016)
@@ -1968,6 +1952,24 @@
 						)
 					)
 					(number "B17"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+				)
+				(pin power_out line
+					(at 17.78 -20.32 180)
+					(length 5.08)
+					(name "GND"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+					(number "B18"
 						(effects
 							(font
 								(size 1.016 1.016)
@@ -2804,7 +2806,7 @@
 		(uuid "038e0af2-3608-45c3-937b-f49cd61a794a")
 	)
 	(no_connect
-		(at 201.93 74.93)
+		(at 190.5 74.93)
 		(uuid "0c075517-7c43-40e7-94f6-49d30c5111ef")
 	)
 	(no_connect
@@ -2812,15 +2814,15 @@
 		(uuid "0c883701-e45c-4a75-aa1f-e6d5ca0bbdc2")
 	)
 	(no_connect
-		(at 201.93 67.31)
+		(at 190.5 67.31)
 		(uuid "0e8ab2b8-ea4a-401e-8990-2ff5c3952bbb")
 	)
 	(no_connect
-		(at 201.93 57.15)
+		(at 190.5 57.15)
 		(uuid "0fcef0d7-0f1d-4192-b280-574a3b9776c2")
 	)
 	(no_connect
-		(at 201.93 69.85)
+		(at 190.5 69.85)
 		(uuid "10d1796b-e1f8-4816-9ca4-f479a97270db")
 	)
 	(no_connect
@@ -2828,7 +2830,7 @@
 		(uuid "11acd20b-6e8d-478c-893a-2ce980cbea51")
 	)
 	(no_connect
-		(at 201.93 44.45)
+		(at 190.5 44.45)
 		(uuid "1af0eb6d-e528-481e-a7b9-bc7c4c7635f1")
 	)
 	(no_connect
@@ -2848,7 +2850,7 @@
 		(uuid "3401ceb8-d925-42fc-b279-95bc406c95e1")
 	)
 	(no_connect
-		(at 201.93 59.69)
+		(at 190.5 59.69)
 		(uuid "392bc172-8319-4005-8a04-a5eaac7cab08")
 	)
 	(no_connect
@@ -2856,19 +2858,19 @@
 		(uuid "39a13999-7df0-4331-be42-952ee1a710cc")
 	)
 	(no_connect
-		(at 201.93 72.39)
+		(at 190.5 72.39)
 		(uuid "3db6bdc1-bc9e-46da-9384-07e511d7bf76")
 	)
 	(no_connect
-		(at 201.93 49.53)
+		(at 190.5 49.53)
 		(uuid "41b48899-81ef-4efa-a1d9-ac6703dea90b")
 	)
 	(no_connect
-		(at 201.93 62.23)
+		(at 190.5 62.23)
 		(uuid "4632b92b-ff5a-4118-bbc9-cea7f24c0e7d")
 	)
 	(no_connect
-		(at 201.93 64.77)
+		(at 190.5 64.77)
 		(uuid "53418135-4fe6-4253-bb38-73e188fb10a7")
 	)
 	(no_connect
@@ -2876,7 +2878,7 @@
 		(uuid "557ee5af-004f-40a8-b578-cfacd22f5552")
 	)
 	(no_connect
-		(at 201.93 52.07)
+		(at 190.5 52.07)
 		(uuid "5d0352c5-31f6-4a29-86d9-2ec446916e77")
 	)
 	(no_connect
@@ -2896,15 +2898,15 @@
 		(uuid "83850c36-7822-49ee-b193-63a9a303c993")
 	)
 	(no_connect
-		(at 201.93 41.91)
+		(at 190.5 41.91)
 		(uuid "86bc0fd3-d33b-4efc-b4f7-79c54a9ecb61")
 	)
 	(no_connect
-		(at 201.93 34.29)
+		(at 190.5 34.29)
 		(uuid "8728e8b8-7632-4b17-a111-251cac71223c")
 	)
 	(no_connect
-		(at 201.93 36.83)
+		(at 190.5 36.83)
 		(uuid "8b8e61ae-6533-4899-a129-10450fa6c637")
 	)
 	(no_connect
@@ -2912,7 +2914,7 @@
 		(uuid "901b1f68-49a2-4f44-ba1f-1fa170e2a142")
 	)
 	(no_connect
-		(at 201.93 46.99)
+		(at 190.5 46.99)
 		(uuid "bf5c2ef8-5ee7-4915-afcc-1c220ebfba96")
 	)
 	(no_connect
@@ -2928,15 +2930,15 @@
 		(uuid "d86f2609-02db-4c49-981f-03993f425099")
 	)
 	(no_connect
-		(at 201.93 54.61)
+		(at 190.5 54.61)
 		(uuid "ea81fd53-218c-402b-a4a3-e006e89e5405")
 	)
 	(no_connect
-		(at 201.93 39.37)
+		(at 190.5 39.37)
 		(uuid "ecd9a5c9-30c0-4eaa-8963-49eea7ee2b9c")
 	)
 	(no_connect
-		(at 201.93 31.75)
+		(at 190.5 31.75)
 		(uuid "ef3e2ff9-e760-4943-a0b0-6b52935d1684")
 	)
 	(no_connect
@@ -5734,8 +5736,8 @@
 		)
 	)
 	(symbol
-		(lib_id "Link_Components:PCIE-036-02-X-D-TH")
-		(at 214.63 54.61 0)
+		(lib_id "Link_Components:link-edge-connector")
+		(at 209.55 54.61 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -5744,7 +5746,7 @@
 		(fields_autoplaced yes)
 		(uuid "c0063109-4299-4229-b6e8-ff67b154b8fd")
 		(property "Reference" "J1"
-			(at 214.63 24.13 0)
+			(at 208.915 24.13 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5752,15 +5754,15 @@
 			)
 		)
 		(property "Value" "PCIE-036-02-X-D-TH"
-			(at 214.63 26.67 0)
+			(at 208.915 26.67 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 			)
 		)
-		(property "Footprint" "Connector_PCBEdge:BUS_PCIexpress_x1"
-			(at 214.63 54.61 0)
+		(property "Footprint" "PCIE-036-02-X-D-TH:SAMTEC_PCIE-036-02-X-D-TH"
+			(at 209.55 54.61 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5770,7 +5772,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 214.63 54.61 0)
+			(at 209.55 54.61 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5779,7 +5781,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 214.63 54.61 0)
+			(at 209.55 54.61 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5788,7 +5790,7 @@
 			)
 		)
 		(property "PARTREV" "D"
-			(at 214.63 54.61 0)
+			(at 209.55 54.61 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5798,7 +5800,7 @@
 			)
 		)
 		(property "STANDARD" "Manufacturer Recommendations"
-			(at 214.63 54.61 0)
+			(at 209.55 54.61 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5808,7 +5810,7 @@
 			)
 		)
 		(property "MAXIMUM_PACKAGE_HEIGHT" "11.38mm"
-			(at 214.63 54.61 0)
+			(at 209.55 54.61 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5818,7 +5820,7 @@
 			)
 		)
 		(property "MANUFACTURER" "Samtec Inc"
-			(at 214.63 54.61 0)
+			(at 209.55 54.61 0)
 			(effects
 				(font
 					(size 1.27 1.27)
