@@ -2883,12 +2883,11 @@
 			)
 		)
 	)
-	(footprint "Connector_PinSocket_2.54mm:PinSocket_2x20_P2.54mm_Vertical"
+	(footprint "Link_Footprints:LabJack_T7_Mount"
 		(layer "F.Cu")
 		(uuid "5fdbc87b-389a-4cb7-b7a0-9c8124e37de5")
 		(at 35.75556 62.070845)
-		(descr "Through hole straight socket strip, 2x20, 2.54mm pitch, double cols (from Kicad 4.0.7), script generated")
-		(tags "Through hole socket strip THT 2x20 2.54mm double row")
+		(descr "Mount for LabJack T7 OEM")
 		(property "Reference" "J1"
 			(at -1.27 -2.77 0)
 			(layer "F.SilkS")
@@ -2923,7 +2922,7 @@
 				)
 			)
 		)
-		(property "Description" "Generic connector, double row, 02x20, odd/even pin numbering scheme (row 1 odd numbers, row 2 even numbers), script generated (kicad-library-utils/schlib/autogen/connector/)"
+		(property "Description" ""
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -2948,7 +2947,7 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(uuid "51cacaaa-158b-4055-9c2f-30afe680c488")
+			(uuid "28349ab0-e09b-4525-bd61-84256f63c117")
 		)
 		(fp_line
 			(start -3.87 -1.33)
@@ -2958,7 +2957,7 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(uuid "5cea7a1a-9c33-4ec6-b08f-41588f8b1be2")
+			(uuid "32676bad-9c4d-4183-854e-4e62289ca0d5")
 		)
 		(fp_line
 			(start -3.87 49.59)
@@ -2968,7 +2967,7 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(uuid "c177c39f-0c0b-4b36-adb4-425a2a02ca81")
+			(uuid "71f419d0-3882-4177-b055-e24c340858de")
 		)
 		(fp_line
 			(start -1.27 -1.33)
@@ -2978,7 +2977,7 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(uuid "2765c1a1-5cd9-4088-9373-b92138de2205")
+			(uuid "8da51310-91d9-4815-b932-ac6b660184ae")
 		)
 		(fp_line
 			(start -1.27 1.27)
@@ -2988,7 +2987,7 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(uuid "37f8cd1f-15a7-4488-af97-93d349802c02")
+			(uuid "4cec9e46-4f83-443b-b89e-fd2d1418af3c")
 		)
 		(fp_line
 			(start 0 -1.33)
@@ -2998,7 +2997,7 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(uuid "820f4ed8-ff64-4fc0-b614-3564c8c8b1c1")
+			(uuid "585d14e3-808e-446c-bb6f-157d89478051")
 		)
 		(fp_line
 			(start 1.33 -1.33)
@@ -3008,7 +3007,7 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(uuid "f3875052-58da-4058-832e-91aac2968ab5")
+			(uuid "f26ea02d-0818-4fc8-94a4-399cf3092221")
 		)
 		(fp_line
 			(start 1.33 1.27)
@@ -3018,7 +3017,7 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
-			(uuid "5a89bfa5-2cc5-4733-84b7-86a437a263dc")
+			(uuid "ff1b4a09-035b-4fe1-9f6c-c9e365e1e5d1")
 		)
 		(fp_line
 			(start -4.34 -1.8)
@@ -3028,7 +3027,7 @@
 				(type solid)
 			)
 			(layer "F.CrtYd")
-			(uuid "a178bd5c-6cea-4fbb-bb51-2a6b0589e4c7")
+			(uuid "4f8fafef-bccb-4ccd-be12-ff396f0c1412")
 		)
 		(fp_line
 			(start -4.34 50)
@@ -3038,7 +3037,7 @@
 				(type solid)
 			)
 			(layer "F.CrtYd")
-			(uuid "b7174a9c-6617-470d-b9d8-232321b0eeee")
+			(uuid "f1d9dc21-5bb5-4d3f-b4dc-c6b6b7a2914c")
 		)
 		(fp_line
 			(start 1.76 -1.8)
@@ -3048,7 +3047,7 @@
 				(type solid)
 			)
 			(layer "F.CrtYd")
-			(uuid "d20731cd-aada-4ef3-8a5e-b5addb55c4e7")
+			(uuid "b0ae297d-af58-4012-88c4-b64aa2f15369")
 		)
 		(fp_line
 			(start 1.76 50)
@@ -3058,7 +3057,7 @@
 				(type solid)
 			)
 			(layer "F.CrtYd")
-			(uuid "079bbceb-b445-445d-b6e5-042b32fe7c20")
+			(uuid "0b4124bb-3291-4285-b481-b1c720dd23a8")
 		)
 		(fp_line
 			(start -3.81 -1.27)
@@ -3068,7 +3067,7 @@
 				(type solid)
 			)
 			(layer "F.Fab")
-			(uuid "b8e8aa32-9425-4523-a35d-32d232b8fc64")
+			(uuid "4cb800e4-a090-461d-9e3f-bea17a7d5b86")
 		)
 		(fp_line
 			(start -3.81 49.53)
@@ -3078,7 +3077,7 @@
 				(type solid)
 			)
 			(layer "F.Fab")
-			(uuid "07b2af61-92eb-402b-b3cf-e8829cdbfde4")
+			(uuid "ce09d37c-48e6-4811-83cb-bffc1f749323")
 		)
 		(fp_line
 			(start 0.27 -1.27)
@@ -3088,7 +3087,7 @@
 				(type solid)
 			)
 			(layer "F.Fab")
-			(uuid "396d9c2d-681a-4383-843b-796396835f6c")
+			(uuid "ce8ce8ab-34b4-45be-9295-ceb4ca2e6921")
 		)
 		(fp_line
 			(start 1.27 -0.27)
@@ -3098,7 +3097,7 @@
 				(type solid)
 			)
 			(layer "F.Fab")
-			(uuid "7b7a2452-9327-4521-82bc-38d87a0820c4")
+			(uuid "6721bc99-2b68-4874-a886-17dcc8f0367d")
 		)
 		(fp_line
 			(start 1.27 49.53)
@@ -3108,7 +3107,7 @@
 				(type solid)
 			)
 			(layer "F.Fab")
-			(uuid "54a3fdad-3eb2-4fb3-a827-a4bb7dfbc4be")
+			(uuid "037f3e98-8d2f-400e-9810-886d67437c48")
 		)
 		(fp_text user "${REFERENCE}"
 			(at -1.27 24.13 90)
@@ -3573,7 +3572,7 @@
 				(xyz 0 0 0)
 			)
 		)
-		(model "/config/avena-rs/schematics/libraries/models/t7_oem.STEP"
+		(model "${KIPRJMOD}/../libraries/models/t7_oem.STEP"
 			(offset
 				(xyz -4.5 15.25 43.9)
 			)
@@ -3584,7 +3583,7 @@
 				(xyz -0 -0 90)
 			)
 		)
-		(model "/config/avena-rs/schematics/libraries/models/s10129382-X40004XLF.stp"
+		(model "${KIPRJMOD}/../libraries/models/s10129382-X40004XLF.stp"
 			(offset
 				(xyz -1.25 -49.5 9.5)
 			)

@@ -3275,10 +3275,10 @@
 					)
 				)
 			)
-			(pin no_connect line
+			(pin power_in line
 				(at -19.05 17.78 0)
 				(length 5.08)
-				(name "RESERVED"
+				(name "+5V"
 					(effects
 						(font
 							(size 1.016 1.016)
@@ -3530,7 +3530,7 @@
 			(pin power_in line
 				(at -19.05 -17.78 0)
 				(length 5.08)
-				(name "+12V"
+				(name "-12V"
 					(effects
 						(font
 							(size 1.016 1.016)
@@ -3599,10 +3599,10 @@
 					)
 				)
 			)
-			(pin no_connect line
+			(pin power_in line
 				(at 17.78 17.78 180)
 				(length 5.08)
-				(name "RESERVED"
+				(name "+5V"
 					(effects
 						(font
 							(size 1.016 1.016)
@@ -3836,7 +3836,7 @@
 			(pin power_in line
 				(at 17.78 -15.24 180)
 				(length 5.08)
-				(name "-12V"
+				(name "+12V"
 					(effects
 						(font
 							(size 1.016 1.016)
