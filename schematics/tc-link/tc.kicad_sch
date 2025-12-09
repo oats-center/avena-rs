@@ -287,22 +287,22 @@
 			(exclude_from_sim no)
 			(in_bom yes)
 			(on_board yes)
-			(property "Reference" "U"
-				(at -7.62 13.97 0)
+			(property "Reference" "U2"
+				(at 4.6833 17.78 0)
 				(effects
 					(font
 						(size 1.27 1.27)
 					)
-					(justify right)
+					(justify left)
 				)
 			)
 			(property "Value" "MAX31856"
-				(at 13.97 13.97 0)
+				(at 4.6833 15.24 0)
 				(effects
 					(font
 						(size 1.27 1.27)
 					)
-					(justify right)
+					(justify left)
 				)
 			)
 			(property "Footprint" "Package_SO:TSSOP-14_4.4x5mm_P0.65mm"
@@ -700,7 +700,7 @@
 						)
 					)
 				)
-				(pin output line
+				(pin tri_state line
 					(at 12.7 -5.08 180)
 					(length 2.54)
 					(name "SDO"
@@ -1178,7 +1178,7 @@
 	)
 	(wire
 		(pts
-			(xy 170.18 123.19) (xy 170.18 125.73)
+			(xy 218.44 72.39) (xy 218.44 74.93)
 		)
 		(stroke
 			(width 0)
@@ -1238,7 +1238,7 @@
 	)
 	(wire
 		(pts
-			(xy 170.18 130.81) (xy 170.18 133.35)
+			(xy 218.44 80.01) (xy 218.44 82.55)
 		)
 		(stroke
 			(width 0)
@@ -1506,7 +1506,7 @@
 	)
 	(symbol
 		(lib_id "power:+3V3")
-		(at 170.18 123.19 0)
+		(at 218.44 72.39 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -1514,8 +1514,8 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "4a89a106-72ba-4555-9e6f-70113949ab8a")
-		(property "Reference" "#PWR013"
-			(at 170.18 127 0)
+		(property "Reference" "#PWR040"
+			(at 218.44 76.2 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1524,7 +1524,7 @@
 			)
 		)
 		(property "Value" "+3V3"
-			(at 170.18 118.11 0)
+			(at 218.44 67.31 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1532,7 +1532,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 170.18 123.19 0)
+			(at 218.44 72.39 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1541,7 +1541,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 170.18 123.19 0)
+			(at 218.44 72.39 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1550,7 +1550,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"+3V3\""
-			(at 170.18 123.19 0)
+			(at 218.44 72.39 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1564,11 +1564,11 @@
 		(instances
 			(project "tc-link"
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/cf0945b2-2b77-4b7a-9180-f6abb82eccbe"
-					(reference "#PWR010")
+					(reference "#PWR046")
 					(unit 1)
 				)
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/d82a3210-8cdf-44cf-8f3c-363268ea9818"
-					(reference "#PWR013")
+					(reference "#PWR040")
 					(unit 1)
 				)
 			)
@@ -1576,7 +1576,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 170.18 133.35 0)
+		(at 218.44 82.55 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -1584,8 +1584,8 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "72a1b3cf-d026-4162-a0cc-5dd4d6c81768")
-		(property "Reference" "#PWR014"
-			(at 170.18 139.7 0)
+		(property "Reference" "#PWR041"
+			(at 218.44 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1594,7 +1594,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 170.18 138.43 0)
+			(at 218.44 87.63 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1603,7 +1603,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 170.18 133.35 0)
+			(at 218.44 82.55 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1612,7 +1612,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 170.18 133.35 0)
+			(at 218.44 82.55 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1621,7 +1621,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
-			(at 170.18 133.35 0)
+			(at 218.44 82.55 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1635,11 +1635,11 @@
 		(instances
 			(project "tc-link"
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/cf0945b2-2b77-4b7a-9180-f6abb82eccbe"
-					(reference "#PWR012")
+					(reference "#PWR047")
 					(unit 1)
 				)
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/d82a3210-8cdf-44cf-8f3c-363268ea9818"
-					(reference "#PWR014")
+					(reference "#PWR041")
 					(unit 1)
 				)
 			)
@@ -1655,7 +1655,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "83736af7-c6a3-4ad4-b214-34a4799b996f")
-		(property "Reference" "C3"
+		(property "Reference" "C5"
 			(at 134.62 76.1935 0)
 			(effects
 				(font
@@ -1709,11 +1709,11 @@
 		(instances
 			(project "tc-link"
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/cf0945b2-2b77-4b7a-9180-f6abb82eccbe"
-					(reference "C12")
+					(reference "C9")
 					(unit 1)
 				)
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/d82a3210-8cdf-44cf-8f3c-363268ea9818"
-					(reference "C3")
+					(reference "C5")
 					(unit 1)
 				)
 			)
@@ -1729,7 +1729,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "8398b433-8828-46ec-9320-3863cdc898a6")
-		(property "Reference" "R1"
+		(property "Reference" "R3"
 			(at 123.19 66.04 90)
 			(effects
 				(font
@@ -1781,11 +1781,11 @@
 		(instances
 			(project "tc-link"
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/cf0945b2-2b77-4b7a-9180-f6abb82eccbe"
-					(reference "R1")
+					(reference "R5")
 					(unit 1)
 				)
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/d82a3210-8cdf-44cf-8f3c-363268ea9818"
-					(reference "R1")
+					(reference "R3")
 					(unit 1)
 				)
 			)
@@ -1801,7 +1801,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "981f28cf-809c-48b4-b62e-212e7be6a87e")
-		(property "Reference" "C4"
+		(property "Reference" "C6"
 			(at 134.62 86.3535 0)
 			(effects
 				(font
@@ -1855,11 +1855,11 @@
 		(instances
 			(project "tc-link"
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/cf0945b2-2b77-4b7a-9180-f6abb82eccbe"
-					(reference "C16")
+					(reference "C10")
 					(unit 1)
 				)
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/d82a3210-8cdf-44cf-8f3c-363268ea9818"
-					(reference "C4")
+					(reference "C6")
 					(unit 1)
 				)
 			)
@@ -1875,7 +1875,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "a283bc9d-2f0b-4edb-93d0-7d34c0a4a0c0")
-		(property "Reference" "C1"
+		(property "Reference" "C4"
 			(at 134.62 64.7635 0)
 			(effects
 				(font
@@ -1929,11 +1929,11 @@
 		(instances
 			(project "tc-link"
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/cf0945b2-2b77-4b7a-9180-f6abb82eccbe"
-					(reference "C14")
+					(reference "C8")
 					(unit 1)
 				)
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/d82a3210-8cdf-44cf-8f3c-363268ea9818"
-					(reference "C1")
+					(reference "C4")
 					(unit 1)
 				)
 			)
@@ -1949,7 +1949,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "c89edcb1-525d-4403-ac1d-2e8823effdd1")
-		(property "Reference" "R2"
+		(property "Reference" "R4"
 			(at 123.19 76.2 90)
 			(effects
 				(font
@@ -2001,11 +2001,11 @@
 		(instances
 			(project "tc-link"
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/cf0945b2-2b77-4b7a-9180-f6abb82eccbe"
-					(reference "R8")
+					(reference "R6")
 					(unit 1)
 				)
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/d82a3210-8cdf-44cf-8f3c-363268ea9818"
-					(reference "R2")
+					(reference "R4")
 					(unit 1)
 				)
 			)
@@ -2021,7 +2021,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "ce22d703-355d-47ca-9440-b036ecf81c33")
-		(property "Reference" "#PWR05"
+		(property "Reference" "#PWR036"
 			(at 128.27 64.77 0)
 			(effects
 				(font
@@ -2072,11 +2072,11 @@
 		(instances
 			(project "tc-link"
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/cf0945b2-2b77-4b7a-9180-f6abb82eccbe"
-					(reference "#PWR032")
+					(reference "#PWR042")
 					(unit 1)
 				)
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/d82a3210-8cdf-44cf-8f3c-363268ea9818"
-					(reference "#PWR05")
+					(reference "#PWR036")
 					(unit 1)
 				)
 			)
@@ -2092,7 +2092,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "d23829da-016a-413e-bbcd-3bfcecbf77f4")
-		(property "Reference" "U1"
+		(property "Reference" "U2"
 			(at 172.3233 60.96 0)
 			(effects
 				(font
@@ -2183,11 +2183,11 @@
 		(instances
 			(project "tc-link"
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/cf0945b2-2b77-4b7a-9180-f6abb82eccbe"
-					(reference "U1")
+					(reference "U3")
 					(unit 1)
 				)
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/d82a3210-8cdf-44cf-8f3c-363268ea9818"
-					(reference "U1")
+					(reference "U2")
 					(unit 1)
 				)
 			)
@@ -2195,7 +2195,7 @@
 	)
 	(symbol
 		(lib_id "Device:C_Small")
-		(at 170.18 128.27 0)
+		(at 218.44 77.47 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -2203,8 +2203,8 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "e1d1e4ba-c163-402b-9fb7-62b9ffd581f0")
-		(property "Reference" "C5"
-			(at 172.72 127.0062 0)
+		(property "Reference" "C7"
+			(at 220.98 76.2062 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2213,7 +2213,7 @@
 			)
 		)
 		(property "Value" "100n"
-			(at 172.72 129.5462 0)
+			(at 220.98 78.7462 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2222,7 +2222,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 170.18 128.27 0)
+			(at 218.44 77.47 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2231,7 +2231,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 170.18 128.27 0)
+			(at 218.44 77.47 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2240,7 +2240,7 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor, small symbol"
-			(at 170.18 128.27 0)
+			(at 218.44 77.47 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2257,11 +2257,11 @@
 		(instances
 			(project "tc-link"
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/cf0945b2-2b77-4b7a-9180-f6abb82eccbe"
-					(reference "C5")
+					(reference "C11")
 					(unit 1)
 				)
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/d82a3210-8cdf-44cf-8f3c-363268ea9818"
-					(reference "C5")
+					(reference "C7")
 					(unit 1)
 				)
 			)
@@ -2277,7 +2277,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "e45deea1-6d2e-4f92-9c1f-9acef0440046")
-		(property "Reference" "#PWR07"
+		(property "Reference" "#PWR037"
 			(at 132.08 100.33 0)
 			(effects
 				(font
@@ -2328,11 +2328,11 @@
 		(instances
 			(project "tc-link"
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/cf0945b2-2b77-4b7a-9180-f6abb82eccbe"
-					(reference "#PWR030")
+					(reference "#PWR043")
 					(unit 1)
 				)
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/d82a3210-8cdf-44cf-8f3c-363268ea9818"
-					(reference "#PWR07")
+					(reference "#PWR037")
 					(unit 1)
 				)
 			)
@@ -2348,7 +2348,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "e6a50af6-d169-4830-9d0f-16f71bf8ca87")
-		(property "Reference" "#PWR011"
+		(property "Reference" "#PWR039"
 			(at 167.64 104.14 0)
 			(effects
 				(font
@@ -2399,11 +2399,11 @@
 		(instances
 			(project "tc-link"
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/cf0945b2-2b77-4b7a-9180-f6abb82eccbe"
-					(reference "#PWR06")
+					(reference "#PWR045")
 					(unit 1)
 				)
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/d82a3210-8cdf-44cf-8f3c-363268ea9818"
-					(reference "#PWR011")
+					(reference "#PWR039")
 					(unit 1)
 				)
 			)
@@ -2419,7 +2419,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "f7a4176f-3e53-450b-81ad-beae02f58c09")
-		(property "Reference" "#PWR09"
+		(property "Reference" "#PWR038"
 			(at 167.64 59.69 0)
 			(effects
 				(font
@@ -2469,11 +2469,11 @@
 		(instances
 			(project "tc-link"
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/cf0945b2-2b77-4b7a-9180-f6abb82eccbe"
-					(reference "#PWR08")
+					(reference "#PWR044")
 					(unit 1)
 				)
 				(path "/8e86abba-54e7-4e79-af31-15eabcc8dc53/d82a3210-8cdf-44cf-8f3c-363268ea9818"
-					(reference "#PWR09")
+					(reference "#PWR038")
 					(unit 1)
 				)
 			)
