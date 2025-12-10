@@ -220,7 +220,7 @@
 						)
 					)
 				)
-				(pin output line
+				(pin input line
 					(at -19.05 7.62 0)
 					(length 5.08)
 					(name "PROG"
@@ -238,7 +238,7 @@
 						)
 					)
 				)
-				(pin output line
+				(pin input line
 					(at -19.05 5.08 0)
 					(length 5.08)
 					(name "ENABLE"
@@ -292,7 +292,7 @@
 						)
 					)
 				)
-				(pin input line
+				(pin output line
 					(at -19.05 -2.54 0)
 					(length 5.08)
 					(name "ANALOG0"
@@ -616,7 +616,7 @@
 						)
 					)
 				)
-				(pin input line
+				(pin output line
 					(at 17.78 -2.54 180)
 					(length 5.08)
 					(name "ANALOG1"
@@ -2113,7 +2113,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "042fe001-5942-4504-8b2a-a06117ea11f5")
-		(property "Reference" "#PWR0171"
+		(property "Reference" "#PWR0213"
 			(at 116.84 100.33 0)
 			(effects
 				(font
@@ -2163,7 +2163,7 @@
 		(instances
 			(project "Mainboard"
 				(path "/95469dea-851e-4724-988e-7a6acaa4cbf0/4d738d37-6463-438f-b983-18ca4c02b52a"
-					(reference "#PWR0171")
+					(reference "#PWR0213")
 					(unit 1)
 				)
 			)
@@ -2180,7 +2180,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "1cadf845-2bcb-48df-a172-3ed8978ef03f")
-		(property "Reference" "#PWR0195"
+		(property "Reference" "#PWR0224"
 			(at 179.07 68.58 0)
 			(effects
 				(font
@@ -2230,7 +2230,7 @@
 		(instances
 			(project "Mainboard"
 				(path "/95469dea-851e-4724-988e-7a6acaa4cbf0/4d738d37-6463-438f-b983-18ca4c02b52a"
-					(reference "#PWR0195")
+					(reference "#PWR0224")
 					(unit 1)
 				)
 			)
@@ -2246,7 +2246,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "2c02fcb7-7676-4923-a1ee-599663962470")
-		(property "Reference" "#PWR0190"
+		(property "Reference" "#PWR0222"
 			(at 175.26 95.25 0)
 			(effects
 				(font
@@ -2298,7 +2298,7 @@
 		(instances
 			(project "Mainboard"
 				(path "/95469dea-851e-4724-988e-7a6acaa4cbf0/4d738d37-6463-438f-b983-18ca4c02b52a"
-					(reference "#PWR0190")
+					(reference "#PWR0222")
 					(unit 1)
 				)
 			)
@@ -2314,7 +2314,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "2d5bfa80-65ea-47fe-b368-ecdeec207028")
-		(property "Reference" "#PWR0177"
+		(property "Reference" "#PWR0216"
 			(at 121.92 107.95 0)
 			(effects
 				(font
@@ -2366,7 +2366,7 @@
 		(instances
 			(project "Mainboard"
 				(path "/95469dea-851e-4724-988e-7a6acaa4cbf0/4d738d37-6463-438f-b983-18ca4c02b52a"
-					(reference "#PWR0177")
+					(reference "#PWR0216")
 					(unit 1)
 				)
 			)
@@ -2383,7 +2383,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "44d5d309-46d5-47a0-ba50-763ac7429ae0")
-		(property "Reference" "#PWR0188"
+		(property "Reference" "#PWR0220"
 			(at 179.07 64.77 0)
 			(effects
 				(font
@@ -2435,7 +2435,7 @@
 		(instances
 			(project "Mainboard"
 				(path "/95469dea-851e-4724-988e-7a6acaa4cbf0/4d738d37-6463-438f-b983-18ca4c02b52a"
-					(reference "#PWR0188")
+					(reference "#PWR0220")
 					(unit 1)
 				)
 			)
@@ -2451,7 +2451,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "509d4698-fb4c-4cb8-9e66-dd70bfc054ac")
-		(property "Reference" "#PWR0184"
+		(property "Reference" "#PWR0219"
 			(at 170.18 115.57 0)
 			(effects
 				(font
@@ -2503,7 +2503,7 @@
 		(instances
 			(project "Mainboard"
 				(path "/95469dea-851e-4724-988e-7a6acaa4cbf0/4d738d37-6463-438f-b983-18ca4c02b52a"
-					(reference "#PWR0184")
+					(reference "#PWR0219")
 					(unit 1)
 				)
 			)
@@ -2519,7 +2519,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "510a6c76-9313-4153-ae35-04ff9a2a85a1")
-		(property "Reference" "#PWR0196"
+		(property "Reference" "#PWR0225"
 			(at 179.07 100.33 0)
 			(effects
 				(font
@@ -2570,7 +2570,7 @@
 		(instances
 			(project "Mainboard"
 				(path "/95469dea-851e-4724-988e-7a6acaa4cbf0/4d738d37-6463-438f-b983-18ca4c02b52a"
-					(reference "#PWR0196")
+					(reference "#PWR0225")
 					(unit 1)
 				)
 			)
@@ -2586,7 +2586,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "5d0cd18e-bff3-4d01-957c-48b29bdf4bb2")
-		(property "Reference" "#PWR0170"
+		(property "Reference" "#PWR0212"
 			(at 116.84 68.58 0)
 			(effects
 				(font
@@ -2636,7 +2636,7 @@
 		(instances
 			(project "Mainboard"
 				(path "/95469dea-851e-4724-988e-7a6acaa4cbf0/4d738d37-6463-438f-b983-18ca4c02b52a"
-					(reference "#PWR0170")
+					(reference "#PWR0212")
 					(unit 1)
 				)
 			)
@@ -2652,7 +2652,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "8d951512-7ea9-4819-9025-ae33dbcce268")
-		(property "Reference" "#PWR0194"
+		(property "Reference" "#PWR0223"
 			(at 175.26 107.95 0)
 			(effects
 				(font
@@ -2704,7 +2704,7 @@
 		(instances
 			(project "Mainboard"
 				(path "/95469dea-851e-4724-988e-7a6acaa4cbf0/4d738d37-6463-438f-b983-18ca4c02b52a"
-					(reference "#PWR0194")
+					(reference "#PWR0223")
 					(unit 1)
 				)
 			)
@@ -2720,7 +2720,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "b8620f92-8ccd-4dbf-93ac-289bb91a3d73")
-		(property "Reference" "#PWR0183"
+		(property "Reference" "#PWR0218"
 			(at 125.73 115.57 0)
 			(effects
 				(font
@@ -2772,7 +2772,7 @@
 		(instances
 			(project "Mainboard"
 				(path "/95469dea-851e-4724-988e-7a6acaa4cbf0/4d738d37-6463-438f-b983-18ca4c02b52a"
-					(reference "#PWR0183")
+					(reference "#PWR0218")
 					(unit 1)
 				)
 			)
@@ -2788,7 +2788,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "bd904ca8-2514-4fb5-a18b-8908c5ab4bba")
-		(property "Reference" "#PWR0172"
+		(property "Reference" "#PWR0214"
 			(at 121.92 76.2 0)
 			(effects
 				(font
@@ -2839,7 +2839,7 @@
 		(instances
 			(project "Mainboard"
 				(path "/95469dea-851e-4724-988e-7a6acaa4cbf0/4d738d37-6463-438f-b983-18ca4c02b52a"
-					(reference "#PWR0172")
+					(reference "#PWR0214")
 					(unit 1)
 				)
 			)
@@ -2855,7 +2855,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "c9cbabe2-ff21-495b-8afa-ab56f44f31f9")
-		(property "Reference" "#PWR0178"
+		(property "Reference" "#PWR0217"
 			(at 116.84 64.77 0)
 			(effects
 				(font
@@ -2907,7 +2907,7 @@
 		(instances
 			(project "Mainboard"
 				(path "/95469dea-851e-4724-988e-7a6acaa4cbf0/4d738d37-6463-438f-b983-18ca4c02b52a"
-					(reference "#PWR0178")
+					(reference "#PWR0217")
 					(unit 1)
 				)
 			)
@@ -2923,7 +2923,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "d4bcb907-38e5-48ed-ab57-b892e794d4e2")
-		(property "Reference" "J13"
+		(property "Reference" "J15"
 			(at 147.955 57.15 0)
 			(effects
 				(font
@@ -2939,7 +2939,7 @@
 				)
 			)
 		)
-		(property "Footprint" "PCIE-036-02-X-D-TH:SAMTEC_PCIE-036-02-X-D-TH"
+		(property "Footprint" "Link_Footprints:SAMTEC_PCIE-036-02-X-D-TH"
 			(at 148.59 87.63 0)
 			(effects
 				(font
@@ -3004,6 +3004,33 @@
 					(size 1.27 1.27)
 				)
 				(justify bottom)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C194068"
+			(at 148.59 87.63 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "PCIE-036-02-F-D-TH"
+			(at 148.59 87.63 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "DigiKey" "SAM10625-ND"
+			(at 148.59 87.63 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
 				(hide yes)
 			)
 		)
@@ -3118,7 +3145,7 @@
 		(instances
 			(project "Mainboard"
 				(path "/95469dea-851e-4724-988e-7a6acaa4cbf0/4d738d37-6463-438f-b983-18ca4c02b52a"
-					(reference "J13")
+					(reference "J15")
 					(unit 1)
 				)
 			)
@@ -3134,7 +3161,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "d7d9d068-e4d7-41be-b57a-c3f8becb0c03")
-		(property "Reference" "#PWR0166"
+		(property "Reference" "#PWR0211"
 			(at 113.03 107.95 0)
 			(effects
 				(font
@@ -3184,7 +3211,7 @@
 		(instances
 			(project "Mainboard"
 				(path "/95469dea-851e-4724-988e-7a6acaa4cbf0/4d738d37-6463-438f-b983-18ca4c02b52a"
-					(reference "#PWR0166")
+					(reference "#PWR0211")
 					(unit 1)
 				)
 			)
@@ -3200,7 +3227,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "d8f2c919-6ae4-4211-8887-a05c25f8e48a")
-		(property "Reference" "#PWR0197"
+		(property "Reference" "#PWR0226"
 			(at 179.07 102.87 0)
 			(effects
 				(font
@@ -3250,7 +3277,7 @@
 		(instances
 			(project "Mainboard"
 				(path "/95469dea-851e-4724-988e-7a6acaa4cbf0/4d738d37-6463-438f-b983-18ca4c02b52a"
-					(reference "#PWR0197")
+					(reference "#PWR0226")
 					(unit 1)
 				)
 			)
@@ -3266,7 +3293,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "d90390bb-2726-4d8f-9300-695e93d4efe1")
-		(property "Reference" "#PWR0176"
+		(property "Reference" "#PWR0215"
 			(at 121.92 95.25 0)
 			(effects
 				(font
@@ -3318,7 +3345,7 @@
 		(instances
 			(project "Mainboard"
 				(path "/95469dea-851e-4724-988e-7a6acaa4cbf0/4d738d37-6463-438f-b983-18ca4c02b52a"
-					(reference "#PWR0176")
+					(reference "#PWR0215")
 					(unit 1)
 				)
 			)
@@ -3335,7 +3362,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "e927ab60-f0be-4bb2-803f-578b2cd570cd")
-		(property "Reference" "#PWR0189"
+		(property "Reference" "#PWR0221"
 			(at 173.99 76.2 0)
 			(effects
 				(font
@@ -3386,7 +3413,7 @@
 		(instances
 			(project "Mainboard"
 				(path "/95469dea-851e-4724-988e-7a6acaa4cbf0/4d738d37-6463-438f-b983-18ca4c02b52a"
-					(reference "#PWR0189")
+					(reference "#PWR0221")
 					(unit 1)
 				)
 			)
