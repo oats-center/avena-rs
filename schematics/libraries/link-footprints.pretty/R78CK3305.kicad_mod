@@ -251,7 +251,7 @@
 		(uuid "9cabef86-7720-4157-a812-1e98cfb3d416")
 	)
 	(embedded_fonts no)
-	(model "${KIPRJMOD}/../libraries/models/R-78CK5.0-0.5.stp"
+	(model "${KIPRJMOD}/../libraries/models/R-78CK3.3-0.5.stp"
 		(offset
 			(xyz 2.539999924 2.329999889 0.2700000067)
 		)

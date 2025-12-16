@@ -7789,7 +7789,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" ""
+		(property "LCSC" "C5142854"
 			(at 92.71 146.05 0)
 			(effects
 				(font
@@ -7798,7 +7798,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "LabJack T7 OEM"
+		(property "MPN" "CS-1166SDIG-2X20(H8.5)"
 			(at 92.71 146.05 0)
 			(effects
 				(font
@@ -7808,6 +7808,15 @@
 			)
 		)
 		(property "DigiKey" ""
+			(at 92.71 146.05 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "FT Rotation Offset" "90"
 			(at 92.71 146.05 0)
 			(effects
 				(font

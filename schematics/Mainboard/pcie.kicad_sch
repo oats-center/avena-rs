@@ -2602,6 +2602,15 @@
 				(hide yes)
 			)
 		)
+		(property "FT Position Offset" "1.2065,0"
+			(at 118.11 83.82 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "A17"
 			(uuid "e5be6936-3d6c-4329-af01-50504528648d")
 		)
