@@ -158,8 +158,8 @@
   # Choose between:
   # 1-2 Layers (1oz)
   # (constraint track_width (min 0.127mm))
-  # 4-6 Layers (1oz and 0.5oz)
-	(constraint track_width (min 0.09mm))
+  # 4-6 Layers (1oz and 0.5oz) (.09 by spec)
+	(constraint track_width (min 0.1mm))
   # 1-6 Layers (2oz)
   # (constraint track_width (min 0.2mm))
 )
@@ -169,8 +169,8 @@
   # Choose between:
   # 1-2 Layers (1oz)
   # (constraint clearance (min 0.127mm))
-  # 4-6 Layers (1oz and 0.5oz)
-	(constraint clearance (min 0.09mm))
+  # 4-6 Layers (1oz and 0.5oz) (.09 by spec, move to .15mm for robustness)
+	(constraint clearance (min 0.15mm))
   # 1-6 Layers (2oz)
   # (constraint clearance (min 0.2mm))
 )
@@ -179,8 +179,8 @@
 	(layer inner)
 	(condition "A.Type == 'Track'")
   # Choose between:
-  # 4-6 Layers (1oz and 0.5oz)
-	(constraint track_width (min 0.09mm))
+  # 4-6 Layers (1oz and 0.5oz) (.09 by spec)
+	(constraint track_width (min 0.1mm))
   # 4-6 Layers (2oz)
   # (constraint track_width (min 0.2mm))
 )
@@ -188,8 +188,8 @@
 	(layer inner)
 	(condition "A.Type == 'Track' && B.Type == 'Track'")
   # Choose between:
-  # 4-6 Layers (1oz and 0.5oz)
-	(constraint clearance (min 0.09mm))
+  # 4-6 Layers (1oz and 0.5oz) (.09 by spec, move to .15mm for robustness)
+	(constraint clearance (min 0.15mm))
   # 4-6 Layers (2oz)
   # (constraint clearance (min 0.2mm))
 )
