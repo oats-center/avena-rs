@@ -4458,7 +4458,7 @@
 					)
 				)
 			)
-			(pin output line
+			(pin input line
 				(at -19.05 -2.54 0)
 				(length 5.08)
 				(name "ANALOG0"
@@ -4782,7 +4782,7 @@
 					)
 				)
 			)
-			(pin output line
+			(pin input line
 				(at 17.78 -2.54 180)
 				(length 5.08)
 				(name "ANALOG1"
