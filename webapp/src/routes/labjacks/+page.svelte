@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import { connect, getKeys, getKeyValue, updateConfig, deleteKey } from "$lib/nats.svelte";
+    import { normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
     import LabJackConfigModal from "$lib/components/LabJackConfigModal.svelte";
     
     interface SensorSettings {
@@ -11,6 +12,7 @@
         data_formats: string[];
         measurement_units: string[];
         labjack_on_off: boolean;
+        calibrations?: Record<string, CalibrationSpec>;
     }
     
     interface LabJackConfig {
@@ -31,6 +33,7 @@
     let editingKey = $state<string>("");
     let isAddingNew = $state<boolean>(false);
     let natsService: any = null;
+    let availableCalibrations = $state<Map<string, CalibrationSpec>>(new Map());
     
     onMount(async () => {
         await loadLabJacks();
@@ -57,8 +60,10 @@
                 return;
             }
             
-            // Get all keys from avenabox bucket
-            const keys = await getKeys(natsService, "avenabox");
+            await loadCalibrations();
+
+            // Get all LabJack config keys from avenabox bucket
+            const keys = await getKeys(natsService, "avenabox", "labjackd.config.*");
             console.log("Found keys:", keys);
             
             const newLabJacks = new Map<string, LabJackConfig>();
@@ -80,6 +85,26 @@
             error = "Failed to load LabJack configurations";
         } finally {
             loading = false;
+        }
+    }
+
+    async function loadCalibrations() {
+        try {
+            const keys = await getKeys(natsService, "avenabox", "calibration.*");
+            const presets = new Map<string, CalibrationSpec>();
+            for (const key of keys) {
+                try {
+                    const raw = await getKeyValue(natsService, "avenabox", key);
+                    const parsed = normalizeCalibration(JSON.parse(raw));
+                    const id = parsed.id ?? key.replace(/^calibration\./, "");
+                    presets.set(id, { ...parsed, id });
+                } catch (err) {
+                    console.error(`Failed to parse calibration ${key}:`, err);
+                }
+            }
+            availableCalibrations = presets;
+        } catch (err) {
+            console.error("Error loading calibrations:", err);
         }
     }
     
@@ -106,7 +131,8 @@
                 gains: 1,
                 data_formats: ["voltage", "temperature", "pressure"],
                 measurement_units: ["V", "°C", "PSI"],
-                labjack_on_off: false
+                labjack_on_off: false,
+                calibrations: {}
             }
         };
         isAddingNew = true;
@@ -174,6 +200,41 @@
             console.error("Error saving LabJack:", err);
             error = "Failed to save LabJack configuration";
         }
+    }
+
+    async function handleSaveCalibration(spec: CalibrationSpec): Promise<boolean> {
+        try {
+            const serverName = sessionStorage.getItem("serverName");
+            const credentialsContent = sessionStorage.getItem("credentialsContent");
+            if (!serverName || !credentialsContent) {
+                error = "No NATS connection found";
+                return false;
+            }
+            const sanitizedId = sanitizeCalibrationId(spec.id ?? "");
+            if (!sanitizedId) {
+                return false;
+            }
+            const key = `calibration.${sanitizedId}`;
+            const normalized = { ...spec, id: sanitizedId };
+            const success = await updateConfig(serverName, credentialsContent, "avenabox", key, normalized);
+            if (success) {
+                const updated = new Map(availableCalibrations);
+                updated.set(sanitizedId, normalized);
+                availableCalibrations = updated;
+            }
+            return success;
+        } catch (err) {
+            console.error("Error saving calibration:", err);
+            return false;
+        }
+    }
+
+    function sanitizeCalibrationId(raw: string): string {
+        return raw
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, "-")
+            .replace(/[^a-z0-9._-]/g, "");
     }
     
     function handleModalClose() {
@@ -409,6 +470,8 @@
             config={editingConfig}
             isAddingNew={isAddingNew}
             existingLabJacks={labjacks}
+            availableCalibrations={availableCalibrations}
+            onSaveCalibration={handleSaveCalibration}
             onSave={handleSave}
             onClose={handleModalClose}
         />

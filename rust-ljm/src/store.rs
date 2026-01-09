@@ -6,18 +6,21 @@ use futures_util::StreamExt;
 use parquet::{
     column::writer::ColumnWriter,
     data_type::ByteArray,
-    file::{properties::WriterProperties, writer::SerializedFileWriter},
+    file::{metadata::KeyValue, properties::WriterProperties, writer::SerializedFileWriter},
     schema::parser::parse_message_type,
 };
 use std::{collections::HashMap, fs, path::Path, sync::Arc};
+use tokio::sync::watch;
 use tokio::time::Duration;
 
+mod calibration;
 mod sample_data_generated {
     #![allow(dead_code, unused_imports)]
     include!("data_generated.rs");
 }
 use sample_data_generated::sampler;
 
+use calibration::CalibrationSpec;
 use serde::{Deserialize, Serialize};
 
 #[allow(dead_code)]
@@ -42,6 +45,7 @@ struct SensorConfig {
     data_formats: Vec<String>,
     measurement_units: Vec<String>,
     labjack_on_off: bool,
+    calibrations: Option<HashMap<String, CalibrationSpec>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -53,10 +57,12 @@ struct SampleConfig {
     nats_subject: String,
     nats_stream: String,
     rotate_secs: u64,
+    calibrations: HashMap<u8, CalibrationSpec>,
 }
 
 impl From<(SensorConfig, &SampleConfig)> for SampleConfig {
     fn from((raw, base): (SensorConfig, &SampleConfig)) -> Self {
+        let calibrations = parse_calibrations(&raw);
         SampleConfig {
             scans_per_read: raw.scan_rate,
             suggested_scan_rate: raw.sampling_rate,
@@ -65,7 +71,41 @@ impl From<(SensorConfig, &SampleConfig)> for SampleConfig {
             nats_subject: base.nats_subject.clone(),
             nats_stream: base.nats_stream.clone(),
             rotate_secs: base.rotate_secs,
+            calibrations,
         }
+    }
+}
+
+fn parse_calibrations(raw: &SensorConfig) -> HashMap<u8, CalibrationSpec> {
+    let mut out = HashMap::new();
+    let Some(calibrations) = raw.calibrations.as_ref() else {
+        return out;
+    };
+    for (key, spec) in calibrations {
+        match key.parse::<u8>() {
+            Ok(ch) => {
+                out.insert(ch, spec.clone());
+            }
+            Err(_) => {
+                eprintln!("[logger] Invalid calibration channel key '{key}', expected u8.");
+            }
+        }
+    }
+    out
+}
+
+fn sample_config_from_nested(nested: NestedConfig) -> SampleConfig {
+    let calibrations = parse_calibrations(&nested.sensor_settings);
+    let raw = nested.sensor_settings;
+    SampleConfig {
+        scans_per_read: raw.scan_rate,
+        suggested_scan_rate: raw.sampling_rate,
+        channels: raw.channels_enabled,
+        asset_number: nested.asset_number,
+        nats_subject: nested.nats_subject,
+        nats_stream: nested.nats_stream,
+        rotate_secs: nested.rotate_secs,
+        calibrations,
     }
 }
 
@@ -80,8 +120,20 @@ struct ParquetLogger {
     file_index: usize,
 }
 
+struct ChannelLogger {
+    handle: tokio::task::JoinHandle<()>,
+    calibration_tx: watch::Sender<CalibrationSpec>,
+    calibration: CalibrationSpec,
+}
+
 impl ParquetLogger {
-    fn new(asset: u32, channel: u8, file_index: usize, date: NaiveDate) -> Self {
+    fn new(
+        asset: u32,
+        channel: u8,
+        file_index: usize,
+        date: NaiveDate,
+        calibration: CalibrationSpec,
+    ) -> Self {
         let dir = Path::new("parquet")
             .join(format!("asset{:03}", asset))
             .join(date.format("%Y-%m-%d").to_string())
@@ -97,7 +149,16 @@ impl ParquetLogger {
             }
         ";
         let schema = Arc::new(parse_message_type(message_type).unwrap());
-        let props = Arc::new(WriterProperties::builder().build());
+        let calibration_json =
+            serde_json::to_string(&calibration).unwrap_or_else(|_| "{}".to_string());
+        let props = Arc::new(
+            WriterProperties::builder()
+                .set_key_value_metadata(Some(vec![KeyValue::new(
+                    "calibration".to_string(),
+                    calibration_json,
+                )]))
+                .build(),
+        );
         let file = fs::File::create(file_path).unwrap();
         let writer = SerializedFileWriter::new(file, schema, props).unwrap();
 
@@ -194,14 +255,18 @@ fn spawn_channel_logger(
     asset: u32,
     channel: u8,
     rotate_secs: u64,
-) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
+    calibration: CalibrationSpec,
+) -> ChannelLogger {
+    let (calibration_tx, mut calibration_rx) = watch::channel(calibration.clone());
+    let calibration_for_task = calibration.clone();
+    let handle = tokio::spawn(async move {
         let mut sub = nc.subscribe(subject.clone()).await.unwrap();
         println!("[logger] Subscribed to {subject}");
 
         let mut ticker = tokio::time::interval(Duration::from_secs(rotate_secs));
         let mut logger: Option<ParquetLogger> = None;
         let mut file_index = next_file_index(asset, channel, Utc::now().date_naive());
+        let mut active_calibration = calibration_for_task;
 
         loop {
             tokio::select! {
@@ -218,7 +283,13 @@ fn spawn_channel_logger(
                                         println!("[logger] Closed file {}", file_index);
                                     }
                                     file_index = 1; // reset numbering for new day
-                                    logger = Some(ParquetLogger::new(asset, channel, file_index, today));
+                                    logger = Some(ParquetLogger::new(
+                                        asset,
+                                        channel,
+                                        file_index,
+                                        today,
+                                        active_calibration.clone(),
+                                    ));
                                 }
 
                                 if let Some(log) = logger.as_mut() {
@@ -238,11 +309,50 @@ fn spawn_channel_logger(
                         println!("[logger] Closed file {}", file_index);
                     }
                     file_index += 1;
-                    logger = Some(ParquetLogger::new(asset, channel, file_index, today));
+                    logger = Some(ParquetLogger::new(
+                        asset,
+                        channel,
+                        file_index,
+                        today,
+                        active_calibration.clone(),
+                    ));
+                }
+                changed = calibration_rx.changed() => {
+                    if changed.is_err() {
+                        break;
+                    }
+                    let updated = calibration_rx.borrow().clone();
+                    if updated != active_calibration {
+                        let today = Utc::now().date_naive();
+                        if let Some(l) = logger.take() {
+                            l.close();
+                            println!("[logger] Closed file {}", file_index);
+                            file_index += 1;
+                        } else {
+                            file_index = next_file_index(asset, channel, today);
+                        }
+                        println!(
+                            "[logger] Calibration updated for channel {channel:02}; rotating file."
+                        );
+                        logger = Some(ParquetLogger::new(
+                            asset,
+                            channel,
+                            file_index,
+                            today,
+                            updated.clone(),
+                        ));
+                        active_calibration = updated;
+                    }
                 }
             }
         }
-    })
+    });
+
+    ChannelLogger {
+        handle,
+        calibration_tx,
+        calibration,
+    }
 }
 
 #[tokio::main]
@@ -274,39 +384,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let store = js.get_key_value(bucket.as_str()).await?;
     let entry = store.entry(key.as_str()).await?.ok_or("KV key not found")?;
 
-    let cfg: SampleConfig = match serde_json::from_slice::<NestedConfig>(&entry.value) {
-        Ok(nested) => {
-            let raw = nested.sensor_settings;
-            SampleConfig {
-                scans_per_read: raw.scan_rate,
-                suggested_scan_rate: raw.sampling_rate,
-                channels: raw.channels_enabled.clone(),
-                asset_number: nested.asset_number,
-                nats_subject: nested.nats_subject,
-                nats_stream: nested.nats_stream,
-                rotate_secs: nested.rotate_secs,
-            }
-        }
-        Err(_) => {
-            let nested = serde_json::from_slice::<NestedConfig>(&entry.value)?;
-            let raw = nested.sensor_settings;
-            SampleConfig {
-                scans_per_read: raw.scan_rate,
-                suggested_scan_rate: raw.sampling_rate,
-                channels: raw.channels_enabled,
-                asset_number: nested.asset_number,
-                nats_subject: nested.nats_subject,
-                nats_stream: nested.nats_stream,
-                rotate_secs: nested.rotate_secs,
-            }
-        }
-    };
+    let nested = serde_json::from_slice::<NestedConfig>(&entry.value)?;
+    let cfg: SampleConfig = sample_config_from_nested(nested);
 
     println!("[logger] Loaded config: {:?}", cfg);
 
     // Step 4: spawn dynamic watcher for KV config changes
     let mut watch = store.watch(key.as_str()).await?;
-    let mut active: HashMap<u8, tokio::task::JoinHandle<()>> = HashMap::new();
+    let mut active: HashMap<u8, ChannelLogger> = HashMap::new();
 
     // initial subscriptions
     for ch in &cfg.channels {
@@ -314,7 +399,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "{}.{:03}.data.ch{:02}",
             cfg.nats_subject, cfg.asset_number, ch
         );
-        let h = spawn_channel_logger(nc.clone(), subject, cfg.asset_number, *ch, cfg.rotate_secs);
+        let calibration = cfg
+            .calibrations
+            .get(ch)
+            .cloned()
+            .unwrap_or_default();
+        let h = spawn_channel_logger(
+            nc.clone(),
+            subject,
+            cfg.asset_number,
+            *ch,
+            cfg.rotate_secs,
+            calibration,
+        );
         active.insert(*ch, h);
     }
 
@@ -325,43 +422,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             while let Some(ev) = watch.next().await {
                 if let Ok(entry) = ev {
                     if entry.operation == Operation::Put {
-                        if let Ok(new_cfg) = serde_json::from_slice::<NestedConfig>(&entry.value)
-                            .map(|nested| {
-                                let raw = nested.sensor_settings;
-                                SampleConfig {
-                                    scans_per_read: raw.scan_rate,
-                                    suggested_scan_rate: raw.sampling_rate,
-                                    channels: raw.channels_enabled.clone(),
-                                    asset_number: nested.asset_number,
-                                    nats_subject: nested.nats_subject,
-                                    nats_stream: nested.nats_stream,
-                                    rotate_secs: nested.rotate_secs,
-                                }
-                            })
-                            .or_else(|_| {
-                                serde_json::from_slice::<NestedConfig>(&entry.value).map(|nested| {
-                                    let raw = nested.sensor_settings;
-                                    SampleConfig {
-                                        scans_per_read: raw.scan_rate,
-                                        suggested_scan_rate: raw.sampling_rate,
-                                        channels: raw.channels_enabled,
-                                        asset_number: nested.asset_number,
-                                        nats_subject: nested.nats_subject,
-                                        nats_stream: nested.nats_stream,
-                                        rotate_secs: nested.rotate_secs,
-                                    }
-                                })
-                            })
+                        if let Ok(new_cfg) =
+                            serde_json::from_slice::<NestedConfig>(&entry.value)
+                                .map(sample_config_from_nested)
                         {
                             println!("[logger] KV config update detected: {:?}", new_cfg);
 
                             // remove old channels
-                            active.retain(|ch, handle| {
+                            active.retain(|ch, entry| {
                                 if new_cfg.channels.contains(ch) {
                                     true
                                 } else {
                                     println!("[logger] Removing channel {ch}");
-                                    handle.abort();
+                                    entry.handle.abort();
                                     false
                                 }
                             });
@@ -374,14 +447,54 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         "{}.{:03}.data.ch{:02}",
                                         new_cfg.nats_subject, new_cfg.asset_number, ch
                                     );
+                                    let calibration = new_cfg
+                                        .calibrations
+                                        .get(ch)
+                                        .cloned()
+                                        .unwrap_or_default();
                                     let h = spawn_channel_logger(
                                         nc.clone(),
                                         subject,
                                         new_cfg.asset_number,
                                         *ch,
                                         new_cfg.rotate_secs,
+                                        calibration,
                                     );
                                     active.insert(*ch, h);
+                                } else {
+                                    let calibration = new_cfg
+                                        .calibrations
+                                        .get(ch)
+                                        .cloned()
+                                        .unwrap_or_default();
+                                    let mut needs_respawn = false;
+                                    if let Some(entry) = active.get_mut(ch) {
+                                        if entry.calibration != calibration {
+                                            if entry.calibration_tx.send(calibration.clone()).is_ok() {
+                                                entry.calibration = calibration.clone();
+                                            } else {
+                                                needs_respawn = true;
+                                            }
+                                        }
+                                    }
+                                    if needs_respawn {
+                                        if let Some(entry) = active.remove(ch) {
+                                            entry.handle.abort();
+                                        }
+                                        let subject = format!(
+                                            "{}.{:03}.data.ch{:02}",
+                                            new_cfg.nats_subject, new_cfg.asset_number, ch
+                                        );
+                                        let h = spawn_channel_logger(
+                                            nc.clone(),
+                                            subject,
+                                            new_cfg.asset_number,
+                                            *ch,
+                                            new_cfg.rotate_secs,
+                                            calibration,
+                                        );
+                                        active.insert(*ch, h);
+                                    }
                                 }
                             }
                         }
