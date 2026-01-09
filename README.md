@@ -13,7 +13,7 @@ Then run following rust binaries.
 
     ```
     bash
-    PARQUET_DIR=/srv/avena/parquet_folder EXPORTER_ADDR=0.0.0.0:9001 ./target/release/exporter
+    PARQUET_DIR=/src/avena/parquet_folder EXPORTER_ADDR=0.0.0.0:9001 ./target/release/exporter
     ```
 
 4. Deploy Webapp on Server using `setup.sh`
