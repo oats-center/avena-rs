@@ -44,3 +44,19 @@ export function normalizeCalibration(
 
   return { id: raw.id, type: "identity" };
 }
+
+export function applyCalibration(spec: CalibrationSpec, raw: number): number {
+  if (!Number.isFinite(raw)) {
+    return raw;
+  }
+
+  if (spec.type === "linear") {
+    return spec.a * raw + spec.b;
+  }
+
+  if (spec.type === "polynomial") {
+    return spec.coeffs.reduce((acc, coeff, idx) => acc + coeff * raw ** idx, 0);
+  }
+
+  return raw;
+}

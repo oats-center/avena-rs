@@ -3,7 +3,7 @@
     import { page } from "$app/stores";
     import { connect, getKeyValue, getKeys } from "$lib/nats.svelte";
     import { downloadExportViaWebSocket, type ExportRequestPayload } from "$lib/exporter";
-    import type { CalibrationSpec } from "$lib/calibration";
+    import { applyCalibration, normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
     import { FlatBufferParser, calculateSampleTimestamps } from "$lib/flatbuffer-parser";
     // @ts-ignore - No type definitions available for downsample-lttb
@@ -247,15 +247,19 @@
                                 scanData.values, 
                                 labjackConfig.sensor_settings.sampling_rate
                             );
+                            const calibrationSpec = normalizeCalibration(
+                                labjackConfig?.sensor_settings.calibrations?.[String(channel)]
+                            );
                             
                             // **CHANGE: Create a chunk of new data points**
                             const newPoints: DataPoint[] = [];
                             for (let i = 0; i < scanData.values.length; i++) {
-                                const value = scanData.values[i];
+                                const rawValue = scanData.values[i];
                                 const timestamp = sampleTimestamps[i];
                                 
-                                if (typeof value === 'number' && typeof timestamp === 'number' && !isNaN(value) && isFinite(value) && Math.abs(value) < 100) {
-                                    newPoints.push({ timestamp, value });
+                                if (typeof rawValue === 'number' && typeof timestamp === 'number' && !isNaN(rawValue) && isFinite(rawValue) && Math.abs(rawValue) < 100) {
+                                    const calibrated = applyCalibration(calibrationSpec, rawValue);
+                                    newPoints.push({ timestamp, value: calibrated });
                                 }
                             }
 
