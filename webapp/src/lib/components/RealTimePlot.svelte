@@ -25,6 +25,8 @@
     let plotWidth = 0;
     let plotHeight = 0;
     let margin = { top: 30, right: 40, bottom: 50, left: 80 };
+    let frozenRange: { min: number; max: number } | null = null;
+    let frozenRangeTriggerTime = 0;
     
     // Color palette for different channels
     const colors = [
@@ -107,6 +109,14 @@
         ctx.stroke();
     }
     
+    function computeValueRange(points: DataPoint[]): { min: number; max: number } | null {
+        if (!points || points.length === 0) return null;
+        const values = points.map((point) => point.value);
+        const minValue = Math.min(...values);
+        const maxValue = Math.max(...values);
+        return { min: minValue, max: maxValue };
+    }
+
     function drawLabels() {
         if (!ctx) return;
         
@@ -126,7 +136,7 @@
                 timeValue = -timeWindow + (i * (2 * timeWindow / 10));
             } else {
                 // For continuous mode, show time relative to now (negative values)
-                timeValue = -timeWindow + (i * timeStep);
+                timeValue = 0 - (i * timeStep);
             }
             
             // Format time labels with better precision for high-frequency data
@@ -140,10 +150,12 @@
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
         
-        if (data.length > 0) {
-            const values = data.map(d => d.value);
-            const minValue = Math.min(...values);
-            const maxValue = Math.max(...values);
+        const labelData = mode === 'frozen' && frozenData ? frozenData : data;
+        const range = mode === 'frozen' && frozenRange ? frozenRange : computeValueRange(labelData);
+
+        if (range) {
+            const minValue = range.min;
+            const maxValue = range.max;
             const valueRange = maxValue - minValue;
             const padding = valueRange > 0 ? valueRange * 0.1 : 1;
             
@@ -271,9 +283,10 @@
         
         
         const now = Date.now();
-        const values = dataToPlot.map(d => d.value);
-        const minValue = Math.min(...values);
-        const maxValue = Math.max(...values);
+        const range = mode === 'frozen' && frozenRange ? frozenRange : computeValueRange(dataToPlot);
+        if (!range) return;
+        const minValue = range.min;
+        const maxValue = range.max;
         const valueRange = maxValue - minValue;
         const padding = valueRange > 0 ? valueRange * 0.1 : 1; // Avoid division by zero
         
@@ -452,6 +465,22 @@
                 // For continuous mode, render on any data change
                 render();
             }
+        }
+    });
+
+    $effect(() => {
+        if (mode === 'frozen' && isTriggered && triggerTime > 0) {
+            const shouldInitialize =
+                triggerTime !== frozenRangeTriggerTime || frozenRange === null;
+            if (shouldInitialize) {
+                const source =
+                    frozenData && frozenData.length > 0 ? frozenData : data;
+                frozenRange = computeValueRange(source);
+                frozenRangeTriggerTime = triggerTime;
+            }
+        } else {
+            frozenRange = null;
+            frozenRangeTriggerTime = 0;
         }
     });
 </script>
