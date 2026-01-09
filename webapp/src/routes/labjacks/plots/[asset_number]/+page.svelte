@@ -3,6 +3,7 @@
     import { page } from "$app/stores";
     import { connect, getKeyValue, getKeys } from "$lib/nats.svelte";
     import { downloadExportViaWebSocket, type ExportRequestPayload } from "$lib/exporter";
+    import type { CalibrationSpec } from "$lib/calibration";
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
     import { FlatBufferParser, calculateSampleTimestamps } from "$lib/flatbuffer-parser";
     // @ts-ignore - No type definitions available for downsample-lttb
@@ -17,6 +18,7 @@
         data_formats: string[];
         measurement_units: string[];
         labjack_on_off: boolean;
+        calibrations?: Record<string, CalibrationSpec>;
     }
     
     interface LabJackConfig {
@@ -150,7 +152,7 @@
             }
             
             // Find the LabJack config by asset number
-            const keys = await getKeys(natsService, "avenabox");
+            const keys = await getKeys(natsService, "avenabox", "labjackd.config.*");
             let foundConfig: LabJackConfig | null = null;
             
             for (const key of keys) {
@@ -252,7 +254,7 @@
                                 const value = scanData.values[i];
                                 const timestamp = sampleTimestamps[i];
                                 
-                                if (typeof value === 'number' && typeof timestamp === 'number' && !isNaN(value) && isFinite(value) && Math.abs(value) < 10) {
+                                if (typeof value === 'number' && typeof timestamp === 'number' && !isNaN(value) && isFinite(value) && Math.abs(value) < 100) {
                                     newPoints.push({ timestamp, value });
                                 }
                             }

@@ -23,6 +23,10 @@ use parquet::{
 use serde::Deserialize;
 use serde_json::json;
 
+mod calibration;
+
+use calibration::CalibrationSpec;
+
 #[derive(Clone)]
 struct AppState {
     parquet_root: Arc<PathBuf>,
@@ -182,7 +186,7 @@ impl CsvStreamer {
         end: DateTime<Utc>,
     ) -> Self {
         let mut chunk = Vec::with_capacity(Self::CHUNK_SIZE);
-        chunk.extend_from_slice(b"timestamp,channel,value\n");
+        chunk.extend_from_slice(b"timestamp,channel,raw_value,calibrated_value,calibration_id\n");
         Self {
             socket,
             chunk,
@@ -218,8 +222,17 @@ impl CsvStreamer {
         Ok(())
     }
 
-    async fn push_record(&mut self, timestamp: &str, channel: u8, value: f64) -> Result<()> {
-        let line = format!("{timestamp},ch{channel:02},{value}\n");
+    async fn push_record(
+        &mut self,
+        timestamp: &str,
+        channel: u8,
+        raw_value: f64,
+        calibrated_value: f64,
+        calibration_id: &str,
+    ) -> Result<()> {
+        let line = format!(
+            "{timestamp},ch{channel:02},{raw_value},{calibrated_value},{calibration_id}\n"
+        );
         self.chunk.extend_from_slice(line.as_bytes());
         if self.chunk.len() >= Self::CHUNK_SIZE {
             self.flush().await?;
@@ -286,6 +299,8 @@ impl CsvStreamer {
             .with_context(|| format!("failed to open parquet file {}", path.display()))?;
         let reader = SerializedFileReader::new(file)
             .with_context(|| format!("failed to create reader for {}", path.display()))?;
+        let calibration = read_calibration_from_metadata(&reader, path);
+        let calibration_id = calibration.id_or_default().to_string();
         let mut iter = reader.get_row_iter(None)?;
         while let Some(row) = iter.next() {
             let row = row?;
@@ -297,11 +312,49 @@ impl CsvStreamer {
             if ts_parsed < self.start || ts_parsed > self.end {
                 continue;
             }
-            let value = row.get_double(1)?;
+            let raw_value = row.get_double(1)?;
+            let calibrated_value = calibration.apply(raw_value);
             *found = true;
-            self.push_record(ts, channel, value).await?;
+            self.push_record(ts, channel, raw_value, calibrated_value, &calibration_id)
+                .await?;
         }
         Ok(())
+    }
+}
+
+fn read_calibration_from_metadata(
+    reader: &SerializedFileReader<fs::File>,
+    path: &Path,
+) -> CalibrationSpec {
+    let Some(kv) = reader
+        .metadata()
+        .file_metadata()
+        .key_value_metadata()
+    else {
+        return CalibrationSpec::default();
+    };
+
+    let mut calibration_json = None;
+    for item in kv {
+        if item.key == "calibration" {
+            calibration_json = item.value.as_deref();
+            break;
+        }
+    }
+
+    let Some(json) = calibration_json else {
+        return CalibrationSpec::default();
+    };
+
+    match serde_json::from_str::<CalibrationSpec>(json) {
+        Ok(spec) => spec,
+        Err(err) => {
+            eprintln!(
+                "[exporter] invalid calibration metadata in {}: {err}",
+                path.display()
+            );
+            CalibrationSpec::default()
+        }
     }
 }
 

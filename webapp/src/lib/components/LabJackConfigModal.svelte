@@ -1,4 +1,6 @@
 <script lang="ts">
+    import { normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
+
     interface SensorSettings {
         scan_rate: number;
         sampling_rate: number;
@@ -7,6 +9,7 @@
         data_formats: string[];
         measurement_units: string[];
         labjack_on_off: boolean;
+        calibrations?: Record<string, CalibrationSpec>;
     }
     
     interface LabJackConfig {
@@ -23,15 +26,34 @@
         config: LabJackConfig;
         isAddingNew: boolean;
         existingLabJacks: Map<string, LabJackConfig>;
+        availableCalibrations: Map<string, CalibrationSpec>;
+        onSaveCalibration: (spec: CalibrationSpec) => Promise<boolean>;
         onSave: (config: LabJackConfig) => void;
         onClose: () => void;
     }
     
-    let { config, isAddingNew, existingLabJacks, onSave, onClose }: Props = $props();
+    let {
+        config,
+        isAddingNew,
+        existingLabJacks,
+        availableCalibrations,
+        onSaveCalibration,
+        onSave,
+        onClose
+    }: Props = $props();
     
     let formData = $state<LabJackConfig>({ ...config });
     let errors = $state<Record<string, string>>({});
     let saving = $state<boolean>(false);
+    let calibrationStatus = $state<Record<string, string>>({});
+    let presetIdInputs = $state<Record<string, string>>({});
+    let coeffInputs = $state<Record<string, string>>({});
+
+    $effect(() => {
+        if (!formData.sensor_settings.calibrations) {
+            formData.sensor_settings.calibrations = {};
+        }
+    });
     
     // Reactive validation for name and asset number
     $effect(() => {
@@ -58,6 +80,116 @@
     
     const dataFormats = ["voltage", "temperature", "pressure", "current", "resistance"];
     const measurementUnits = ["V", "°C", "PSI", "A", "Ω", "Pa", "kPa", "bar"];
+
+    function getCalibration(channel: number): CalibrationSpec {
+        const calibrations = formData.sensor_settings.calibrations ?? {};
+        const raw = calibrations[String(channel)] as CalibrationSpec | undefined;
+        return normalizeCalibration(raw);
+    }
+
+    function setCalibration(channel: number, spec: CalibrationSpec) {
+        const calibrations = { ...(formData.sensor_settings.calibrations ?? {}) };
+        calibrations[String(channel)] = spec;
+        formData.sensor_settings.calibrations = calibrations;
+    }
+
+    function applyPreset(channel: number, presetId: string) {
+        if (presetId === "custom") {
+            return;
+        }
+        if (presetId === "identity") {
+            setCalibration(channel, { type: "identity" });
+            return;
+        }
+        const preset = availableCalibrations.get(presetId);
+        if (preset) {
+            setCalibration(channel, { ...preset });
+            if (preset.type === "polynomial") {
+                coeffInputs[String(channel)] = preset.coeffs.join(", ");
+            } else {
+                delete coeffInputs[String(channel)];
+            }
+        }
+    }
+
+    function getPresetSelection(channel: number): string {
+        const current = getCalibration(channel);
+        if (current.type === "identity" && !current.id) {
+            return "identity";
+        }
+        if (current.id && availableCalibrations.has(current.id)) {
+            return current.id;
+        }
+        return "custom";
+    }
+
+    function setCalibrationType(channel: number, type: CalibrationSpec["type"]) {
+        if (type === "linear") {
+            setCalibration(channel, { type: "linear", a: 1, b: 0 });
+            delete coeffInputs[String(channel)];
+        } else if (type === "polynomial") {
+            setCalibration(channel, { type: "polynomial", coeffs: [0, 1] });
+            coeffInputs[String(channel)] = "0, 1";
+        } else {
+            setCalibration(channel, { type: "identity" });
+            delete coeffInputs[String(channel)];
+        }
+    }
+
+    function updateLinearField(channel: number, field: "a" | "b", value: number) {
+        const current = getCalibration(channel);
+        if (current.type !== "linear") {
+            return;
+        }
+        const next = {
+            ...current,
+            [field]: Number.isFinite(value) ? value : 0,
+        };
+        delete next.id;
+        setCalibration(channel, next);
+    }
+
+    function updatePolynomialCoeffs(channel: number, value: string) {
+        coeffInputs[String(channel)] = value;
+        const coeffs = value
+            .split(",")
+            .map((part) => Number(part.trim()))
+            .filter((num) => Number.isFinite(num));
+        const next: CalibrationSpec = {
+            type: "polynomial",
+            coeffs: coeffs.length > 0 ? coeffs : [0, 1],
+        };
+        setCalibration(channel, next);
+    }
+
+    async function handleSavePreset(channel: number) {
+        const raw = presetIdInputs[String(channel)] ?? "";
+        const sanitized = sanitizeCalibrationId(raw);
+        if (!sanitized) {
+            calibrationStatus[String(channel)] = "Preset id is required.";
+            return;
+        }
+        const current = getCalibration(channel);
+        if (sanitized !== raw.trim()) {
+            presetIdInputs[String(channel)] = sanitized;
+        }
+        const spec: CalibrationSpec = { ...current, id: sanitized };
+        const ok = await onSaveCalibration(spec);
+        if (ok) {
+            setCalibration(channel, spec);
+            calibrationStatus[String(channel)] = `Saved preset '${sanitized}'.`;
+        } else {
+            calibrationStatus[String(channel)] = "Failed to save preset.";
+        }
+    }
+
+    function sanitizeCalibrationId(raw: string): string {
+        return raw
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, "-")
+            .replace(/[^a-z0-9._-]/g, "");
+    }
     
     function validateForm(): boolean {
         errors = {};
@@ -141,17 +273,20 @@
     function handleChannelToggle(channel: number) {
         const channels = [...formData.sensor_settings.channels_enabled];
         const index = channels.indexOf(channel);
+        const calibrations = { ...(formData.sensor_settings.calibrations ?? {}) };
         
         if (index > -1) {
             // Remove channel and corresponding data format/measurement unit
             channels.splice(index, 1);
             formData.sensor_settings.data_formats.splice(index, 1);
             formData.sensor_settings.measurement_units.splice(index, 1);
+            delete calibrations[String(channel)];
         } else {
             // Add channel and default data format/measurement unit
             channels.push(channel);
             formData.sensor_settings.data_formats.push("voltage");
             formData.sensor_settings.measurement_units.push("V");
+            calibrations[String(channel)] = { type: "identity" };
         }
         
         formData.sensor_settings.channels_enabled = channels.sort((a, b) => a - b);
@@ -168,6 +303,7 @@
         
         formData.sensor_settings.data_formats = sortedDataFormats;
         formData.sensor_settings.measurement_units = sortedMeasurementUnits;
+        formData.sensor_settings.calibrations = calibrations;
     }
     
     
@@ -484,6 +620,124 @@
                                                     {/each}
                                                 </select>
                                             </div>
+                                        </div>
+
+                                        <div class="mt-4 border-t border-base-300 pt-4 space-y-4">
+                                            <div class="flex items-center justify-between">
+                                                <h5 class="text-sm font-semibold text-base-content">Calibration</h5>
+                                                {#if getCalibration(channel).id}
+                                                    <span class="text-xs text-base-content/60">
+                                                        Active preset: {getCalibration(channel).id}
+                                                    </span>
+                                                {/if}
+                                            </div>
+                                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div class="form-control">
+                                                    <label class="label" for="calibration-preset-{channel}">
+                                                        <span class="label-text font-medium">Preset</span>
+                                                    </label>
+                                                    <select
+                                                        id="calibration-preset-{channel}"
+                                                        value={getPresetSelection(channel)}
+                                                        onchange={(event) => applyPreset(channel, (event.currentTarget as HTMLSelectElement).value)}
+                                                        class="select select-bordered w-full focus:select-primary"
+                                                    >
+                                                        <option value="identity">Identity (raw)</option>
+                                                        <option value="custom">Custom / Unsaved</option>
+                                                        {#each Array.from(availableCalibrations.values()).sort((a, b) => (a.id ?? "").localeCompare(b.id ?? "")) as preset}
+                                                            <option value={preset.id ?? ""}>
+                                                                {preset.id ?? "Unnamed preset"}
+                                                            </option>
+                                                        {/each}
+                                                    </select>
+                                                </div>
+                                                <div class="form-control">
+                                                    <label class="label" for="calibration-type-{channel}">
+                                                        <span class="label-text font-medium">Type</span>
+                                                    </label>
+                                                    <select
+                                                        id="calibration-type-{channel}"
+                                                        value={getCalibration(channel).type}
+                                                        onchange={(event) => setCalibrationType(channel, (event.currentTarget as HTMLSelectElement).value as CalibrationSpec["type"])}
+                                                        class="select select-bordered w-full focus:select-primary"
+                                                    >
+                                                        <option value="identity">Identity</option>
+                                                        <option value="linear">Linear</option>
+                                                        <option value="polynomial">Polynomial</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+
+                                            {#if getCalibration(channel).type === "linear"}
+                                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <div class="form-control">
+                                                        <label class="label" for="calibration-linear-a-{channel}">
+                                                            <span class="label-text font-medium">Slope (a)</span>
+                                                        </label>
+                                                        <input
+                                                            id="calibration-linear-a-{channel}"
+                                                            type="number"
+                                                            step="any"
+                                                            value={getCalibration(channel).type === "linear" ? getCalibration(channel).a : 1}
+                                                            oninput={(event) => updateLinearField(channel, "a", Number((event.currentTarget as HTMLInputElement).value))}
+                                                            class="input input-bordered w-full focus:input-primary"
+                                                        />
+                                                    </div>
+                                                    <div class="form-control">
+                                                        <label class="label" for="calibration-linear-b-{channel}">
+                                                            <span class="label-text font-medium">Offset (b)</span>
+                                                        </label>
+                                                        <input
+                                                            id="calibration-linear-b-{channel}"
+                                                            type="number"
+                                                            step="any"
+                                                            value={getCalibration(channel).type === "linear" ? getCalibration(channel).b : 0}
+                                                            oninput={(event) => updateLinearField(channel, "b", Number((event.currentTarget as HTMLInputElement).value))}
+                                                            class="input input-bordered w-full focus:input-primary"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            {:else if getCalibration(channel).type === "polynomial"}
+                                                <div class="form-control">
+                                                    <label class="label" for="calibration-poly-{channel}">
+                                                        <span class="label-text font-medium">Coefficients (c0, c1, c2...)</span>
+                                                    </label>
+                                                    <input
+                                                        id="calibration-poly-{channel}"
+                                                        type="text"
+                                                        value={coeffInputs[String(channel)] ?? getCalibration(channel).coeffs.join(", ")}
+                                                        oninput={(event) => updatePolynomialCoeffs(channel, (event.currentTarget as HTMLInputElement).value)}
+                                                        class="input input-bordered w-full focus:input-primary"
+                                                    />
+                                                </div>
+                                            {/if}
+
+                                            <div class="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 items-end">
+                                                <div class="form-control">
+                                                    <label class="label" for="calibration-save-id-{channel}">
+                                                        <span class="label-text font-medium">Save as preset</span>
+                                                    </label>
+                                                    <input
+                                                        id="calibration-save-id-{channel}"
+                                                        type="text"
+                                                        placeholder="preset id"
+                                                        bind:value={presetIdInputs[String(channel)]}
+                                                        class="input input-bordered w-full focus:input-primary"
+                                                    />
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onclick={() => handleSavePreset(channel)}
+                                                    class="btn btn-outline btn-primary"
+                                                >
+                                                    Save Preset
+                                                </button>
+                                            </div>
+                                            {#if calibrationStatus[String(channel)]}
+                                                <p class="text-xs text-base-content/70">
+                                                    {calibrationStatus[String(channel)]}
+                                                </p>
+                                            {/if}
                                         </div>
                                     </div>
                                 </div>
