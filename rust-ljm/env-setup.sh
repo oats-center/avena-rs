@@ -14,7 +14,7 @@ set -eo pipefail
 : "${CFG_BUCKET:=avenabox}"
 : "${CFG_KEY:=labjackd.config.i69-mu1}"
 : "${LABJACK_IP:=10.165.77.233}"
-: "${ROLE:=}"
+: "${ROLE:=server}"
 
 export NATS_SUBJECT ASSET_NUMBER OUTPUT_DIR NATS_CREDS_FILE CFG_BUCKET CFG_KEY LABJACK_IP ROLE
 
