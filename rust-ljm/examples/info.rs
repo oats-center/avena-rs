@@ -13,8 +13,16 @@ fn main() {
     //     LJMLibrary::init(path).expect("Failed to init LJM (dynlink)");
     // }
 
-    let handle = LJMLibrary::open_jack(DeviceType::ANY, ConnectionType::ANY, "ANY")
-        .expect("Could not open LabJack");
+   let lj_ip = std::env::var("LABJACK_IP")
+        .unwrap_or_else(|_| "10.165.77.233".to_string());
+    
+    let handle = LJMLibrary::open_jack(
+        DeviceType::T7,
+        ConnectionType::ETHERNET,
+        lj_ip.as_str(),
+    ).expect("Could not open LabJack");
+    
+    
 
     println!("Opened LabJack, got handle: {}", handle);
 

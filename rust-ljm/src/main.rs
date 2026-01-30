@@ -277,7 +277,12 @@ async fn sample_with_config(
     )
     .await?;
 
-    let handle = LJMLibrary::open_jack(DeviceType::ANY, ConnectionType::ANY, "ANY")?;
+    let lj_ip = std::env::var("LABJACK_IP").unwrap_or_else(|_| "10.165.77.233".to_string());
+    let handle = LJMLibrary::open_jack(
+        DeviceType::T7,
+        ConnectionType::ETHERNET,
+        lj_ip.as_str(),
+    )?;
     let _guard = LabJackGuard { handle };
 
     let info = LJMLibrary::get_handle_info(handle)?;
