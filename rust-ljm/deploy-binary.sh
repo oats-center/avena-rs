@@ -25,6 +25,7 @@ Defaults to: streamer archiver exporter
 Set ROLE=edge to run streamer only.
 Set ROLE=server to run archiver + exporter.
 Set INCLUDE_SUBSCRIBER=1 to include subscriber by default.
+Instance names are supported with the @ suffix (e.g. archiver@edge01).
 Set BIN_DIR/LOG_DIR/PID_DIR/ENV_SETUP to override paths.
 EOF
 }
@@ -57,8 +58,8 @@ resolve_bins() {
 }
 
 pidfile_for() {
-  local bin="$1"
-  echo "$PID_DIR/${bin}.pid"
+  local token="$1"
+  echo "$PID_DIR/${token}.pid"
 }
 
 is_running_pid() {
@@ -69,20 +70,38 @@ is_running_pid() {
 matches_bin() {
   local pid="$1"
   local bin="$2"
+  local instance="${3:-}"
   local cmd
   cmd="$(ps -p "$pid" -o args= 2>/dev/null || true)"
-  [[ "$cmd" == *"$BIN_DIR/$bin"* ]]
+  if [[ -n "$instance" ]]; then
+    [[ "$cmd" == *"INSTANCE=$instance"* && "$cmd" == *"$BIN_DIR/$bin"* ]]
+  else
+    [[ "$cmd" == *"$BIN_DIR/$bin"* ]]
+  fi
+}
+
+parse_token() {
+  local token="$1"
+  local bin="$token"
+  local instance=""
+  if [[ "$token" == *"@"* ]]; then
+    bin="${token%@*}"
+    instance="${token#*@}"
+  fi
+  echo "$bin" "$instance"
 }
 
 get_running_pid() {
-  local bin="$1"
+  local token="$1"
+  local bin instance
+  read -r bin instance < <(parse_token "$token")
   local pidfile
-  pidfile="$(pidfile_for "$bin")"
+  pidfile="$(pidfile_for "$token")"
 
   if [[ -f "$pidfile" ]]; then
     local pid
     pid="$(cat "$pidfile" 2>/dev/null || true)"
-    if is_running_pid "$pid" && matches_bin "$pid" "$bin"; then
+    if is_running_pid "$pid" && matches_bin "$pid" "$bin" "$instance"; then
       echo "$pid"
       return 0
     fi
@@ -90,7 +109,11 @@ get_running_pid() {
   fi
 
   local pids
-  pids="$(pgrep -f "$BIN_DIR/$bin" 2>/dev/null || true)"
+  if [[ -n "$instance" ]]; then
+    pids="$(pgrep -f "INSTANCE=${instance} .*${BIN_DIR}/${bin}" 2>/dev/null || true)"
+  else
+    pids="$(pgrep -f "$BIN_DIR/$bin" 2>/dev/null || true)"
+  fi
   if [[ -n "$pids" ]]; then
     echo "$pids" | head -n1
     return 0
@@ -100,7 +123,9 @@ get_running_pid() {
 
 ensure_built() {
   local missing=0
-  for bin in "$@"; do
+  for token in "$@"; do
+    local bin instance
+    read -r bin instance < <(parse_token "$token")
     if [[ ! -x "$BIN_DIR/$bin" ]]; then
       missing=1
       break
@@ -113,48 +138,54 @@ ensure_built() {
 }
 
 start_one() {
-  local bin="$1"
-  if get_running_pid "$bin" >/dev/null; then
-    echo ">>> $bin already running (pid $(get_running_pid "$bin"))."
+  local token="$1"
+  local bin instance
+  read -r bin instance < <(parse_token "$token")
+  if get_running_pid "$token" >/dev/null; then
+    echo ">>> $token already running (pid $(get_running_pid "$token"))."
     return 0
   fi
   if [[ ! -x "$BIN_DIR/$bin" ]]; then
     echo ">>> $bin not found at $BIN_DIR/$bin"
     return 1
   fi
-  echo ">>> Starting $bin..."
-  nohup "$BIN_DIR/$bin" >> "$LOG_DIR/$bin.log" 2>&1 &
-  echo $! > "$(pidfile_for "$bin")"
+  echo ">>> Starting $token..."
+  if [[ -n "$instance" ]]; then
+    nohup env INSTANCE="$instance" "$BIN_DIR/$bin" >> "$LOG_DIR/$token.log" 2>&1 &
+  else
+    nohup "$BIN_DIR/$bin" >> "$LOG_DIR/$bin.log" 2>&1 &
+  fi
+  echo $! > "$(pidfile_for "$token")"
 }
 
 stop_one() {
-  local bin="$1"
+  local token="$1"
   local pid
-  if ! pid="$(get_running_pid "$bin")"; then
-    echo ">>> $bin not running."
+  if ! pid="$(get_running_pid "$token")"; then
+    echo ">>> $token not running."
     return 0
   fi
-  echo ">>> Stopping $bin (pid $pid)..."
+  echo ">>> Stopping $token (pid $pid)..."
   kill "$pid" 2>/dev/null || true
   for _ in {1..20}; do
     if ! is_running_pid "$pid"; then
-      rm -f "$(pidfile_for "$bin")"
-      echo ">>> $bin stopped."
+      rm -f "$(pidfile_for "$token")"
+      echo ">>> $token stopped."
       return 0
     fi
     sleep 0.5
   done
-  echo ">>> $bin did not stop gracefully, sending SIGKILL..."
+  echo ">>> $token did not stop gracefully, sending SIGKILL..."
   kill -9 "$pid" 2>/dev/null || true
-  rm -f "$(pidfile_for "$bin")"
+  rm -f "$(pidfile_for "$token")"
 }
 
 status_one() {
-  local bin="$1"
-  if pid="$(get_running_pid "$bin")"; then
-    echo ">>> $bin running (pid $pid)"
+  local token="$1"
+  if pid="$(get_running_pid "$token")"; then
+    echo ">>> $token running (pid $pid)"
   else
-    echo ">>> $bin stopped"
+    echo ">>> $token stopped"
   fi
 }
 
