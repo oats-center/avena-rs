@@ -30,9 +30,12 @@ echo ">>> Building web app with exporter endpoint ${EXPORTER_WS_URL}..."
 VITE_EXPORT_WS_URL="$EXPORTER_WS_URL" pnpm run build
 
 echo ">>> Updating PM2 process..."
-pm2 delete "$APP_NAME" >/dev/null 2>&1 || true
-pm2 start bash --name "$APP_NAME" --cwd "$WEBAPP_DIR" -- \
-  -lc "pnpm run preview -- --host 0.0.0.0 --port ${WEB_PORT}"
+if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
+  pm2 restart "$APP_NAME" --update-env
+else
+  WEB_PORT="$WEB_PORT" pm2 start bash --name "$APP_NAME" --cwd "$WEBAPP_DIR" -- \
+    -lc 'pnpm run preview -- --host 0.0.0.0 --port ${WEB_PORT}'
+fi
 pm2 save >/dev/null || true
 
 host_ip=$(tailscale ip -4 2>/dev/null | head -n1 || hostname -I | awk '{print $1}')
