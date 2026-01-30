@@ -217,7 +217,14 @@ case "$cmd" in
     done
     ;;
   status)
-    bins=($(resolve_bins "$@"))
+    if [[ "$#" -gt 0 ]]; then
+      bins=($(resolve_bins "$@"))
+    else
+      mapfile -t bins < <(ls -1 "$PID_DIR"/*.pid 2>/dev/null | xargs -n1 basename 2>/dev/null | sed 's/\.pid$//' || true)
+      if [[ "${#bins[@]}" -eq 0 ]]; then
+        bins=($(resolve_bins))
+      fi
+    fi
     for bin in "${bins[@]}"; do
       status_one "$bin"
     done
