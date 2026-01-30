@@ -24,6 +24,41 @@
         rotate_secs: number;
         sensor_settings: SensorSettings;
     }
+
+    const DEFAULT_SENSOR_SETTINGS: SensorSettings = {
+        scan_rate: 200,
+        sampling_rate: 1000,
+        channels_enabled: [],
+        gains: 1,
+        data_formats: [],
+        measurement_units: [],
+        labjack_on_off: false,
+        calibrations: {}
+    };
+
+    function normalizeLabJackConfig(raw: any): LabJackConfig | null {
+        if (!raw || typeof raw !== "object") return null;
+        const sensor = { ...DEFAULT_SENSOR_SETTINGS, ...(raw.sensor_settings ?? {}) } as SensorSettings;
+        if (!Array.isArray(sensor.channels_enabled)) sensor.channels_enabled = [];
+        if (!Array.isArray(sensor.data_formats)) sensor.data_formats = [];
+        if (!Array.isArray(sensor.measurement_units)) sensor.measurement_units = [];
+        if (!Number.isFinite(sensor.scan_rate)) sensor.scan_rate = DEFAULT_SENSOR_SETTINGS.scan_rate;
+        if (!Number.isFinite(sensor.sampling_rate)) sensor.sampling_rate = DEFAULT_SENSOR_SETTINGS.sampling_rate;
+        if (!Number.isFinite(sensor.gains)) sensor.gains = DEFAULT_SENSOR_SETTINGS.gains;
+        if (!sensor.calibrations || typeof sensor.calibrations !== "object") sensor.calibrations = {};
+        while (sensor.data_formats.length < sensor.channels_enabled.length) sensor.data_formats.push("voltage");
+        while (sensor.measurement_units.length < sensor.channels_enabled.length) sensor.measurement_units.push("V");
+
+        return {
+            labjack_name: raw.labjack_name ?? "unknown",
+            asset_number: Number(raw.asset_number ?? 0),
+            max_channels: Number(raw.max_channels ?? 8),
+            nats_subject: raw.nats_subject ?? "avenabox",
+            nats_stream: raw.nats_stream ?? "labjacks",
+            rotate_secs: Number(raw.rotate_secs ?? 60),
+            sensor_settings: sensor
+        };
+    }
     
     let labjacks = $state<Map<string, LabJackConfig>>(new Map());
     let loading = $state<boolean>(true);
@@ -72,8 +107,8 @@
             for (const key of keys) {
                 try {
                     const configStr = await getKeyValue(natsService, "avenabox", key);
-                    const config: LabJackConfig = JSON.parse(configStr);
-                    newLabJacks.set(key, config);
+                    const config = normalizeLabJackConfig(JSON.parse(configStr));
+                    if (config) newLabJacks.set(key, config);
                 } catch (err) {
                     console.error(`Failed to parse config for key ${key}:`, err);
                 }
