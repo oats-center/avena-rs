@@ -15,12 +15,15 @@ fi
 mkdir -p "$PID_DIR" "$LOG_DIR"
 
 DEFAULT_BINS=("streamer" "archiver" "exporter")
+ROLE="${ROLE:-}"
 
 usage() {
   cat <<'EOF'
 Usage: ./deploy-binary.sh <start|stop|restart|status|build> [bin...]
 
 Defaults to: streamer archiver exporter
+Set ROLE=edge to run streamer only.
+Set ROLE=server to run archiver + exporter.
 Set INCLUDE_SUBSCRIBER=1 to include subscriber by default.
 Set BIN_DIR/LOG_DIR/PID_DIR/ENV_SETUP to override paths.
 EOF
@@ -35,7 +38,17 @@ resolve_bins() {
       bins=("$@")
     fi
   else
-    bins=("${DEFAULT_BINS[@]}")
+    case "${ROLE}" in
+      edge)
+        bins=("streamer")
+        ;;
+      server)
+        bins=("archiver" "exporter")
+        ;;
+      ""|*)
+        bins=("${DEFAULT_BINS[@]}")
+        ;;
+    esac
     if [[ "${INCLUDE_SUBSCRIBER:-0}" == "1" ]]; then
       bins+=("subscriber")
     fi
