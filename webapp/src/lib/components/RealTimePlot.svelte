@@ -212,6 +212,24 @@
             ctx.setLineDash([]);
         }
     }
+
+    function getContinuousReferenceTime(dataToPlot: DataPoint[]): number {
+        const latestPoint = dataToPlot[dataToPlot.length - 1];
+        const latestTimestamp = latestPoint?.timestamp;
+        const now = Date.now();
+        if (typeof latestTimestamp !== 'number' || Number.isNaN(latestTimestamp)) {
+            return now;
+        }
+
+        // If producer and browser clocks drift beyond the visible window,
+        // anchor to latest sample so the trace stays on screen.
+        const skew = Math.abs(now - latestTimestamp);
+        if (skew > (timeWindow * 1000)) {
+            return latestTimestamp;
+        }
+
+        return now;
+    }
     
     
     function applyLightSmoothing(data: DataPoint[]): DataPoint[] {
@@ -282,7 +300,7 @@
         if (dataToPlot.length < 1) return;
         
         
-        const now = Date.now();
+        const referenceTime = getContinuousReferenceTime(dataToPlot);
         const range = mode === 'frozen' && frozenRange ? frozenRange : computeValueRange(dataToPlot);
         if (!range) return;
         const minValue = range.min;
@@ -320,7 +338,7 @@
                 timeSincePoint = (point.timestamp - triggerTime) / 1000;
             } else {
                 // For continuous mode, calculate time relative to now
-                timeSincePoint = (now - point.timestamp) / 1000;
+                timeSincePoint = (referenceTime - point.timestamp) / 1000;
             }
             
             // Adjust positioning for frozen mode

@@ -51,7 +51,8 @@ export class FlatBufferParser {
 export function calculateSampleTimestamps(
     batchTimestamp: string, 
     values: number[], 
-    samplingRate: number
+    samplingRate: number,
+    previousLastTimestamp?: number
 ): number[] {
     try {
         // Validate inputs
@@ -66,40 +67,39 @@ export function calculateSampleTimestamps(
         if (typeof samplingRate !== 'number' || samplingRate <= 0) {
             throw new Error('Invalid samplingRate');
         }
-        
-        // For real-time plotting, use current time as baseline
-        // The FlatBuffer timestamp might be from when data was collected, not received
-        const now = Date.now();
-        const batchTime = new Date(batchTimestamp).getTime();
-        
-        if (isNaN(batchTime)) {
-            throw new Error('Failed to parse timestamp');
-        }
-        
-        // Calculate time between individual samples (in milliseconds)
-        // samplingRate is the total sampling frequency, so time between samples is 1000/samplingRate ms
-        // e.g., 7000 Hz = 0.143ms between samples
+
+        // Time between individual samples (ms). Example: 7000 Hz ~= 0.143 ms/sample.
         const sampleInterval = 1000 / samplingRate;
-        
-        // Generate timestamps for each sample within this batch
-        // The samples in the FlatBuffer are consecutive samples taken at sampleInterval intervals
-        // For real-time plotting, we want the most recent sample to be at "now"
-        const timestamps: number[] = [];
-        for (let i = 0; i < values.length; i++) {
-            // Calculate timestamp for each sample within the batch
-            // Start from current time and go backwards for each sample (most recent first)
-            const timestamp = now - ((values.length - 1 - i) * sampleInterval);
-            if (isNaN(timestamp)) {
-                throw new Error('Invalid timestamp calculated');
+
+        // Anchor the batch to producer timestamp when possible.
+        // If producer/browser clocks drift too much, fall back to local time.
+        const now = Date.now();
+        const parsedBatchTime = new Date(batchTimestamp).getTime();
+        const hasParsedBatchTime = Number.isFinite(parsedBatchTime);
+        const isReasonableSkew = hasParsedBatchTime
+            ? Math.abs(parsedBatchTime - now) <= 2000
+            : false;
+        const hasPrevious = typeof previousLastTimestamp === 'number' && Number.isFinite(previousLastTimestamp);
+
+        let firstSampleTime = isReasonableSkew
+            ? parsedBatchTime - ((values.length - 1) * sampleInterval)
+            : now - ((values.length - 1) * sampleInterval);
+
+        // Guarantee monotonic timestamps across received batches for each channel.
+        if (hasPrevious) {
+            const minNextStart = (previousLastTimestamp as number) + sampleInterval;
+            if (firstSampleTime < minNextStart) {
+                firstSampleTime = minNextStart;
             }
-            timestamps.push(timestamp);
         }
-        
-        return timestamps;
+
+        return values.map((_, i) => firstSampleTime + (i * sampleInterval));
     } catch (error) {
-        // Fallback to current time with proper sample intervals
-        const now = Date.now();
+        // Fallback: continue from prior point when available.
         const sampleInterval = 1000 / samplingRate;
-        return values.map((_, i) => now + (i * sampleInterval));
+        const start = (typeof previousLastTimestamp === 'number' && Number.isFinite(previousLastTimestamp))
+            ? previousLastTimestamp + sampleInterval
+            : Date.now() - ((values.length - 1) * sampleInterval);
+        return values.map((_, i) => start + (i * sampleInterval));
     }
 }
