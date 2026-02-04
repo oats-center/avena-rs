@@ -14,9 +14,27 @@
         triggerTime: number;
         mode: 'continuous' | 'frozen';
         frozenData?: DataPoint[];
+        yAutoScale?: boolean;
+        yMin?: number;
+        yMax?: number;
+        invertX?: boolean;
+        invertY?: boolean;
     }
     
-    let { data, unit, timeWindow, isTriggered, triggerTime, mode, frozenData }: Props = $props();
+    let {
+        data,
+        unit,
+        timeWindow,
+        isTriggered,
+        triggerTime,
+        mode,
+        frozenData,
+        yAutoScale = true,
+        yMin = -1,
+        yMax = 1,
+        invertX = false,
+        invertY = false
+    }: Props = $props();
     
     let canvas: HTMLCanvasElement;
     let ctx: CanvasRenderingContext2D;
@@ -117,6 +135,47 @@
         return { min: minValue, max: maxValue };
     }
 
+    function getDisplayRange(points: DataPoint[]): { low: number; high: number } | null {
+        if (!yAutoScale) {
+            const low = Number.isFinite(yMin) ? yMin : -1;
+            let high = Number.isFinite(yMax) ? yMax : 1;
+            if (high <= low) high = low + 0.001;
+            return { low, high };
+        }
+
+        const autoRange = mode === 'frozen' && frozenRange ? frozenRange : computeValueRange(points);
+        if (!autoRange) return null;
+        const span = autoRange.max - autoRange.min;
+        const padding = span > 0 ? span * 0.1 : 1;
+        return {
+            low: autoRange.min - padding,
+            high: autoRange.max + padding
+        };
+    }
+
+    function mapValueToY(value: number, range: { low: number; high: number }): number {
+        const span = range.high - range.low;
+        if (span <= 0) return margin.top;
+        const normalized = (value - range.low) / span;
+        const vertical = invertY ? normalized : (1 - normalized);
+        return margin.top + vertical * (plotHeight - margin.top - margin.bottom);
+    }
+
+    function mapTimeToX(timeSincePoint: number): number {
+        const width = plotWidth - margin.left - margin.right;
+        if (mode === 'frozen' && isTriggered) {
+            const normalizedTime = (timeSincePoint + timeWindow) / (2 * timeWindow);
+            return invertX
+                ? (plotWidth - margin.right) - normalizedTime * width
+                : margin.left + normalizedTime * width;
+        }
+
+        const normalizedTime = timeSincePoint / timeWindow;
+        return invertX
+            ? (plotWidth - margin.right) - normalizedTime * width
+            : margin.left + normalizedTime * width;
+    }
+
     function drawLabels() {
         if (!ctx) return;
         
@@ -132,11 +191,13 @@
             let timeValue: number;
             
             if (mode === 'frozen' && isTriggered) {
-                // For frozen mode, show time relative to trigger (negative to positive values)
-                timeValue = -timeWindow + (i * (2 * timeWindow / 10));
+                const start = invertX ? timeWindow : -timeWindow;
+                const step = (2 * timeWindow / 10) * (invertX ? -1 : 1);
+                timeValue = start + (i * step);
             } else {
-                // For continuous mode, show time relative to now (negative values)
-                timeValue = 0 - (i * timeStep);
+                const start = invertX ? -timeWindow : 0;
+                const step = invertX ? timeStep : -timeStep;
+                timeValue = start + (i * step);
             }
             
             // Format time labels with better precision for high-frequency data
@@ -151,17 +212,16 @@
         ctx.textBaseline = 'middle';
         
         const labelData = mode === 'frozen' && frozenData ? frozenData : data;
-        const range = mode === 'frozen' && frozenRange ? frozenRange : computeValueRange(labelData);
+        const range = getDisplayRange(labelData);
 
         if (range) {
-            const minValue = range.min;
-            const maxValue = range.max;
-            const valueRange = maxValue - minValue;
-            const padding = valueRange > 0 ? valueRange * 0.1 : 1;
-            
+            const span = range.high - range.low;
             for (let i = 0; i <= 8; i++) {
                 const y = margin.top + (i / 8) * (plotHeight - margin.top - margin.bottom);
-                const value = maxValue + padding - (i / 8) * (valueRange + 2 * padding);
+                const ratio = i / 8;
+                const value = invertY
+                    ? range.low + ratio * span
+                    : range.high - ratio * span;
                 ctx.fillText(value.toFixed(2), margin.left - 20, y);
             }
         } else {
@@ -198,7 +258,11 @@
             // For continuous mode, show where the trigger occurred relative to current time
             const now = Date.now();
             const timeSinceTrigger = (now - triggerTime) / 1000;
-            x = margin.left + (timeSinceTrigger / timeWindow) * (plotWidth - margin.left - margin.right);
+            const normalized = timeSinceTrigger / timeWindow;
+            const width = plotWidth - margin.left - margin.right;
+            x = invertX
+                ? (plotWidth - margin.right) - normalized * width
+                : margin.left + normalized * width;
         }
         
         if (x >= margin.left && x <= plotWidth - margin.right) {
@@ -301,12 +365,8 @@
         
         
         const referenceTime = getContinuousReferenceTime(dataToPlot);
-        const range = mode === 'frozen' && frozenRange ? frozenRange : computeValueRange(dataToPlot);
+        const range = getDisplayRange(dataToPlot);
         if (!range) return;
-        const minValue = range.min;
-        const maxValue = range.max;
-        const valueRange = maxValue - minValue;
-        const padding = valueRange > 0 ? valueRange * 0.1 : 1; // Avoid division by zero
         
         // Enable anti-aliasing for smooth lines
         ctx.imageSmoothingEnabled = true;
@@ -321,8 +381,6 @@
         ctx.beginPath();
         
         let firstPoint = true;
-        let lastValidX = 0;
-        let lastValidY = 0;
         
         for (const point of smoothedData) {
             // Validate point before accessing properties
@@ -341,20 +399,8 @@
                 timeSincePoint = (referenceTime - point.timestamp) / 1000;
             }
             
-            // Adjust positioning for frozen mode
-            let x: number;
-            if (mode === 'frozen' && isTriggered) {
-                // For frozen mode, map time values to the plot area
-                // timeSincePoint can be negative (before trigger) or positive (after trigger)
-                // We want to map [-timeWindow, +timeWindow] to [0, 1] for positioning
-                const normalizedTime = (timeSincePoint + timeWindow) / (2 * timeWindow);
-                x = margin.left + normalizedTime * (plotWidth - margin.left - margin.right);
-            } else {
-                // For continuous mode, use the original logic
-                x = margin.left + (timeSincePoint / timeWindow) * (plotWidth - margin.left - margin.right);
-            }
-            
-            const y = margin.top + ((maxValue + padding - point.value) / (valueRange + 2 * padding)) * (plotHeight - margin.top - margin.bottom);
+            const x = mapTimeToX(timeSincePoint);
+            const y = mapValueToY(point.value, range);
             
             
             if (x >= margin.left && x <= plotWidth - margin.right) {
@@ -365,8 +411,6 @@
                     // Always draw lines between consecutive points for smooth curves
                     ctx.lineTo(x, y);
                 }
-                lastValidX = x;
-                lastValidY = y;
             }
         }
         
@@ -394,8 +438,10 @@
         // Draw axes
         drawAxes();
         
+        const dataToPlot = mode === 'frozen' && frozenData ? frozenData : data;
+
         // Draw data
-        if (data.length > 0) {
+        if (dataToPlot.length > 0) {
             drawDataLine(data, getChannelColor(0));
         }
         
@@ -406,7 +452,7 @@
         drawLabels();
         
         // Draw "No Data" message if no data
-        if (data.length === 0) {
+        if (dataToPlot.length === 0) {
             ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
             ctx.font = '16px Inter, system-ui, sans-serif';
             ctx.textAlign = 'center';
@@ -438,24 +484,12 @@
             render();
             lastRenderTime = now;
         }
-        
-        // Only continue animation for continuous mode
-        // For frozen mode, we only animate when data changes
-        if (mode === 'continuous') {
-            animationFrame = requestAnimationFrame(animate);
-        }
+        animationFrame = requestAnimationFrame(animate);
     }
     
     onMount(() => {
         resizeCanvas();
-        
-        // Only start continuous animation for continuous mode
-        if (mode === 'continuous') {
-            animate();
-        } else {
-            // For frozen mode, just render once initially
-            render();
-        }
+        animate();
         
         const handleResize = () => {
             resizeCanvas();

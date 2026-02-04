@@ -70,6 +70,22 @@
         timestamp: number;
         value: number;
     }
+
+    type ChannelPlotMode = 'free_run' | 'trigger_normal' | 'trigger_single' | 'hold';
+
+    interface TriggerSettings {
+        type: 'rising' | 'falling';
+        threshold: number;
+        holdoffMs: number;
+    }
+
+    interface AxisSettings {
+        autoY: boolean;
+        yMin: number;
+        yMax: number;
+        invertX: boolean;
+        invertY: boolean;
+    }
     
     let assetNumber = $state<number>(0);
     let labjackConfig = $state<LabJackConfig | null>(null);
@@ -79,16 +95,16 @@
     let subscriptions: any[] = [];
     let channelData = $state<Map<number, DataPoint[]>>(new Map());
     let frozenChannelData = $state<Map<number, DataPoint[]>>(new Map());
+    let heldChannelData = $state<Map<number, DataPoint[]>>(new Map());
+    let channelModes = $state<Map<number, ChannelPlotMode>>(new Map());
+    let axisSettings = $state<Map<number, AxisSettings>>(new Map());
     const channelLastTimestamp = new Map<number, number>();
     let isConnected = $state<boolean>(false);
     let flatBufferParser = new FlatBufferParser();
-    let triggerSettings = $state<Map<number, {
-        enabled: boolean;
-        type: 'rising' | 'falling';
-        threshold: number;
-    }>>(new Map());
+    let triggerSettings = $state<Map<number, TriggerSettings>>(new Map());
     let channelTriggered = $state<Map<number, boolean>>(new Map());
     let channelTriggerTime = $state<Map<number, number>>(new Map());
+    let channelRearmTime = $state<Map<number, number>>(new Map());
     let timeWindow = $state<number>(5); // seconds
     let maxDataPoints = $state<number>(10000);
     let showExportModal = $state<boolean>(false);
@@ -226,33 +242,47 @@
         
         const newChannelData = new Map<number, DataPoint[]>();
         const newFrozenChannelData = new Map<number, DataPoint[]>();
-        const newTriggerSettings = new Map<number, {
-            enabled: boolean;
-            type: 'rising' | 'falling';
-            threshold: number;
-        }>();
+        const newHeldChannelData = new Map<number, DataPoint[]>();
+        const newChannelModes = new Map<number, ChannelPlotMode>();
+        const newAxisSettings = new Map<number, AxisSettings>();
+        const newTriggerSettings = new Map<number, TriggerSettings>();
         const newChannelTriggered = new Map<number, boolean>();
         const newChannelTriggerTime = new Map<number, number>();
+        const newChannelRearmTime = new Map<number, number>();
         channelLastTimestamp.clear();
         
         labjackConfig.sensor_settings.channels_enabled.forEach(channel => {
             newChannelData.set(channel, []);
             newFrozenChannelData.set(channel, []);
+            newHeldChannelData.set(channel, []);
+            newChannelModes.set(channel, 'free_run');
+            newAxisSettings.set(channel, {
+                autoY: true,
+                yMin: -1,
+                yMax: 1,
+                invertX: false,
+                invertY: false
+            });
             channelLastTimestamp.set(channel, Number.NaN);
             newTriggerSettings.set(channel, {
-                enabled: false,
                 type: 'rising',
-                threshold: 0
+                threshold: 0,
+                holdoffMs: 500
             });
             newChannelTriggered.set(channel, false);
             newChannelTriggerTime.set(channel, 0);
+            newChannelRearmTime.set(channel, 0);
         });
         
         channelData = newChannelData;
         frozenChannelData = newFrozenChannelData;
+        heldChannelData = newHeldChannelData;
+        channelModes = newChannelModes;
+        axisSettings = newAxisSettings;
         triggerSettings = newTriggerSettings;
         channelTriggered = newChannelTriggered;
         channelTriggerTime = newChannelTriggerTime;
+        channelRearmTime = newChannelRearmTime;
     }
     
     async function startDataSubscription() {
@@ -326,51 +356,59 @@
     function addDataChunk(channel: number, chunk: DataPoint[]) {
         const currentData = channelData.get(channel) || [];
         
-        // **Efficiently add the new chunk of data**
         let newData = currentData.concat(chunk);
         
-        // **Trim the buffer only if it's oversized**
         if (newData.length > maxDataPoints) {
             newData = newData.slice(newData.length - maxDataPoints);
         }
         
-        // **Update the map with the new array**
         channelData.set(channel, newData);
-        
-        // Check for trigger conditions
-        const channelTriggerSetting = triggerSettings.get(channel);
-        const isChannelTriggered = channelTriggered.get(channel) || false;
-        
-        if (channelTriggerSetting?.enabled && !isChannelTriggered) {
-            // We pass the new chunk to the trigger check function
-            checkTriggerCondition(channel, newData, chunk);
+
+        const channelMode = channelModes.get(channel) ?? "free_run";
+        if (channelMode === "trigger_normal" || channelMode === "trigger_single") {
+            processTriggerMode(channel, channelMode, newData, chunk);
         }
         
-        // If channel is triggered, add the new points to the frozen data
-        if (isChannelTriggered) {
-            const channelTriggerTimeValue = channelTriggerTime.get(channel) || 0;
-            if (channelTriggerTimeValue > 0) {
-                const timeSinceTrigger = (Date.now() - channelTriggerTimeValue) / 1000;
-                if (timeSinceTrigger <= timeWindow) {
-                    // Filter the chunk for points within the frozen window and add them
-                    const relevantPoints = chunk.filter(p => p.timestamp >= (channelTriggerTimeValue - timeWindow * 1000) && p.timestamp <= (channelTriggerTimeValue + timeWindow * 1000));
-                    if(relevantPoints.length > 0) {
-                        updateFrozenDataChunk(channel, relevantPoints);
-                    }
-                }
-            }
-        }
-        
-        // **Trigger Svelte reactivity ONCE for the entire batch**
         channelData = new Map(channelData);
     }
 
-    // Helper to update frozen data in chunks
-    function updateFrozenDataChunk(channel: number, chunk: DataPoint[]) {
-        const currentFrozenData = frozenChannelData.get(channel) || [];
-        const updatedFrozenData = currentFrozenData.concat(chunk);
-        frozenChannelData.set(channel, updatedFrozenData);
-        frozenChannelData = new Map(frozenChannelData);
+    function processTriggerMode(
+        channel: number,
+        mode: ChannelPlotMode,
+        fullData: DataPoint[],
+        newChunk: DataPoint[]
+    ) {
+        const isSingleShot = mode === "trigger_single";
+        const lastTimestamp = newChunk[newChunk.length - 1]?.timestamp ?? Date.now();
+        const isChannelTriggered = channelTriggered.get(channel) || false;
+
+        if (isChannelTriggered) {
+            if (isSingleShot) return;
+
+            const rearmAt = channelRearmTime.get(channel) || 0;
+            if (lastTimestamp < rearmAt) {
+                return;
+            }
+
+            clearTriggerState(channel, false);
+        }
+
+        checkTriggerCondition(channel, fullData, newChunk);
+    }
+
+    function clearTriggerState(channel: number, clearFrozen: boolean = true) {
+        channelTriggered.set(channel, false);
+        channelTriggerTime.set(channel, 0);
+        channelRearmTime.set(channel, 0);
+
+        if (clearFrozen) {
+            frozenChannelData.set(channel, []);
+            frozenChannelData = new Map(frozenChannelData);
+        }
+
+        channelTriggered = new Map(channelTriggered);
+        channelTriggerTime = new Map(channelTriggerTime);
+        channelRearmTime = new Map(channelRearmTime);
     }
     
     function checkTriggerCondition(channel: number, fullData: DataPoint[], newChunk: DataPoint[]) {
@@ -393,26 +431,24 @@
             }
 
             if (triggered) {
+                const holdoffMs = Math.max(0, channelTriggerSetting.holdoffMs || 0);
                 channelTriggered.set(channel, true);
                 channelTriggerTime.set(channel, currentPoint.timestamp);
+                channelRearmTime.set(channel, currentPoint.timestamp + holdoffMs);
                 channelTriggered = new Map(channelTriggered);
                 channelTriggerTime = new Map(channelTriggerTime);
+                channelRearmTime = new Map(channelRearmTime);
                 
-                // Capture the full frozen data based on the full dataset
-                captureFrozenDataForChannel(channel, fullData);
+                captureFrozenDataForChannel(channel, fullData, currentPoint.timestamp);
 
-                // Once a trigger is found in the chunk, we can stop checking
                 return; 
             }
 
-            // Move to the next point
             previousPoint = currentPoint;
         }
     }
 
-    // Modify captureFrozenDataForChannel to accept the full data array
-    function captureFrozenDataForChannel(channel: number, data: DataPoint[]) {
-        const triggerTime = channelTriggerTime.get(channel) || 0;
+    function captureFrozenDataForChannel(channel: number, data: DataPoint[], triggerTime: number) {
         const startTime = triggerTime - (timeWindow * 1000);
         const endTime = triggerTime + (timeWindow * 1000); 
 
@@ -426,15 +462,81 @@
     
     
     function resetChannelTrigger(channel: number) {
-        // Reset trigger for a specific channel
-        channelTriggered.set(channel, false);
-        channelTriggerTime.set(channel, 0);
-        frozenChannelData.set(channel, []);
-        
-        channelTriggered = new Map(channelTriggered); // Trigger reactivity
-        channelTriggerTime = new Map(channelTriggerTime); // Trigger reactivity
-        frozenChannelData = new Map(frozenChannelData); // Trigger reactivity
-        
+        clearTriggerState(channel, true);
+    }
+
+    function isTriggerMode(mode: ChannelPlotMode): boolean {
+        return mode === "trigger_normal" || mode === "trigger_single";
+    }
+
+    function setChannelMode(channel: number, nextMode: ChannelPlotMode) {
+        const currentMode = channelModes.get(channel) ?? "free_run";
+        if (currentMode === nextMode) return;
+
+        if (nextMode === "hold") {
+            heldChannelData.set(channel, [...(channelDisplayData.get(channel) || [])]);
+            heldChannelData = new Map(heldChannelData);
+        } else if (currentMode === "hold") {
+            heldChannelData.set(channel, []);
+            heldChannelData = new Map(heldChannelData);
+        }
+
+        if (!isTriggerMode(nextMode) || !isTriggerMode(currentMode)) {
+            clearTriggerState(channel, true);
+        }
+
+        channelModes.set(channel, nextMode);
+        channelModes = new Map(channelModes);
+    }
+
+    function updateAxisSettings(channel: number, updates: Partial<AxisSettings>) {
+        const current = axisSettings.get(channel);
+        if (!current) return;
+
+        const updated = { ...current, ...updates };
+        if (updated.yMax <= updated.yMin) {
+            updated.yMax = updated.yMin + 0.001;
+        }
+
+        axisSettings.set(channel, updated);
+        axisSettings = new Map(axisSettings);
+    }
+
+    function getPlotConfig(channel: number) {
+        const mode = channelModes.get(channel) ?? "free_run";
+        const liveData = channelDisplayData.get(channel) || [];
+        const frozenData = frozenDisplayData.get(channel) || [];
+        const heldData = heldChannelData.get(channel) || [];
+        const isTriggered = channelTriggered.get(channel) || false;
+        const triggerTime = channelTriggerTime.get(channel) || 0;
+
+        if (mode === "hold") {
+            return {
+                mode: "continuous" as const,
+                data: heldData.length > 0 ? heldData : liveData,
+                frozenData: undefined,
+                isTriggered: false,
+                triggerTime: 0
+            };
+        }
+
+        if (isTriggerMode(mode) && isTriggered) {
+            return {
+                mode: "frozen" as const,
+                data: liveData,
+                frozenData,
+                isTriggered: true,
+                triggerTime
+            };
+        }
+
+        return {
+            mode: "continuous" as const,
+            data: liveData,
+            frozenData: undefined,
+            isTriggered: false,
+            triggerTime: 0
+        };
     }
     
     function goBack() {
@@ -741,154 +843,260 @@
             <div class="space-y-6">
                 {#each labjackConfig.sensor_settings.channels_enabled as channel, index}
                     {@const channelTriggerSetting = triggerSettings.get(channel)}
+                    {@const channelMode = channelModes.get(channel) ?? 'free_run'}
+                    {@const channelAxis = axisSettings.get(channel)}
+                    {@const plotConfig = getPlotConfig(channel)}
                     {@const isChannelTriggered = channelTriggered.get(channel) || false}
                     {@const channelTriggerTimeValue = channelTriggerTime.get(channel) || 0}
+                    {@const channelRearmAt = channelRearmTime.get(channel) || 0}
                     
                     <!-- Combined Channel Section -->
                     <div class="card bg-base-100 shadow-xl border border-base-200">
                         <div class="card-body">
                             <!-- Channel Header -->
-                            <div class="flex items-center justify-between mb-6">
+                            <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
                                 <h3 class="card-title text-base-content">Channel {channel}</h3>
-                                <div class="flex items-center space-x-4">
+                                <div class="flex flex-wrap items-center gap-3">
                                     <div class="badge badge-outline badge-sm">
                                         {labjackConfig.sensor_settings.data_formats[index]} 
                                         ({labjackConfig.sensor_settings.measurement_units[index]})
                                     </div>
-                                    <div class="flex items-center space-x-3">
-                                        {#if isChannelTriggered}
-                                            <div class="flex items-center">
-                                                <div class="w-2 h-2 rounded-full bg-success mr-2"></div>
-                                                <span class="text-success text-sm">
-                                                    Triggered at {new Date(channelTriggerTimeValue).toLocaleTimeString()}
-                                                </span>
-                                            </div>
-                                            <button
-                                                onclick={() => resetChannelTrigger(channel)}
-                                                class="btn btn-error btn-sm"
-                                                title="Reset Channel Trigger"
-                                            >
-                                                Reset
-                                            </button>
+                                    <span class="badge badge-info badge-sm">
+                                        {#if channelMode === 'free_run'}
+                                            Running
+                                        {:else if channelMode === 'hold'}
+                                            Held
+                                        {:else if isChannelTriggered}
+                                            Triggered
                                         {:else}
-                                            <div class="flex items-center">
-                                                <div class="w-2 h-2 rounded-full bg-base-content/30 mr-2"></div>
-                                                <span class="text-base-content/60 text-sm">Waiting for trigger...</span>
-                                            </div>
+                                            Armed
                                         {/if}
-                                    </div>
+                                    </span>
+                                    {#if isChannelTriggered}
+                                        <span class="text-xs text-success">
+                                            Triggered at {new Date(channelTriggerTimeValue).toLocaleTimeString()}
+                                        </span>
+                                    {/if}
                                 </div>
                             </div>
-                        
-                            <!-- Trigger Settings -->
+
                             <div class="mb-6 p-4 bg-base-200 rounded-lg">
-                                <h4 class="text-md font-medium text-base-content mb-4">Trigger Settings</h4>
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <!-- Trigger Enable -->
+                                <h4 class="text-md font-medium text-base-content mb-4">Mode & Axis</h4>
+                                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
+                                    <div class="form-control">
+                                        <label class="label" for="plot-mode-{channel}">
+                                            <span class="label-text">Plot Mode</span>
+                                        </label>
+                                        <select
+                                            id="plot-mode-{channel}"
+                                            value={channelMode}
+                                            onchange={(e) => {
+                                                if (e.target instanceof HTMLSelectElement) {
+                                                    setChannelMode(channel, e.target.value as ChannelPlotMode);
+                                                }
+                                            }}
+                                            class="select select-bordered"
+                                        >
+                                            <option value="free_run">Free Run</option>
+                                            <option value="trigger_normal">Trigger Normal</option>
+                                            <option value="trigger_single">Trigger Single</option>
+                                            <option value="hold">Hold</option>
+                                        </select>
+                                    </div>
+
                                     <div class="form-control">
                                         <label class="label cursor-pointer">
-                                            <span class="label-text">Enable Trigger</span>
+                                            <span class="label-text">Auto Y-Scale</span>
                                             <input
-                                                id="enable-trigger-{channel}"
                                                 type="checkbox"
-                                                checked={channelTriggerSetting?.enabled || false}
+                                                class="checkbox checkbox-primary"
+                                                checked={channelAxis?.autoY ?? true}
                                                 onchange={(e) => {
-                                                    const setting = triggerSettings.get(channel);
-                                                    if (setting && e.target instanceof HTMLInputElement) {
-                                                        setting.enabled = e.target.checked;
-                                                        triggerSettings = new Map(triggerSettings);
+                                                    if (e.target instanceof HTMLInputElement) {
+                                                        updateAxisSettings(channel, { autoY: e.target.checked });
                                                     }
                                                 }}
-                                                class="checkbox checkbox-warning"
                                             />
                                         </label>
                                     </div>
-                                    
-                                    <!-- Trigger Type -->
+
                                     <div class="form-control">
-                                        <label class="label" for="trigger-type-{channel}">
-                                            <span class="label-text">Trigger Type</span>
-                                        </label>
-                                        <select
-                                            id="trigger-type-{channel}"
-                                            value={channelTriggerSetting?.type || 'rising'}
-                                            onchange={(e) => {
-                                                const setting = triggerSettings.get(channel);
-                                                if (setting && e.target instanceof HTMLSelectElement) {
-                                                    setting.type = e.target.value as 'rising' | 'falling';
-                                                    triggerSettings = new Map(triggerSettings);
-                                                }
-                                            }}
-                                            class="select select-bordered select-warning"
-                                        >
-                                            <option value="rising">Rising Edge</option>
-                                            <option value="falling">Falling Edge</option>
-                                        </select>
-                                    </div>
-                                    
-                                    <!-- Trigger Threshold -->
-                                    <div class="form-control">
-                                        <label class="label" for="trigger-threshold-{channel}">
-                                            <span class="label-text">Threshold (V)</span>
+                                        <label class="label" for="y-min-{channel}">
+                                            <span class="label-text">Y Min</span>
                                         </label>
                                         <input
-                                            id="trigger-threshold-{channel}"
+                                            id="y-min-{channel}"
                                             type="number"
-                                            step="0.1"
-                                            value={channelTriggerSetting?.threshold || 0}
+                                            step="0.01"
+                                            class="input input-bordered"
+                                            value={channelAxis?.yMin ?? -1}
+                                            disabled={channelAxis?.autoY ?? true}
                                             onchange={(e) => {
-                                                const setting = triggerSettings.get(channel);
-                                                if (setting && e.target instanceof HTMLInputElement) {
-                                                    setting.threshold = parseFloat(e.target.value) || 0;
-                                                    triggerSettings = new Map(triggerSettings);
+                                                if (e.target instanceof HTMLInputElement) {
+                                                    updateAxisSettings(channel, { yMin: parseFloat(e.target.value) || -1 });
                                                 }
                                             }}
-                                            class="input input-bordered input-warning"
                                         />
+                                    </div>
+
+                                    <div class="form-control">
+                                        <label class="label" for="y-max-{channel}">
+                                            <span class="label-text">Y Max</span>
+                                        </label>
+                                        <input
+                                            id="y-max-{channel}"
+                                            type="number"
+                                            step="0.01"
+                                            class="input input-bordered"
+                                            value={channelAxis?.yMax ?? 1}
+                                            disabled={channelAxis?.autoY ?? true}
+                                            onchange={(e) => {
+                                                if (e.target instanceof HTMLInputElement) {
+                                                    updateAxisSettings(channel, { yMax: parseFloat(e.target.value) || 1 });
+                                                }
+                                            }}
+                                        />
+                                    </div>
+
+                                    <div class="form-control">
+                                        <label class="label cursor-pointer">
+                                            <span class="label-text">Invert X</span>
+                                            <input
+                                                type="checkbox"
+                                                class="checkbox checkbox-primary"
+                                                checked={channelAxis?.invertX ?? false}
+                                                onchange={(e) => {
+                                                    if (e.target instanceof HTMLInputElement) {
+                                                        updateAxisSettings(channel, { invertX: e.target.checked });
+                                                    }
+                                                }}
+                                            />
+                                        </label>
+                                    </div>
+
+                                    <div class="form-control">
+                                        <label class="label cursor-pointer">
+                                            <span class="label-text">Invert Y</span>
+                                            <input
+                                                type="checkbox"
+                                                class="checkbox checkbox-primary"
+                                                checked={channelAxis?.invertY ?? false}
+                                                onchange={(e) => {
+                                                    if (e.target instanceof HTMLInputElement) {
+                                                        updateAxisSettings(channel, { invertY: e.target.checked });
+                                                    }
+                                                }}
+                                            />
+                                        </label>
                                     </div>
                                 </div>
                             </div>
-                        
-                            <!-- Data Plots -->
-                            <div>
-                                <h4 class="text-md font-medium text-base-content mb-4">Data Plots</h4>
-                                <!-- Side by side plots -->
-                                <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                                    <!-- Continuous Plot (Left) -->
-                                    <div>
-                                        <div class="flex items-center mb-4">
-                                            <div class="w-2 h-2 rounded-full bg-primary mr-2"></div>
-                                            <h5 class="text-sm font-medium text-base-content">Live Data</h5>
+
+                            {#if isTriggerMode(channelMode)}
+                                <div class="mb-6 p-4 bg-base-200 rounded-lg">
+                                    <h4 class="text-md font-medium text-base-content mb-4">Trigger Settings</h4>
+                                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                        <div class="form-control">
+                                            <label class="label" for="trigger-type-{channel}">
+                                                <span class="label-text">Trigger Edge</span>
+                                            </label>
+                                            <select
+                                                id="trigger-type-{channel}"
+                                                value={channelTriggerSetting?.type || 'rising'}
+                                                onchange={(e) => {
+                                                    const setting = triggerSettings.get(channel);
+                                                    if (setting && e.target instanceof HTMLSelectElement) {
+                                                        triggerSettings.set(channel, {
+                                                            ...setting,
+                                                            type: e.target.value as 'rising' | 'falling'
+                                                        });
+                                                        triggerSettings = new Map(triggerSettings);
+                                                    }
+                                                }}
+                                                class="select select-bordered select-warning"
+                                            >
+                                                <option value="rising">Rising Edge</option>
+                                                <option value="falling">Falling Edge</option>
+                                            </select>
                                         </div>
-                                        <RealTimePlot
-                                            data={channelDisplayData.get(channel) || []}
-                                            unit={labjackConfig.sensor_settings.measurement_units[index]}
-                                            timeWindow={timeWindow}
-                                            isTriggered={channelTriggered.get(channel) || false}
-                                            triggerTime={channelTriggerTime.get(channel) || 0}
-                                            mode="continuous"
-                                        />
-                                    </div>
-                                    
-                                    <!-- Frozen Plot (Right) -->
-                                    <div>
-                                        <div class="flex items-center mb-4">
-                                            <div class="w-2 h-2 rounded-full bg-warning mr-2"></div>
-                                            <h5 class="text-sm font-medium text-base-content">
-                                                {(channelTriggered.get(channel) || false) ? 'Triggered Data' : 'Waiting for Trigger'}
-                                            </h5>
+                                        <div class="form-control">
+                                            <label class="label" for="trigger-threshold-{channel}">
+                                                <span class="label-text">Threshold (V)</span>
+                                            </label>
+                                            <input
+                                                id="trigger-threshold-{channel}"
+                                                type="number"
+                                                step="0.01"
+                                                value={channelTriggerSetting?.threshold || 0}
+                                                onchange={(e) => {
+                                                    const setting = triggerSettings.get(channel);
+                                                    if (setting && e.target instanceof HTMLInputElement) {
+                                                        triggerSettings.set(channel, {
+                                                            ...setting,
+                                                            threshold: parseFloat(e.target.value) || 0
+                                                        });
+                                                        triggerSettings = new Map(triggerSettings);
+                                                    }
+                                                }}
+                                                class="input input-bordered input-warning"
+                                            />
                                         </div>
-                                        <RealTimePlot
-                                            data={channelDisplayData.get(channel) || []}
-                                            unit={labjackConfig.sensor_settings.measurement_units[index]}
-                                            timeWindow={timeWindow}
-                                            isTriggered={channelTriggered.get(channel) || false}
-                                            triggerTime={channelTriggerTime.get(channel) || 0}
-                                            mode="frozen"
-                                            frozenData={frozenDisplayData.get(channel) || []}
-                                        />
+                                        <div class="form-control">
+                                            <label class="label" for="trigger-holdoff-{channel}">
+                                                <span class="label-text">Holdoff (ms)</span>
+                                            </label>
+                                            <input
+                                                id="trigger-holdoff-{channel}"
+                                                type="number"
+                                                min="0"
+                                                step="10"
+                                                value={channelTriggerSetting?.holdoffMs || 0}
+                                                onchange={(e) => {
+                                                    const setting = triggerSettings.get(channel);
+                                                    if (setting && e.target instanceof HTMLInputElement) {
+                                                        triggerSettings.set(channel, {
+                                                            ...setting,
+                                                            holdoffMs: Math.max(0, parseInt(e.target.value, 10) || 0)
+                                                        });
+                                                        triggerSettings = new Map(triggerSettings);
+                                                    }
+                                                }}
+                                                class="input input-bordered input-warning"
+                                            />
+                                        </div>
+                                        <div class="form-control justify-end">
+                                            <button
+                                                class="btn btn-outline btn-warning mt-8"
+                                                onclick={() => resetChannelTrigger(channel)}
+                                            >
+                                                Re-arm Trigger
+                                            </button>
+                                            {#if isChannelTriggered && channelMode === 'trigger_normal' && channelRearmAt > channelTriggerTimeValue}
+                                                <span class="text-xs text-base-content/70 mt-2">
+                                                    Holdoff active until {new Date(channelRearmAt).toLocaleTimeString()}
+                                                </span>
+                                            {/if}
+                                        </div>
                                     </div>
                                 </div>
+                            {/if}
+
+                            <div>
+                                <h4 class="text-md font-medium text-base-content mb-4">Data Plot</h4>
+                                <RealTimePlot
+                                    data={plotConfig.data}
+                                    unit={labjackConfig.sensor_settings.measurement_units[index]}
+                                    timeWindow={timeWindow}
+                                    isTriggered={plotConfig.isTriggered}
+                                    triggerTime={plotConfig.triggerTime}
+                                    mode={plotConfig.mode}
+                                    frozenData={plotConfig.frozenData}
+                                    yAutoScale={channelAxis?.autoY ?? true}
+                                    yMin={channelAxis?.yMin ?? -1}
+                                    yMax={channelAxis?.yMax ?? 1}
+                                    invertX={channelAxis?.invertX ?? false}
+                                    invertY={channelAxis?.invertY ?? false}
+                                />
                             </div>
                         </div>
                     </div>
