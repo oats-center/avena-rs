@@ -79,6 +79,7 @@
     let subscriptions: any[] = [];
     let channelData = $state<Map<number, DataPoint[]>>(new Map());
     let frozenChannelData = $state<Map<number, DataPoint[]>>(new Map());
+    const channelLastTimestamp = new Map<number, number>();
     let isConnected = $state<boolean>(false);
     let flatBufferParser = new FlatBufferParser();
     let triggerSettings = $state<Map<number, {
@@ -232,10 +233,12 @@
         }>();
         const newChannelTriggered = new Map<number, boolean>();
         const newChannelTriggerTime = new Map<number, number>();
+        channelLastTimestamp.clear();
         
         labjackConfig.sensor_settings.channels_enabled.forEach(channel => {
             newChannelData.set(channel, []);
             newFrozenChannelData.set(channel, []);
+            channelLastTimestamp.set(channel, Number.NaN);
             newTriggerSettings.set(channel, {
                 enabled: false,
                 type: 'rising',
@@ -278,10 +281,12 @@
                                 continue;
                             }
                             
+                            const previousLastTimestamp = channelLastTimestamp.get(channel);
                             const sampleTimestamps = calculateSampleTimestamps(
                                 scanData.timestamp, 
                                 scanData.values, 
-                                labjackConfig.sensor_settings.sampling_rate
+                                labjackConfig.sensor_settings.sampling_rate,
+                                previousLastTimestamp
                             );
                             const calibrationSpec = normalizeCalibration(
                                 labjackConfig?.sensor_settings.calibrations?.[String(channel)]
@@ -301,6 +306,7 @@
 
                             // **CHANGE: Process the entire chunk at once**
                             if (newPoints.length > 0) {
+                                channelLastTimestamp.set(channel, newPoints[newPoints.length - 1].timestamp);
                                 addDataChunk(channel, newPoints);
                             }
                             
