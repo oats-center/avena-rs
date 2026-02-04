@@ -6,8 +6,6 @@
     import { applyCalibration, normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
     import { FlatBufferParser, calculateSampleTimestamps } from "$lib/flatbuffer-parser";
-    // @ts-ignore - No type definitions available for downsample-lttb
-    import downsampler from 'downsample-lttb';
 
     
     interface SensorSettings {
@@ -71,18 +69,21 @@
         value: number;
     }
 
-    type ChannelPlotMode = 'free_run' | 'trigger_normal' | 'trigger_single' | 'hold';
+    type ChannelPlotMode = 'free_run' | 'trigger_normal' | 'trigger_single';
 
     interface TriggerSettings {
         type: 'rising' | 'falling';
         threshold: number;
         holdoffMs: number;
+        preTriggerPercent: number;
+        postTriggerWindowSec: number;
     }
 
     interface AxisSettings {
         autoY: boolean;
         yMin: number;
         yMax: number;
+        xWindowSec: number;
         invertX: boolean;
         invertY: boolean;
     }
@@ -95,7 +96,6 @@
     let subscriptions: any[] = [];
     let channelData = $state<Map<number, DataPoint[]>>(new Map());
     let frozenChannelData = $state<Map<number, DataPoint[]>>(new Map());
-    let heldChannelData = $state<Map<number, DataPoint[]>>(new Map());
     let channelModes = $state<Map<number, ChannelPlotMode>>(new Map());
     let axisSettings = $state<Map<number, AxisSettings>>(new Map());
     const channelLastTimestamp = new Map<number, number>();
@@ -105,6 +105,9 @@
     let channelTriggered = $state<Map<number, boolean>>(new Map());
     let channelTriggerTime = $state<Map<number, number>>(new Map());
     let channelRearmTime = $state<Map<number, number>>(new Map());
+    let channelPrebufferReady = $state<Map<number, boolean>>(new Map());
+    let uiNow = $state<number>(Date.now());
+    let uiNowTimer: ReturnType<typeof setInterval> | null = null;
     let timeWindow = $state<number>(5); // seconds
     let maxDataPoints = $state<number>(10000);
     let showExportModal = $state<boolean>(false);
@@ -129,32 +132,48 @@
         if (labjackConfig) updateMaxDataPoints();
     });
 
+    $effect(() => {
+        if (!labjackConfig) return;
+        axisSettings;
+        triggerSettings;
+        updateMaxDataPoints();
+    });
+
     function updateMaxDataPoints() {
         if (!labjackConfig) return;
         const sr = labjackConfig.sensor_settings.sampling_rate;
-        // The buffer must be large enough to hold data for the frozen capture window.
-        // We want to see `timeWindow` seconds before and after the trigger.
-        maxDataPoints = sr * timeWindow * 2; 
+        let requiredSeconds = timeWindow * 2;
+
+        for (const axis of axisSettings.values()) {
+            requiredSeconds = Math.max(requiredSeconds, Math.max(0.1, axis.xWindowSec) * 2);
+        }
+
+        for (const trigger of triggerSettings.values()) {
+            const windows = getTriggerWindows(trigger);
+            requiredSeconds = Math.max(requiredSeconds, windows.preWindowSec + windows.postWindowSec);
+        }
+
+        maxDataPoints = Math.ceil(sr * requiredSeconds);
         console.log(`Max data points in rolling buffer: ${maxDataPoints}`);
+    }
+
+    function downsampleForDisplay(data: DataPoint[], targetPoints: number = 2000): DataPoint[] {
+        if (data.length <= targetPoints) return data;
+        if (targetPoints < 3) return [data[0], data[data.length - 1]];
+
+        const step = (data.length - 1) / (targetPoints - 1);
+        const sampled: DataPoint[] = [];
+        for (let i = 0; i < targetPoints; i++) {
+            const index = Math.min(data.length - 1, Math.round(i * step));
+            sampled.push(data[index]);
+        }
+        return sampled;
     }
 
     let channelDisplayData = $derived(
         new Map(
             Array.from(channelData.entries()).map(([channel, data]) => {
-                if (data.length <= 1000) { 
-                    return [channel, data];
-                }
-                
-                // 1. Convert data to the format the library expects: [x, y][]
-                const formattedData = data.map(p => [p.timestamp, p.value]);
-                
-                // 2. Downsample using the .processData() method
-                const downsampled = downsampler.processData(formattedData, 1000);
-                
-                // 3. Convert it back to our original {timestamp, value} format
-                const restoredFormat = downsampled.map((p: [number, number]) => ({ timestamp: p[0], value: p[1] }));
-                
-                return [channel, restoredFormat];
+                return [channel, downsampleForDisplay(data)];
             })
         )
     );
@@ -162,21 +181,7 @@
     let frozenDisplayData = $derived(
         new Map(
             Array.from(frozenChannelData.entries()).map(([channel, data]) => {
-                // If the data array is small, don't downsample
-                if (data.length <= 1000) { 
-                    return [channel, data];
-                }
-                
-                // 1. Convert data to the format the library expects: [x, y][]
-                const formattedData = data.map(p => [p.timestamp, p.value]);
-                
-                // 2. Downsample the data to 1000 points
-                const downsampled = downsampler.processData(formattedData, 1000);
-                
-                // 3. Convert it back to our {timestamp, value} format
-                const restoredFormat = downsampled.map((p: [number, number]) => ({ timestamp: p[0], value: p[1] }));
-                
-                return [channel, restoredFormat];
+                return [channel, downsampleForDisplay(data)];
             })
         )
     );
@@ -242,24 +247,24 @@
         
         const newChannelData = new Map<number, DataPoint[]>();
         const newFrozenChannelData = new Map<number, DataPoint[]>();
-        const newHeldChannelData = new Map<number, DataPoint[]>();
         const newChannelModes = new Map<number, ChannelPlotMode>();
         const newAxisSettings = new Map<number, AxisSettings>();
         const newTriggerSettings = new Map<number, TriggerSettings>();
         const newChannelTriggered = new Map<number, boolean>();
         const newChannelTriggerTime = new Map<number, number>();
         const newChannelRearmTime = new Map<number, number>();
+        const newChannelPrebufferReady = new Map<number, boolean>();
         channelLastTimestamp.clear();
         
         labjackConfig.sensor_settings.channels_enabled.forEach(channel => {
             newChannelData.set(channel, []);
             newFrozenChannelData.set(channel, []);
-            newHeldChannelData.set(channel, []);
             newChannelModes.set(channel, 'free_run');
             newAxisSettings.set(channel, {
                 autoY: true,
                 yMin: -1,
                 yMax: 1,
+                xWindowSec: timeWindow,
                 invertX: false,
                 invertY: false
             });
@@ -267,22 +272,25 @@
             newTriggerSettings.set(channel, {
                 type: 'rising',
                 threshold: 0,
-                holdoffMs: 500
+                holdoffMs: 500,
+                preTriggerPercent: 40,
+                postTriggerWindowSec: timeWindow
             });
             newChannelTriggered.set(channel, false);
             newChannelTriggerTime.set(channel, 0);
             newChannelRearmTime.set(channel, 0);
+            newChannelPrebufferReady.set(channel, false);
         });
         
         channelData = newChannelData;
         frozenChannelData = newFrozenChannelData;
-        heldChannelData = newHeldChannelData;
         channelModes = newChannelModes;
         axisSettings = newAxisSettings;
         triggerSettings = newTriggerSettings;
         channelTriggered = newChannelTriggered;
         channelTriggerTime = newChannelTriggerTime;
         channelRearmTime = newChannelRearmTime;
+        channelPrebufferReady = newChannelPrebufferReady;
     }
     
     async function startDataSubscription() {
@@ -367,6 +375,11 @@
         const channelMode = channelModes.get(channel) ?? "free_run";
         if (channelMode === "trigger_normal" || channelMode === "trigger_single") {
             processTriggerMode(channel, channelMode, newData, chunk);
+        } else {
+            if (!(channelPrebufferReady.get(channel) ?? false)) {
+                channelPrebufferReady.set(channel, true);
+                channelPrebufferReady = new Map(channelPrebufferReady);
+            }
         }
         
         channelData = new Map(channelData);
@@ -378,15 +391,42 @@
         fullData: DataPoint[],
         newChunk: DataPoint[]
     ) {
+        const channelTriggerSetting = triggerSettings.get(channel);
+        if (!channelTriggerSetting) return;
+
         const isSingleShot = mode === "trigger_single";
         const lastTimestamp = newChunk[newChunk.length - 1]?.timestamp ?? Date.now();
         const isChannelTriggered = channelTriggered.get(channel) || false;
+        const prebufferReady = hasRequiredPreBuffer(fullData, channelTriggerSetting);
+        const triggerTime = channelTriggerTime.get(channel) || 0;
+        const postWindowMs = Math.max(0, channelTriggerSetting.postTriggerWindowSec || 0) * 1000;
+        const postWindowEnd = triggerTime + postWindowMs;
+
+        const previousReady = channelPrebufferReady.get(channel) ?? false;
+        if (previousReady !== prebufferReady) {
+            channelPrebufferReady.set(channel, prebufferReady);
+            channelPrebufferReady = new Map(channelPrebufferReady);
+        }
+
+        if (!isChannelTriggered && !prebufferReady) {
+            return;
+        }
 
         if (isChannelTriggered) {
-            if (isSingleShot) return;
+            if (triggerTime > 0) {
+                const frozenEnd = Math.max(triggerTime, postWindowEnd);
+                if (lastTimestamp <= frozenEnd) {
+                    captureFrozenDataForChannel(channel, fullData, triggerTime, channelTriggerSetting);
+                }
+            }
+
+            if (isSingleShot) {
+                return;
+            }
 
             const rearmAt = channelRearmTime.get(channel) || 0;
-            if (lastTimestamp < rearmAt) {
+            const releaseAt = Math.max(rearmAt, postWindowEnd);
+            if (lastTimestamp < releaseAt) {
                 return;
             }
 
@@ -439,7 +479,12 @@
                 channelTriggerTime = new Map(channelTriggerTime);
                 channelRearmTime = new Map(channelRearmTime);
                 
-                captureFrozenDataForChannel(channel, fullData, currentPoint.timestamp);
+                captureFrozenDataForChannel(
+                    channel,
+                    fullData,
+                    currentPoint.timestamp,
+                    channelTriggerSetting
+                );
 
                 return; 
             }
@@ -448,9 +493,17 @@
         }
     }
 
-    function captureFrozenDataForChannel(channel: number, data: DataPoint[], triggerTime: number) {
-        const startTime = triggerTime - (timeWindow * 1000);
-        const endTime = triggerTime + (timeWindow * 1000); 
+    function captureFrozenDataForChannel(
+        channel: number,
+        data: DataPoint[],
+        triggerTime: number,
+        settings: TriggerSettings
+    ) {
+        const preFraction = Math.min(0.95, Math.max(0, settings.preTriggerPercent / 100));
+        const postWindowSec = Math.max(0.01, settings.postTriggerWindowSec || 0.01);
+        const preWindowSec = postWindowSec * (preFraction / (1 - preFraction));
+        const startTime = triggerTime - (preWindowSec * 1000);
+        const endTime = triggerTime + (postWindowSec * 1000); 
 
         const frozenData = data.filter(point => 
             point.timestamp >= startTime && point.timestamp <= endTime
@@ -473,17 +526,19 @@
         const currentMode = channelModes.get(channel) ?? "free_run";
         if (currentMode === nextMode) return;
 
-        if (nextMode === "hold") {
-            heldChannelData.set(channel, [...(channelDisplayData.get(channel) || [])]);
-            heldChannelData = new Map(heldChannelData);
-        } else if (currentMode === "hold") {
-            heldChannelData.set(channel, []);
-            heldChannelData = new Map(heldChannelData);
-        }
-
         if (!isTriggerMode(nextMode) || !isTriggerMode(currentMode)) {
             clearTriggerState(channel, true);
         }
+
+        if (isTriggerMode(nextMode)) {
+            const settings = triggerSettings.get(channel);
+            const data = channelData.get(channel) || [];
+            const ready = settings ? hasRequiredPreBuffer(data, settings) : false;
+            channelPrebufferReady.set(channel, ready);
+        } else {
+            channelPrebufferReady.set(channel, true);
+        }
+        channelPrebufferReady = new Map(channelPrebufferReady);
 
         channelModes.set(channel, nextMode);
         channelModes = new Map(channelModes);
@@ -494,6 +549,10 @@
         if (!current) return;
 
         const updated = { ...current, ...updates };
+        if (!Number.isFinite(updated.xWindowSec) || updated.xWindowSec <= 0) {
+            updated.xWindowSec = timeWindow;
+        }
+        updated.xWindowSec = Math.max(0.1, updated.xWindowSec);
         if (updated.yMax <= updated.yMin) {
             updated.yMax = updated.yMin + 0.001;
         }
@@ -502,23 +561,46 @@
         axisSettings = new Map(axisSettings);
     }
 
+    function getTriggerWindows(settings: TriggerSettings | undefined) {
+        const postWindowSec = Math.max(0.01, settings?.postTriggerWindowSec || 0.01);
+        const preFraction = Math.min(0.95, Math.max(0, (settings?.preTriggerPercent || 0) / 100));
+        const preWindowSec = postWindowSec * (preFraction / (1 - preFraction));
+        return { preWindowSec, postWindowSec };
+    }
+
+    function hasRequiredPreBuffer(data: DataPoint[], settings: TriggerSettings): boolean {
+        if (data.length < 2) return false;
+        const { preWindowSec } = getTriggerWindows(settings);
+        const requiredMs = preWindowSec * 1000;
+        const oldest = data[0]?.timestamp;
+        const latest = data[data.length - 1]?.timestamp;
+        if (!Number.isFinite(oldest) || !Number.isFinite(latest)) return false;
+        return (latest - oldest) >= requiredMs;
+    }
+
+    function getHoldoffRemainingMs(channel: number): number {
+        const rearmAt = channelRearmTime.get(channel) || 0;
+        if (rearmAt <= 0) return 0;
+        const latestChannelPoint = channelData.get(channel)?.at(-1);
+        const referenceTime =
+            latestChannelPoint && Number.isFinite(latestChannelPoint.timestamp)
+                ? latestChannelPoint.timestamp
+                : uiNow;
+        return Math.max(0, rearmAt - referenceTime);
+    }
+
     function getPlotConfig(channel: number) {
         const mode = channelModes.get(channel) ?? "free_run";
         const liveData = channelDisplayData.get(channel) || [];
         const frozenData = frozenDisplayData.get(channel) || [];
-        const heldData = heldChannelData.get(channel) || [];
         const isTriggered = channelTriggered.get(channel) || false;
         const triggerTime = channelTriggerTime.get(channel) || 0;
-
-        if (mode === "hold") {
-            return {
-                mode: "continuous" as const,
-                data: heldData.length > 0 ? heldData : liveData,
-                frozenData: undefined,
-                isTriggered: false,
-                triggerTime: 0
-            };
-        }
+        const triggerConfig = triggerSettings.get(channel);
+        const { preWindowSec, postWindowSec } = getTriggerWindows(triggerConfig);
+        const isFrozenCollecting =
+            isTriggered &&
+            triggerTime > 0 &&
+            uiNow < (triggerTime + postWindowSec * 1000);
 
         if (isTriggerMode(mode) && isTriggered) {
             return {
@@ -526,7 +608,10 @@
                 data: liveData,
                 frozenData,
                 isTriggered: true,
-                triggerTime
+                triggerTime,
+                frozenPreWindowSec: preWindowSec,
+                frozenPostWindowSec: postWindowSec,
+                frozenCollecting: isFrozenCollecting
             };
         }
 
@@ -535,7 +620,10 @@
             data: liveData,
             frozenData: undefined,
             isTriggered: false,
-            triggerTime: 0
+            triggerTime: 0,
+            frozenPreWindowSec: preWindowSec,
+            frozenPostWindowSec: postWindowSec,
+            frozenCollecting: false
         };
     }
     
@@ -685,8 +773,19 @@
             exporting = false;
         }
     }
+
+    onMount(() => {
+        uiNowTimer = setInterval(() => {
+            uiNow = Date.now();
+        }, 100);
+    });
     
     onDestroy(() => {
+        if (uiNowTimer) {
+            clearInterval(uiNowTimer);
+            uiNowTimer = null;
+        }
+
         // Clean up subscriptions
         subscriptions.forEach(sub => {
             try {
@@ -848,7 +947,7 @@
                     {@const plotConfig = getPlotConfig(channel)}
                     {@const isChannelTriggered = channelTriggered.get(channel) || false}
                     {@const channelTriggerTimeValue = channelTriggerTime.get(channel) || 0}
-                    {@const channelRearmAt = channelRearmTime.get(channel) || 0}
+                    {@const isPrebufferReady = channelPrebufferReady.get(channel) ?? false}
                     
                     <!-- Combined Channel Section -->
                     <div class="card bg-base-100 shadow-xl border border-base-200">
@@ -864,8 +963,8 @@
                                     <span class="badge badge-info badge-sm">
                                         {#if channelMode === 'free_run'}
                                             Running
-                                        {:else if channelMode === 'hold'}
-                                            Held
+                                        {:else if !isPrebufferReady}
+                                            Pre-buffering
                                         {:else if isChannelTriggered}
                                             Triggered
                                         {:else}
@@ -876,13 +975,18 @@
                                         <span class="text-xs text-success">
                                             Triggered at {new Date(channelTriggerTimeValue).toLocaleTimeString()}
                                         </span>
+                                        {#if channelMode === 'trigger_normal' && getHoldoffRemainingMs(channel) > 0}
+                                            <span class="text-xs text-warning">
+                                                Holdoff: {(getHoldoffRemainingMs(channel) / 1000).toFixed(2)}s
+                                            </span>
+                                        {/if}
                                     {/if}
                                 </div>
                             </div>
 
                             <div class="mb-6 p-4 bg-base-200 rounded-lg">
                                 <h4 class="text-md font-medium text-base-content mb-4">Mode & Axis</h4>
-                                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
+                                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-4">
                                     <div class="form-control">
                                         <label class="label" for="plot-mode-{channel}">
                                             <span class="label-text">Plot Mode</span>
@@ -900,8 +1004,26 @@
                                             <option value="free_run">Free Run</option>
                                             <option value="trigger_normal">Trigger Normal</option>
                                             <option value="trigger_single">Trigger Single</option>
-                                            <option value="hold">Hold</option>
                                         </select>
+                                    </div>
+
+                                    <div class="form-control">
+                                        <label class="label" for="x-window-{channel}">
+                                            <span class="label-text">X Window (s)</span>
+                                        </label>
+                                        <input
+                                            id="x-window-{channel}"
+                                            type="number"
+                                            min="0.1"
+                                            step="0.1"
+                                            class="input input-bordered"
+                                            value={channelAxis?.xWindowSec ?? timeWindow}
+                                            onchange={(e) => {
+                                                if (e.target instanceof HTMLInputElement) {
+                                                    updateAxisSettings(channel, { xWindowSec: parseFloat(e.target.value) || timeWindow });
+                                                }
+                                            }}
+                                        />
                                     </div>
 
                                     <div class="form-control">
@@ -995,7 +1117,7 @@
                             {#if isTriggerMode(channelMode)}
                                 <div class="mb-6 p-4 bg-base-200 rounded-lg">
                                     <h4 class="text-md font-medium text-base-content mb-4">Trigger Settings</h4>
-                                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
                                         <div class="form-control">
                                             <label class="label" for="trigger-type-{channel}">
                                                 <span class="label-text">Trigger Edge</span>
@@ -1064,6 +1186,55 @@
                                                 class="input input-bordered input-warning"
                                             />
                                         </div>
+                                        <div class="form-control">
+                                            <label class="label" for="trigger-pre-{channel}">
+                                                <span class="label-text">Pre Trigger (%)</span>
+                                            </label>
+                                            <input
+                                                id="trigger-pre-{channel}"
+                                                type="number"
+                                                min="0"
+                                                max="95"
+                                                step="1"
+                                                value={channelTriggerSetting?.preTriggerPercent || 0}
+                                                onchange={(e) => {
+                                                    const setting = triggerSettings.get(channel);
+                                                    if (setting && e.target instanceof HTMLInputElement) {
+                                                        const raw = parseInt(e.target.value, 10) || 0;
+                                                        triggerSettings.set(channel, {
+                                                            ...setting,
+                                                            preTriggerPercent: Math.min(95, Math.max(0, raw))
+                                                        });
+                                                        triggerSettings = new Map(triggerSettings);
+                                                    }
+                                                }}
+                                                class="input input-bordered input-warning"
+                                            />
+                                        </div>
+                                        <div class="form-control">
+                                            <label class="label" for="trigger-post-{channel}">
+                                                <span class="label-text">Post Window (s)</span>
+                                            </label>
+                                            <input
+                                                id="trigger-post-{channel}"
+                                                type="number"
+                                                min="0.01"
+                                                step="0.1"
+                                                value={channelTriggerSetting?.postTriggerWindowSec || timeWindow}
+                                                onchange={(e) => {
+                                                    const setting = triggerSettings.get(channel);
+                                                    if (setting && e.target instanceof HTMLInputElement) {
+                                                        const raw = parseFloat(e.target.value) || 0.01;
+                                                        triggerSettings.set(channel, {
+                                                            ...setting,
+                                                            postTriggerWindowSec: Math.max(0.01, raw)
+                                                        });
+                                                        triggerSettings = new Map(triggerSettings);
+                                                    }
+                                                }}
+                                                class="input input-bordered input-warning"
+                                            />
+                                        </div>
                                         <div class="form-control justify-end">
                                             <button
                                                 class="btn btn-outline btn-warning mt-8"
@@ -1071,9 +1242,9 @@
                                             >
                                                 Re-arm Trigger
                                             </button>
-                                            {#if isChannelTriggered && channelMode === 'trigger_normal' && channelRearmAt > channelTriggerTimeValue}
+                                            {#if isChannelTriggered && channelMode === 'trigger_normal' && getHoldoffRemainingMs(channel) > 0}
                                                 <span class="text-xs text-base-content/70 mt-2">
-                                                    Holdoff active until {new Date(channelRearmAt).toLocaleTimeString()}
+                                                    Holdoff remaining {(getHoldoffRemainingMs(channel) / 1000).toFixed(2)}s
                                                 </span>
                                             {/if}
                                         </div>
@@ -1086,11 +1257,18 @@
                                 <RealTimePlot
                                     data={plotConfig.data}
                                     unit={labjackConfig.sensor_settings.measurement_units[index]}
-                                    timeWindow={timeWindow}
+                                    timeWindow={channelAxis?.xWindowSec ?? timeWindow}
                                     isTriggered={plotConfig.isTriggered}
                                     triggerTime={plotConfig.triggerTime}
                                     mode={plotConfig.mode}
                                     frozenData={plotConfig.frozenData}
+                                    frozenPreWindowSec={plotConfig.frozenPreWindowSec}
+                                    frozenPostWindowSec={plotConfig.frozenPostWindowSec}
+                                    frozenCollecting={plotConfig.frozenCollecting}
+                                    showTriggerThreshold={isTriggerMode(channelMode)}
+                                    triggerThreshold={channelTriggerSetting?.threshold}
+                                    holdoffRemainingMs={getHoldoffRemainingMs(channel)}
+                                    prebuffering={isTriggerMode(channelMode) && !isChannelTriggered && !isPrebufferReady}
                                     yAutoScale={channelAxis?.autoY ?? true}
                                     yMin={channelAxis?.yMin ?? -1}
                                     yMax={channelAxis?.yMax ?? 1}
