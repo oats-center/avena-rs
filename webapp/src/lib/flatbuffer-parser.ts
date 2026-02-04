@@ -80,13 +80,18 @@ export function calculateSampleTimestamps(
             ? Math.abs(parsedBatchTime - now) <= 2000
             : false;
         const hasPrevious = typeof previousLastTimestamp === 'number' && Number.isFinite(previousLastTimestamp);
+        const anchorTime = isReasonableSkew ? parsedBatchTime : now;
+        const hasUsablePrevious = hasPrevious
+            ? Math.abs((previousLastTimestamp as number) - anchorTime) <= 2000
+            : false;
 
         let firstSampleTime = isReasonableSkew
             ? parsedBatchTime - ((values.length - 1) * sampleInterval)
             : now - ((values.length - 1) * sampleInterval);
 
         // Guarantee monotonic timestamps across received batches for each channel.
-        if (hasPrevious) {
+        // If prior timestamps drift far from this batch's anchor, reset continuity.
+        if (hasUsablePrevious) {
             const minNextStart = (previousLastTimestamp as number) + sampleInterval;
             if (firstSampleTime < minNextStart) {
                 firstSampleTime = minNextStart;

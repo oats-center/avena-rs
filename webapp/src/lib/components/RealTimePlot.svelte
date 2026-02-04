@@ -14,6 +14,13 @@
         triggerTime: number;
         mode: 'continuous' | 'frozen';
         frozenData?: DataPoint[];
+        frozenPreWindowSec?: number;
+        frozenPostWindowSec?: number;
+        frozenCollecting?: boolean;
+        showTriggerThreshold?: boolean;
+        triggerThreshold?: number;
+        holdoffRemainingMs?: number;
+        prebuffering?: boolean;
         yAutoScale?: boolean;
         yMin?: number;
         yMax?: number;
@@ -29,6 +36,13 @@
         triggerTime,
         mode,
         frozenData,
+        frozenPreWindowSec = timeWindow,
+        frozenPostWindowSec = timeWindow,
+        frozenCollecting = false,
+        showTriggerThreshold = false,
+        triggerThreshold,
+        holdoffRemainingMs = 0,
+        prebuffering = false,
         yAutoScale = true,
         yMin = -1,
         yMax = 1,
@@ -161,10 +175,17 @@
         return margin.top + vertical * (plotHeight - margin.top - margin.bottom);
     }
 
+    function getFrozenWindow() {
+        const pre = Math.max(0.01, frozenPreWindowSec || 0.01);
+        const post = Math.max(0.01, frozenPostWindowSec || 0.01);
+        return { pre, post };
+    }
+
     function mapTimeToX(timeSincePoint: number): number {
         const width = plotWidth - margin.left - margin.right;
         if (mode === 'frozen' && isTriggered) {
-            const normalizedTime = (timeSincePoint + timeWindow) / (2 * timeWindow);
+            const { pre, post } = getFrozenWindow();
+            const normalizedTime = (timeSincePoint + pre) / (pre + post);
             return invertX
                 ? (plotWidth - margin.right) - normalizedTime * width
                 : margin.left + normalizedTime * width;
@@ -191,8 +212,9 @@
             let timeValue: number;
             
             if (mode === 'frozen' && isTriggered) {
-                const start = invertX ? timeWindow : -timeWindow;
-                const step = (2 * timeWindow / 10) * (invertX ? -1 : 1);
+                const { pre, post } = getFrozenWindow();
+                const start = invertX ? post : -pre;
+                const step = ((pre + post) / 10) * (invertX ? -1 : 1);
                 timeValue = start + (i * step);
             } else {
                 const start = invertX ? -timeWindow : 0;
@@ -252,8 +274,7 @@
         let x: number;
         
         if (mode === 'frozen') {
-            // For frozen mode, the trigger line should be at the center (time = 0)
-            x = margin.left + (plotWidth - margin.left - margin.right) / 2;
+            x = mapTimeToX(0);
         } else {
             // For continuous mode, show where the trigger occurred relative to current time
             const now = Date.now();
@@ -277,6 +298,79 @@
         }
     }
 
+    function drawThresholdLine() {
+        if (!ctx || !showTriggerThreshold || typeof triggerThreshold !== 'number' || Number.isNaN(triggerThreshold)) {
+            return;
+        }
+
+        const source = mode === 'frozen' && frozenData ? frozenData : data;
+        const range = getDisplayRange(source);
+        if (!range) return;
+        if (triggerThreshold < range.low || triggerThreshold > range.high) return;
+
+        const y = mapValueToY(triggerThreshold, range);
+        ctx.strokeStyle = 'rgba(255, 193, 7, 0.9)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(margin.left, y);
+        ctx.lineTo(plotWidth - margin.right, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = 'rgba(255, 193, 7, 0.9)';
+        ctx.font = '11px Inter, system-ui, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(`Trig ${triggerThreshold.toFixed(3)}`, margin.left + 6, y - 4);
+    }
+
+    function drawBadge(text: string, x: number, y: number, fill: string, stroke: string) {
+        if (!ctx) return;
+        ctx.save();
+        ctx.font = '11px Inter, system-ui, sans-serif';
+        const width = ctx.measureText(text).width + 12;
+        const height = 18;
+        ctx.fillStyle = fill;
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(x - width, y, width, height, 6);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, x - 6, y + height / 2);
+        ctx.restore();
+    }
+
+    function drawCanvasBadges() {
+        if (!ctx) return;
+
+        let top = margin.top + 6;
+        const right = plotWidth - margin.right - 6;
+
+        if (showTriggerThreshold && typeof triggerThreshold === 'number' && Number.isFinite(triggerThreshold)) {
+            drawBadge(`LEVEL ${triggerThreshold.toFixed(3)} ${unit}`, right, top, 'rgba(234, 179, 8, 0.18)', 'rgba(234, 179, 8, 0.8)');
+            top += 22;
+        }
+
+        if (prebuffering) {
+            drawBadge('PREBUFFERING', right, top, 'rgba(59, 130, 246, 0.18)', 'rgba(59, 130, 246, 0.8)');
+            top += 22;
+        }
+
+        if (holdoffRemainingMs > 0) {
+            drawBadge(`HOLDOFF ${(holdoffRemainingMs / 1000).toFixed(2)}s`, right, top, 'rgba(249, 115, 22, 0.18)', 'rgba(249, 115, 22, 0.8)');
+            top += 22;
+        }
+
+        if (mode === 'frozen' && isTriggered) {
+            drawBadge(frozenCollecting ? 'COLLECTING' : 'FROZEN', right, top, 'rgba(255, 193, 7, 0.18)', 'rgba(255, 193, 7, 0.8)');
+        }
+    }
+
     function getContinuousReferenceTime(dataToPlot: DataPoint[]): number {
         const latestPoint = dataToPlot[dataToPlot.length - 1];
         const latestTimestamp = latestPoint?.timestamp;
@@ -296,63 +390,38 @@
     }
     
     
-    function applyLightSmoothing(data: DataPoint[]): DataPoint[] {
-        if (data.length < 3) return data;
-        
-        // For high-frequency data (7000+ samples/sec), use more aggressive smoothing
-        const isHighFrequency = data.length > 1000;
-        const smoothingWindow = isHighFrequency ? 7 : 5;
-        
-        const smoothed: DataPoint[] = [];
-        
-        // Keep first few points as is
-        const initialCount = Math.min(Math.floor(smoothingWindow / 2), data.length);
-        for (let i = 0; i < initialCount; i++) {
-            const point = data[i];
-            if (point && typeof point.timestamp === 'number' && typeof point.value === 'number') {
-                smoothed.push(point);
+    function downsampleMinMax(data: DataPoint[]): DataPoint[] {
+        if (data.length <= 2 || plotWidth <= 0) return data;
+
+        const bucketCount = Math.max(16, Math.floor(plotWidth - margin.left - margin.right));
+        if (data.length <= bucketCount * 2) return data;
+
+        const bucketSize = Math.ceil(data.length / bucketCount);
+        const reduced: DataPoint[] = [];
+
+        for (let start = 0; start < data.length; start += bucketSize) {
+            const end = Math.min(data.length, start + bucketSize);
+            let minPoint: DataPoint | null = null;
+            let maxPoint: DataPoint | null = null;
+
+            for (let i = start; i < end; i++) {
+                const point = data[i];
+                if (!minPoint || point.value < minPoint.value) minPoint = point;
+                if (!maxPoint || point.value > maxPoint.value) maxPoint = point;
+            }
+
+            if (!minPoint || !maxPoint) continue;
+
+            if (minPoint.timestamp <= maxPoint.timestamp) {
+                reduced.push(minPoint);
+                if (maxPoint !== minPoint) reduced.push(maxPoint);
+            } else {
+                reduced.push(maxPoint);
+                if (maxPoint !== minPoint) reduced.push(minPoint);
             }
         }
-        
-        // Apply moving average smoothing
-        const halfWindow = Math.floor(smoothingWindow / 2);
-        for (let i = halfWindow; i < data.length - halfWindow; i++) {
-            let weightedSum = 0;
-            let weightSum = 0;
-            
-            // Apply weighted moving average
-            for (let j = -halfWindow; j <= halfWindow; j++) {
-                const dataPoint = data[i + j];
-                if (!dataPoint || typeof dataPoint.value !== 'number') {
-                    continue;
-                }
-                
-                const weight = j === 0 ? 0.4 : 0.6 / (smoothingWindow - 1); // Center point gets more weight
-                weightedSum += dataPoint.value * weight;
-                weightSum += weight;
-            }
-            
-            const currentPoint = data[i];
-            if (!currentPoint || typeof currentPoint.timestamp !== 'number') {
-                continue;
-            }
-            
-            smoothed.push({
-                timestamp: currentPoint.timestamp,
-                value: weightedSum / weightSum
-            });
-        }
-        
-        // Keep last few points as is
-        const startIndex = data.length - Math.min(Math.floor(smoothingWindow / 2), data.length);
-        for (let i = startIndex; i < data.length; i++) {
-            const point = data[i];
-            if (point && typeof point.timestamp === 'number' && typeof point.value === 'number') {
-                smoothed.push(point);
-            }
-        }
-        
-        return smoothed;
+
+        return reduced.length > 1 ? reduced : data;
     }
     
     
@@ -375,14 +444,18 @@
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         
-        // Apply light smoothing to the data for better visualization
-        const smoothedData = applyLightSmoothing(dataToPlot);
+        // Ensure a stable draw order, then reduce points with min/max buckets.
+        const orderedData = [...dataToPlot].sort((a, b) => a.timestamp - b.timestamp);
+        const sampledData = downsampleMinMax(orderedData);
         
         ctx.beginPath();
         
-        let firstPoint = true;
+        let hasActiveSegment = false;
+        let previousTimestamp = Number.NaN;
+        let previousX = Number.NaN;
+        const reconnectThreshold = (plotWidth - margin.left - margin.right) * 0.25;
         
-        for (const point of smoothedData) {
+        for (const point of sampledData) {
             // Validate point before accessing properties
             if (!point || typeof point.timestamp !== 'number' || typeof point.value !== 'number') {
                 continue;
@@ -404,20 +477,24 @@
             
             
             if (x >= margin.left && x <= plotWidth - margin.right) {
-                if (firstPoint) {
+                const nonMonotonicTime = Number.isFinite(previousTimestamp) && point.timestamp <= previousTimestamp;
+                const largeJump = Number.isFinite(previousX) && Math.abs(x - previousX) > reconnectThreshold;
+
+                if (!hasActiveSegment || nonMonotonicTime || largeJump) {
                     ctx.moveTo(x, y);
-                    firstPoint = false;
+                    hasActiveSegment = true;
                 } else {
-                    // Always draw lines between consecutive points for smooth curves
+                    // Draw lines between consecutive reduced points.
                     ctx.lineTo(x, y);
                 }
+                previousTimestamp = point.timestamp;
+                previousX = x;
+            } else {
+                hasActiveSegment = false;
             }
         }
         
         ctx.stroke();
-        
-        // Skip drawing individual data points for smoother appearance
-        // With 7000 samples/sec, the connected line should be smooth enough
     }
     
     function render() {
@@ -444,12 +521,16 @@
         if (dataToPlot.length > 0) {
             drawDataLine(data, getChannelColor(0));
         }
+
+        drawThresholdLine();
         
         // Draw trigger line
         drawTriggerLine();
         
         // Draw labels
         drawLabels();
+
+        drawCanvasBadges();
         
         // Draw "No Data" message if no data
         if (dataToPlot.length === 0) {
@@ -458,23 +539,6 @@
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText('No Data Available', plotWidth / 2, plotHeight / 2);
-        }
-        
-        // Draw frozen indicator for frozen mode
-        if (mode === 'frozen' && isTriggered) {
-            ctx.fillStyle = 'rgba(255, 193, 7, 0.8)';
-            ctx.font = '12px Inter, system-ui, sans-serif';
-            ctx.textAlign = 'right';
-            ctx.textBaseline = 'top';
-            
-            // Check if we're still collecting data after trigger
-            const now = Date.now();
-            const timeSinceTrigger = (now - triggerTime) / 1000;
-            if (timeSinceTrigger <= timeWindow) {
-                ctx.fillText('COLLECTING...', plotWidth - margin.right - 5, margin.top + 5);
-            } else {
-                ctx.fillText('FROZEN', plotWidth - margin.right - 5, margin.top + 5);
-            }
         }
     }
     
