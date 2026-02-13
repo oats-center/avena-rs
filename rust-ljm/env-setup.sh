@@ -14,6 +14,8 @@ set -eo pipefail
 : "${CFG_BUCKET:=avenabox}"
 : "${CFG_KEY:=labjackd.config.i69-mu1}"
 : "${LABJACK_IP:=10.165.77.233}"
+: "${LABJACK_USB_ID:=ANY}"
+: "${LABJACK_OPEN_ORDER:=ethernet,usb}"
 : "${VIDEO_BUCKET:=avena_videos}"
 : "${VIDEO_TZ:=America/New_York}"
 : "${FFMPEG_BIN:=ffmpeg}"
@@ -21,7 +23,7 @@ set -eo pipefail
 : "${EXPORTER_HTTP_URL:=http://127.0.0.1:9001}"
 : "${ROLE:=server}"
 
-export NATS_SUBJECT ASSET_NUMBER OUTPUT_DIR NATS_CREDS_FILE CFG_BUCKET CFG_KEY LABJACK_IP
+export NATS_SUBJECT ASSET_NUMBER OUTPUT_DIR NATS_CREDS_FILE CFG_BUCKET CFG_KEY LABJACK_IP LABJACK_USB_ID LABJACK_OPEN_ORDER
 export VIDEO_BUCKET VIDEO_TZ FFMPEG_BIN VIDEO_TMP_DIR EXPORTER_HTTP_URL ROLE
 
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then

@@ -80,6 +80,59 @@ impl Drop for LabJackGuard {
     }
 }
 
+fn open_labjack_with_fallback(device_type: DeviceType) -> Result<i32, LJMError> {
+    let lj_ip = std::env::var("LABJACK_IP").unwrap_or_else(|_| "10.165.77.233".to_string());
+    let usb_id = std::env::var("LABJACK_USB_ID").unwrap_or_else(|_| "ANY".to_string());
+    let order = std::env::var("LABJACK_OPEN_ORDER").unwrap_or_else(|_| "ethernet,usb".to_string());
+
+    let mut modes: Vec<String> = order
+        .split(',')
+        .map(|part| part.trim().to_lowercase())
+        .filter(|part| !part.is_empty())
+        .collect();
+
+    if modes.is_empty() {
+        modes = vec!["ethernet".to_string(), "usb".to_string()];
+    }
+
+    let mut errors: Vec<String> = Vec::new();
+
+    for mode in modes {
+        match mode.as_str() {
+            "ethernet" | "tcp" => {
+                println!("[labjack] attempting ethernet open via {}", lj_ip);
+                match LJMLibrary::open_jack(device_type, ConnectionType::ETHERNET, lj_ip.as_str()) {
+                    Ok(handle) => return Ok(handle),
+                    Err(e) => errors.push(format!("ethernet({}): {:?}", lj_ip, e)),
+                }
+            }
+            "usb" => {
+                println!("[labjack] attempting usb open via {}", usb_id);
+                match LJMLibrary::open_jack(device_type, ConnectionType::USB, usb_id.as_str()) {
+                    Ok(handle) => return Ok(handle),
+                    Err(e) => errors.push(format!("usb({}): {:?}", usb_id, e)),
+                }
+            }
+            "any" => {
+                println!("[labjack] attempting any open");
+                match LJMLibrary::open_jack(device_type, ConnectionType::ANY, "ANY") {
+                    Ok(handle) => return Ok(handle),
+                    Err(e) => errors.push(format!("any: {:?}", e)),
+                }
+            }
+            other => {
+                errors.push(format!("unsupported mode '{}'", other));
+            }
+        }
+    }
+
+    Err(LJMError::LibraryError(format!(
+        "Could not open LabJack with order '{}': {}",
+        order,
+        errors.join(" | ")
+    )))
+}
+
 fn pad_channel(ch: u8) -> String {
     format!("ch{ch:02}")
 }
@@ -277,8 +330,7 @@ async fn sample_with_config(
     )
     .await?;
 
-    let lj_ip = std::env::var("LABJACK_IP").unwrap_or_else(|_| "10.165.77.233".to_string());
-    let handle = LJMLibrary::open_jack(DeviceType::T7, ConnectionType::ETHERNET, lj_ip.as_str())?;
+    let handle = open_labjack_with_fallback(DeviceType::T7)?;
     let _guard = LabJackGuard { handle };
 
     let info = LJMLibrary::get_handle_info(handle)?;
