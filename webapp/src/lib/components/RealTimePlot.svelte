@@ -44,8 +44,8 @@
         holdoffRemainingMs = 0,
         prebuffering = false,
         yAutoScale = true,
-        yMin = -1,
-        yMax = 1,
+        yMin = -10,
+        yMax = 10,
         invertX = false,
         invertY = false
     }: Props = $props();
@@ -151,8 +151,8 @@
 
     function getDisplayRange(points: DataPoint[]): { low: number; high: number } | null {
         if (!yAutoScale) {
-            const low = Number.isFinite(yMin) ? yMin : -1;
-            let high = Number.isFinite(yMax) ? yMax : 1;
+            const low = Number.isFinite(yMin) ? yMin : -10;
+            let high = Number.isFinite(yMax) ? yMax : 10;
             if (high <= low) high = low + 0.001;
             return { low, high };
         }
@@ -374,19 +374,11 @@
     function getContinuousReferenceTime(dataToPlot: DataPoint[]): number {
         const latestPoint = dataToPlot[dataToPlot.length - 1];
         const latestTimestamp = latestPoint?.timestamp;
-        const now = Date.now();
         if (typeof latestTimestamp !== 'number' || Number.isNaN(latestTimestamp)) {
-            return now;
+            return Date.now();
         }
-
-        // If producer and browser clocks drift beyond the visible window,
-        // anchor to latest sample so the trace stays on screen.
-        const skew = Math.abs(now - latestTimestamp);
-        if (skew > (timeWindow * 1000)) {
-            return latestTimestamp;
-        }
-
-        return now;
+        // Keep the newest sample pinned to the left edge in free-run.
+        return latestTimestamp;
     }
     
     
@@ -434,6 +426,14 @@
         
         
         const referenceTime = getContinuousReferenceTime(dataToPlot);
+
+        const orderedData = [...dataToPlot].sort((a, b) => a.timestamp - b.timestamp);
+        const windowStartMs = referenceTime - (timeWindow * 1000);
+        const visibleData = mode === 'frozen'
+            ? orderedData
+            : orderedData.filter((point) => point.timestamp >= windowStartMs && point.timestamp <= referenceTime);
+        if (visibleData.length < 1) return;
+
         const range = getDisplayRange(dataToPlot);
         if (!range) return;
         
@@ -445,8 +445,7 @@
         ctx.lineJoin = 'round';
         
         // Ensure a stable draw order, then reduce points with min/max buckets.
-        const orderedData = [...dataToPlot].sort((a, b) => a.timestamp - b.timestamp);
-        const sampledData = downsampleMinMax(orderedData);
+        const sampledData = downsampleMinMax(visibleData);
         
         ctx.beginPath();
         
@@ -468,7 +467,7 @@
                 // This can be negative (before trigger) or positive (after trigger)
                 timeSincePoint = (point.timestamp - triggerTime) / 1000;
             } else {
-                // For continuous mode, calculate time relative to now
+                // For continuous mode, calculate time relative to latest sample
                 timeSincePoint = (referenceTime - point.timestamp) / 1000;
             }
             

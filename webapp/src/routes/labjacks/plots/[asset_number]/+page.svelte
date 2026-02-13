@@ -88,6 +88,16 @@
         invertX: boolean;
         invertY: boolean;
     }
+
+    interface FrozenCaptureState {
+        triggerTime: number;
+        startTime: number;
+        endTime: number;
+        lastCapturedTimestamp: number;
+    }
+
+    const DEFAULT_MANUAL_Y_MIN = -10;
+    const DEFAULT_MANUAL_Y_MAX = 10;
     
     let assetNumber = $state<number>(0);
     let labjackConfig = $state<LabJackConfig | null>(null);
@@ -100,6 +110,7 @@
     let channelModes = $state<Map<number, ChannelPlotMode>>(new Map());
     let axisSettings = $state<Map<number, AxisSettings>>(new Map());
     const channelLastTimestamp = new Map<number, number>();
+    const channelFrozenCapture = new Map<number, FrozenCaptureState>();
     let isConnected = $state<boolean>(false);
     let flatBufferParser = new FlatBufferParser();
     let triggerSettings = $state<Map<number, TriggerSettings>>(new Map());
@@ -165,15 +176,34 @@
 
     function downsampleForDisplay(data: DataPoint[], targetPoints: number = 2000): DataPoint[] {
         if (data.length <= targetPoints) return data;
-        if (targetPoints < 3) return [data[0], data[data.length - 1]];
+        if (targetPoints < 4) return [data[0], data[data.length - 1]];
 
-        const step = (data.length - 1) / (targetPoints - 1);
+        const bucketCount = Math.max(2, Math.floor(targetPoints / 2));
+        const bucketSize = Math.ceil(data.length / bucketCount);
         const sampled: DataPoint[] = [];
-        for (let i = 0; i < targetPoints; i++) {
-            const index = Math.min(data.length - 1, Math.round(i * step));
-            sampled.push(data[index]);
+
+        for (let start = 0; start < data.length; start += bucketSize) {
+            const end = Math.min(data.length, start + bucketSize);
+            let minPoint: DataPoint | null = null;
+            let maxPoint: DataPoint | null = null;
+
+            for (let i = start; i < end; i++) {
+                const point = data[i];
+                if (!minPoint || point.value < minPoint.value) minPoint = point;
+                if (!maxPoint || point.value > maxPoint.value) maxPoint = point;
+            }
+
+            if (!minPoint || !maxPoint) continue;
+            if (minPoint.timestamp <= maxPoint.timestamp) {
+                sampled.push(minPoint);
+                if (maxPoint !== minPoint) sampled.push(maxPoint);
+            } else {
+                sampled.push(maxPoint);
+                if (maxPoint !== minPoint) sampled.push(minPoint);
+            }
         }
-        return sampled;
+
+        return sampled.length > 1 ? sampled : data;
     }
 
     let channelDisplayData = $derived(
@@ -261,6 +291,7 @@
         const newChannelRearmTime = new Map<number, number>();
         const newChannelPrebufferReady = new Map<number, boolean>();
         channelLastTimestamp.clear();
+        channelFrozenCapture.clear();
         
         labjackConfig.sensor_settings.channels_enabled.forEach(channel => {
             newChannelData.set(channel, []);
@@ -268,8 +299,8 @@
             newChannelModes.set(channel, 'free_run');
             newAxisSettings.set(channel, {
                 autoY: true,
-                yMin: -1,
-                yMax: 1,
+                yMin: DEFAULT_MANUAL_Y_MIN,
+                yMax: DEFAULT_MANUAL_Y_MAX,
                 xWindowSec: timeWindow,
                 invertX: false,
                 invertY: false
@@ -419,11 +450,12 @@
         }
 
         if (isChannelTriggered) {
-            if (triggerTime > 0) {
-                const frozenEnd = Math.max(triggerTime, postWindowEnd);
-                if (lastTimestamp <= frozenEnd) {
-                    captureFrozenDataForChannel(channel, fullData, triggerTime, channelTriggerSetting);
+            if (triggerTime > 0 && newChunk.length > 0) {
+                const state = channelFrozenCapture.get(channel);
+                if (!state || state.triggerTime !== triggerTime) {
+                    initializeFrozenCapture(channel, fullData, triggerTime, channelTriggerSetting);
                 }
+                appendFrozenDataFromChunk(channel, newChunk);
             }
 
             if (isSingleShot) {
@@ -446,6 +478,7 @@
         channelTriggered.set(channel, false);
         channelTriggerTime.set(channel, 0);
         channelRearmTime.set(channel, 0);
+        channelFrozenCapture.delete(channel);
 
         if (clearFrozen) {
             frozenChannelData.set(channel, []);
@@ -485,7 +518,7 @@
                 channelTriggerTime = new Map(channelTriggerTime);
                 channelRearmTime = new Map(channelRearmTime);
                 
-                captureFrozenDataForChannel(
+                initializeFrozenCapture(
                     channel,
                     fullData,
                     currentPoint.timestamp,
@@ -499,24 +532,58 @@
         }
     }
 
-    function captureFrozenDataForChannel(
+    function initializeFrozenCapture(
         channel: number,
         data: DataPoint[],
         triggerTime: number,
         settings: TriggerSettings
     ) {
-        const preFraction = Math.min(0.95, Math.max(0, settings.preTriggerPercent / 100));
-        const postWindowSec = Math.max(0.01, settings.postTriggerWindowSec || 0.01);
-        const preWindowSec = postWindowSec * (preFraction / (1 - preFraction));
+        const { preWindowSec, postWindowSec } = getTriggerWindows(settings);
         const startTime = triggerTime - (preWindowSec * 1000);
         const endTime = triggerTime + (postWindowSec * 1000); 
 
         const frozenData = data.filter(point => 
             point.timestamp >= startTime && point.timestamp <= endTime
         );
+
+        const lastCapturedTimestamp = frozenData.length > 0
+            ? frozenData[frozenData.length - 1].timestamp
+            : startTime;
+
+        channelFrozenCapture.set(channel, {
+            triggerTime,
+            startTime,
+            endTime,
+            lastCapturedTimestamp
+        });
         
         frozenChannelData.set(channel, frozenData);
         frozenChannelData = new Map(frozenChannelData);
+    }
+
+    function appendFrozenDataFromChunk(channel: number, newChunk: DataPoint[]) {
+        const state = channelFrozenCapture.get(channel);
+        if (!state || newChunk.length === 0) return;
+
+        const additions: DataPoint[] = [];
+        let lastCaptured = state.lastCapturedTimestamp;
+
+        for (const point of newChunk) {
+            if (point.timestamp <= lastCaptured) continue;
+            if (point.timestamp < state.startTime) continue;
+            if (point.timestamp > state.endTime) break;
+            additions.push(point);
+            lastCaptured = point.timestamp;
+        }
+
+        if (additions.length > 0) {
+            const currentFrozen = frozenChannelData.get(channel) || [];
+            frozenChannelData.set(channel, currentFrozen.concat(additions));
+            frozenChannelData = new Map(frozenChannelData);
+        }
+
+        state.lastCapturedTimestamp = Math.max(state.lastCapturedTimestamp, lastCaptured);
+        channelFrozenCapture.set(channel, state);
     }
     
     
@@ -1126,7 +1193,10 @@
                                             value={channelAxis?.xWindowSec ?? timeWindow}
                                             onchange={(e) => {
                                                 if (e.target instanceof HTMLInputElement) {
-                                                    updateAxisSettings(channel, { xWindowSec: parseFloat(e.target.value) || timeWindow });
+                                                    const parsed = parseFloat(e.target.value);
+                                                    updateAxisSettings(channel, {
+                                                        xWindowSec: Number.isFinite(parsed) ? parsed : timeWindow
+                                                    });
                                                 }
                                             }}
                                         />
@@ -1157,11 +1227,14 @@
                                             type="number"
                                             step="0.01"
                                             class="input input-bordered"
-                                            value={channelAxis?.yMin ?? -1}
+                                            value={channelAxis?.yMin ?? DEFAULT_MANUAL_Y_MIN}
                                             disabled={channelAxis?.autoY ?? true}
                                             onchange={(e) => {
                                                 if (e.target instanceof HTMLInputElement) {
-                                                    updateAxisSettings(channel, { yMin: parseFloat(e.target.value) || -1 });
+                                                    const parsed = parseFloat(e.target.value);
+                                                    updateAxisSettings(channel, {
+                                                        yMin: Number.isFinite(parsed) ? parsed : DEFAULT_MANUAL_Y_MIN
+                                                    });
                                                 }
                                             }}
                                         />
@@ -1176,11 +1249,14 @@
                                             type="number"
                                             step="0.01"
                                             class="input input-bordered"
-                                            value={channelAxis?.yMax ?? 1}
+                                            value={channelAxis?.yMax ?? DEFAULT_MANUAL_Y_MAX}
                                             disabled={channelAxis?.autoY ?? true}
                                             onchange={(e) => {
                                                 if (e.target instanceof HTMLInputElement) {
-                                                    updateAxisSettings(channel, { yMax: parseFloat(e.target.value) || 1 });
+                                                    const parsed = parseFloat(e.target.value);
+                                                    updateAxisSettings(channel, {
+                                                        yMax: Number.isFinite(parsed) ? parsed : DEFAULT_MANUAL_Y_MAX
+                                                    });
                                                 }
                                             }}
                                         />
@@ -1376,8 +1452,8 @@
                                     holdoffRemainingMs={getHoldoffRemainingMs(channel)}
                                     prebuffering={isTriggerMode(channelMode) && !isChannelTriggered && !isPrebufferReady}
                                     yAutoScale={channelAxis?.autoY ?? true}
-                                    yMin={channelAxis?.yMin ?? -1}
-                                    yMax={channelAxis?.yMax ?? 1}
+                                    yMin={channelAxis?.yMin ?? DEFAULT_MANUAL_Y_MIN}
+                                    yMax={channelAxis?.yMax ?? DEFAULT_MANUAL_Y_MAX}
                                     invertX={channelAxis?.invertX ?? false}
                                     invertY={channelAxis?.invertY ?? false}
                                 />

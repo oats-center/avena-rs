@@ -71,31 +71,37 @@ export function calculateSampleTimestamps(
         // Time between individual samples (ms). Example: 7000 Hz ~= 0.143 ms/sample.
         const sampleInterval = 1000 / samplingRate;
 
-        // Anchor the batch to producer timestamp when possible.
-        // If producer/browser clocks drift too much, fall back to local time.
         const now = Date.now();
         const parsedBatchTime = new Date(batchTimestamp).getTime();
         const hasParsedBatchTime = Number.isFinite(parsedBatchTime);
-        const isReasonableSkew = hasParsedBatchTime
-            ? Math.abs(parsedBatchTime - now) <= 2000
-            : false;
-        const hasPrevious = typeof previousLastTimestamp === 'number' && Number.isFinite(previousLastTimestamp);
-        const anchorTime = isReasonableSkew ? parsedBatchTime : now;
-        const hasUsablePrevious = hasPrevious
-            ? Math.abs((previousLastTimestamp as number) - anchorTime) <= 2000
-            : false;
-
-        let firstSampleTime = isReasonableSkew
+        const parsedFirstSampleTime = hasParsedBatchTime
             ? parsedBatchTime - ((values.length - 1) * sampleInterval)
-            : now - ((values.length - 1) * sampleInterval);
+            : Number.NaN;
+        const hasPrevious = typeof previousLastTimestamp === 'number' && Number.isFinite(previousLastTimestamp);
 
-        // Guarantee monotonic timestamps across received batches for each channel.
-        // If prior timestamps drift far from this batch's anchor, reset continuity.
-        if (hasUsablePrevious) {
-            const minNextStart = (previousLastTimestamp as number) + sampleInterval;
-            if (firstSampleTime < minNextStart) {
-                firstSampleTime = minNextStart;
+        let firstSampleTime: number;
+
+        if (hasPrevious) {
+            // Keep continuity first to avoid per-chunk timeline jumps.
+            const expectedFirstSample = (previousLastTimestamp as number) + sampleInterval;
+            firstSampleTime = expectedFirstSample;
+
+            // Snap back to producer time only for small drift.
+            if (hasParsedBatchTime) {
+                const driftMs = parsedFirstSampleTime - expectedFirstSample;
+                const maxSnapDriftMs = Math.max(sampleInterval * 4, 25);
+                if (Math.abs(driftMs) <= maxSnapDriftMs) {
+                    firstSampleTime = parsedFirstSampleTime;
+                }
             }
+        } else if (hasParsedBatchTime) {
+            // On first batch, trust producer timestamp unless it's wildly skewed.
+            const skewMs = Math.abs(parsedBatchTime - now);
+            firstSampleTime = skewMs <= (10 * 60 * 1000)
+                ? parsedFirstSampleTime
+                : now - ((values.length - 1) * sampleInterval);
+        } else {
+            firstSampleTime = now - ((values.length - 1) * sampleInterval);
         }
 
         return values.map((_, i) => firstSampleTime + (i * sampleInterval));
