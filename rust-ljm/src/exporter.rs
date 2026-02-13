@@ -5,23 +5,34 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
+use async_nats::{
+    ConnectOptions, ServerAddr,
+    jetstream::{self, object_store::ObjectStore},
+};
 use axum::{
     Router,
+    body::Body,
     extract::{
-        State,
+        Json, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
-    response::IntoResponse,
-    routing::get,
+    http::{HeaderValue, StatusCode, header},
+    response::{IntoResponse, Response},
+    routing::{get, post},
 };
-use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, Utc};
+use chrono::{
+    DateTime, Duration as ChronoDuration, LocalResult, NaiveDate, NaiveDateTime, TimeZone, Utc,
+};
+use chrono_tz::Tz;
 use futures_util::StreamExt;
 use parquet::{
     file::reader::{FileReader, SerializedFileReader},
     record::RowAccessor,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tokio::process::Command;
+use uuid::Uuid;
 
 mod calibration;
 
@@ -30,6 +41,16 @@ use calibration::CalibrationSpec;
 #[derive(Clone)]
 struct AppState {
     parquet_root: Arc<PathBuf>,
+    video: Option<Arc<VideoState>>,
+}
+
+#[derive(Clone)]
+struct VideoState {
+    jetstream: jetstream::Context,
+    video_bucket: String,
+    video_tz: Tz,
+    ffmpeg_bin: String,
+    video_tmp_dir: PathBuf,
 }
 
 #[derive(Debug, Deserialize)]
@@ -50,6 +71,31 @@ struct ExportRequest {
     download_name: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct VideoClipRequest {
+    asset: u32,
+    center_time: String,
+    pre_sec: Option<f64>,
+    post_sec: Option<f64>,
+}
+
+#[derive(Debug, Serialize)]
+struct ErrorPayload {
+    error: String,
+}
+
+#[derive(Debug, Clone)]
+struct VideoObject {
+    name: String,
+    start: DateTime<Utc>,
+    end: DateTime<Utc>,
+}
+
+enum ClipSourcePlan {
+    Single(VideoObject),
+    Stitch(VideoObject, VideoObject),
+}
+
 fn default_format() -> ExportFormat {
     ExportFormat::Csv
 }
@@ -66,18 +112,569 @@ async fn main() -> Result<()> {
         );
     }
 
+    let video = match build_video_state().await {
+        Ok(video_state) => {
+            println!(
+                "[exporter] Video clip API enabled. Bucket='{}', tmp='{}'",
+                video_state.video_bucket,
+                video_state.video_tmp_dir.display()
+            );
+            Some(Arc::new(video_state))
+        }
+        Err(err) => {
+            eprintln!(
+                "[exporter] Warning: video clip API disabled due to initialization error: {err}"
+            );
+            None
+        }
+    };
+
     let state = AppState {
         parquet_root: Arc::new(root_path),
+        video,
     };
 
     let app = Router::new()
         .route("/export", get(handle_ws))
+        .route("/video/clip", post(handle_video_clip))
         .with_state(state);
 
-    println!("[exporter] Listening for WebSocket exports on ws://{listen_addr}/export");
+    println!("[exporter] Listening on http://{listen_addr} (ws /export, post /video/clip)");
     let listener = tokio::net::TcpListener::bind(&listen_addr).await?;
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+async fn build_video_state() -> Result<VideoState> {
+    let video_bucket = std::env::var("VIDEO_BUCKET").unwrap_or_else(|_| "avena_videos".into());
+    let video_tz_raw = std::env::var("VIDEO_TZ").unwrap_or_else(|_| "America/New_York".into());
+    let video_tz = video_tz_raw.parse::<Tz>().map_err(|_| {
+        anyhow!(
+            "invalid VIDEO_TZ '{}': expected IANA timezone",
+            video_tz_raw
+        )
+    })?;
+
+    let ffmpeg_bin = std::env::var("FFMPEG_BIN").unwrap_or_else(|_| "ffmpeg".into());
+    let video_tmp_dir =
+        PathBuf::from(std::env::var("VIDEO_TMP_DIR").unwrap_or_else(|_| "/tmp/avena-video".into()));
+
+    let creds_path = std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| "apt.creds".into());
+    let opts = ConnectOptions::with_credentials_file(creds_path)
+        .await
+        .map_err(|e| anyhow!("failed to load NATS creds: {e}"))?
+        .request_timeout(None);
+
+    let servers: Vec<ServerAddr> = vec![
+        "nats://nats1.oats:4222".parse()?,
+        "nats://nats2.oats:4222".parse()?,
+        "nats://nats3.oats:4222".parse()?,
+    ];
+
+    let nc = opts
+        .connect(servers)
+        .await
+        .map_err(|e| anyhow!("NATS connect failed: {e}"))?;
+    let js = jetstream::new(nc);
+
+    // Validate bucket availability early.
+    js.get_object_store(&video_bucket)
+        .await
+        .map_err(|e| anyhow!("failed to access VIDEO_BUCKET '{}': {e}", video_bucket))?;
+
+    Ok(VideoState {
+        jetstream: js,
+        video_bucket,
+        video_tz,
+        ffmpeg_bin,
+        video_tmp_dir,
+    })
+}
+
+fn error_response(status: StatusCode, message: impl Into<String>) -> Response {
+    let payload = Json(ErrorPayload {
+        error: message.into(),
+    });
+    (status, payload).into_response()
+}
+
+async fn handle_video_clip(
+    State(state): State<AppState>,
+    Json(req): Json<VideoClipRequest>,
+) -> Response {
+    match process_video_clip(state, req).await {
+        Ok(response) => response,
+        Err((status, msg)) => error_response(status, msg),
+    }
+}
+
+async fn process_video_clip(
+    state: AppState,
+    req: VideoClipRequest,
+) -> std::result::Result<Response, (StatusCode, String)> {
+    let Some(video) = state.video.clone() else {
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "video clip API is disabled on this exporter".to_string(),
+        ));
+    };
+
+    let pre_sec = req.pre_sec.unwrap_or(5.0);
+    let post_sec = req.post_sec.unwrap_or(5.0);
+    if !pre_sec.is_finite() || pre_sec < 0.0 || !post_sec.is_finite() || post_sec < 0.0 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "pre_sec and post_sec must be non-negative finite numbers".to_string(),
+        ));
+    }
+
+    let center_time = DateTime::parse_from_rfc3339(&req.center_time)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid center_time: {e}")))?
+        .with_timezone(&Utc);
+
+    let pre_ms = (pre_sec * 1000.0).round() as i64;
+    let post_ms = (post_sec * 1000.0).round() as i64;
+    let clip_start = center_time - ChronoDuration::milliseconds(pre_ms);
+    let clip_end = center_time + ChronoDuration::milliseconds(post_ms);
+
+    if clip_end <= clip_start {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "computed clip interval is invalid".to_string(),
+        ));
+    }
+
+    let clip_duration = seconds_between(clip_start, clip_end)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid clip window: {e}")))?;
+
+    let store = video
+        .jetstream
+        .get_object_store(&video.video_bucket)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to open object store '{}': {e}", video.video_bucket),
+            )
+        })?;
+
+    let objects = list_asset_video_objects(&store, req.asset, video.video_tz)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to list video objects: {e}"),
+            )
+        })?;
+
+    if objects.is_empty() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            format!("no video objects found for asset {}", req.asset),
+        ));
+    }
+
+    let plan = resolve_clip_sources(&objects, clip_start, clip_end)
+        .map_err(|(code, msg)| (code, msg.to_string()))?;
+
+    let request_dir = video.video_tmp_dir.join(format!("clip-{}", Uuid::new_v4()));
+    tokio::fs::create_dir_all(&request_dir).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("failed to create temp directory: {e}"),
+        )
+    })?;
+
+    let result: Result<(Vec<u8>, String)> = async {
+        let output_path = request_dir.join("final_clip.mp4");
+
+        match plan {
+            ClipSourcePlan::Single(source) => {
+                let source_path = request_dir.join("single_source.mp4");
+                download_object_to_file(&store, &source.name, &source_path).await?;
+
+                let offset_sec = seconds_between(source.start, clip_start)
+                    .unwrap_or(0.0)
+                    .max(0.0);
+                run_ffmpeg_trim(
+                    &video.ffmpeg_bin,
+                    &source_path,
+                    &output_path,
+                    offset_sec,
+                    clip_duration,
+                )
+                .await?;
+            }
+            ClipSourcePlan::Stitch(left, right) => {
+                let left_source = request_dir.join("stitch_left_source.mp4");
+                let right_source = request_dir.join("stitch_right_source.mp4");
+                download_object_to_file(&store, &left.name, &left_source).await?;
+                download_object_to_file(&store, &right.name, &right_source).await?;
+
+                let left_part = request_dir.join("stitch_left_part.mp4");
+                let right_part = request_dir.join("stitch_right_part.mp4");
+
+                let left_trim_start = if clip_start > left.start {
+                    clip_start
+                } else {
+                    left.start
+                };
+                let left_trim_end = if clip_end < left.end {
+                    clip_end
+                } else {
+                    left.end
+                };
+                let left_offset = seconds_between(left.start, left_trim_start)
+                    .unwrap_or(0.0)
+                    .max(0.0);
+                let left_duration = seconds_between(left_trim_start, left_trim_end)?;
+
+                let right_trim_start = if clip_start > right.start {
+                    clip_start
+                } else {
+                    right.start
+                };
+                let right_trim_end = clip_end;
+                let right_offset = seconds_between(right.start, right_trim_start)
+                    .unwrap_or(0.0)
+                    .max(0.0);
+                let right_duration = seconds_between(right_trim_start, right_trim_end)?;
+
+                if left_duration <= 0.0 || right_duration <= 0.0 {
+                    return Err(anyhow!(
+                        "resolved stitched clip has non-positive segment duration"
+                    ));
+                }
+
+                run_ffmpeg_trim(
+                    &video.ffmpeg_bin,
+                    &left_source,
+                    &left_part,
+                    left_offset,
+                    left_duration,
+                )
+                .await?;
+                run_ffmpeg_trim(
+                    &video.ffmpeg_bin,
+                    &right_source,
+                    &right_part,
+                    right_offset,
+                    right_duration,
+                )
+                .await?;
+
+                run_ffmpeg_concat_and_trim(
+                    &video.ffmpeg_bin,
+                    &left_part,
+                    &right_part,
+                    &output_path,
+                    clip_duration,
+                    &request_dir,
+                )
+                .await?;
+            }
+        }
+
+        let file_bytes = tokio::fs::read(&output_path)
+            .await
+            .with_context(|| format!("failed to read generated clip {}", output_path.display()))?;
+
+        let filename = format!(
+            "clip_asset{}_{}_{}.mp4",
+            req.asset,
+            clip_start.format("%Y%m%dT%H%M%S"),
+            clip_end.format("%Y%m%dT%H%M%S")
+        );
+        Ok((file_bytes, filename))
+    }
+    .await;
+
+    let _ = tokio::fs::remove_dir_all(&request_dir).await;
+
+    let (bytes, filename) = result.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("failed to generate clip: {e}"),
+        )
+    })?;
+
+    let mut response = Response::new(Body::from(bytes));
+    *response.status_mut() = StatusCode::OK;
+    response
+        .headers_mut()
+        .insert(header::CONTENT_TYPE, HeaderValue::from_static("video/mp4"));
+
+    let content_disposition = format!("inline; filename=\"{}\"", filename);
+    let content_disposition_value = HeaderValue::from_str(&content_disposition).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("invalid response header: {e}"),
+        )
+    })?;
+    response
+        .headers_mut()
+        .insert(header::CONTENT_DISPOSITION, content_disposition_value);
+
+    Ok(response)
+}
+
+async fn list_asset_video_objects(
+    store: &ObjectStore,
+    asset: u32,
+    tz: Tz,
+) -> Result<Vec<VideoObject>> {
+    let mut list = store
+        .list()
+        .await
+        .map_err(|e| anyhow!("failed to start object listing: {e}"))?;
+
+    let mut out = Vec::new();
+    while let Some(item) = list.next().await {
+        let info = item.map_err(|e| anyhow!("failed reading object metadata: {e}"))?;
+        if let Some((key_asset, start, end)) = parse_video_key_interval(&info.name, tz) {
+            if key_asset == asset {
+                out.push(VideoObject {
+                    name: info.name,
+                    start,
+                    end,
+                });
+            }
+        }
+    }
+
+    out.sort_by_key(|entry| entry.start);
+    Ok(out)
+}
+
+fn parse_video_key_interval(name: &str, tz: Tz) -> Option<(u32, DateTime<Utc>, DateTime<Utc>)> {
+    let (asset_prefix, file_name) = name.split_once('/')?;
+    let asset_str = asset_prefix.strip_prefix("asset")?;
+    let asset: u32 = asset_str.parse().ok()?;
+
+    let stem = file_name.strip_suffix(".mp4")?;
+    let parts: Vec<&str> = stem.split('_').collect();
+    if parts.len() != 9 || parts[0] != "V" {
+        return None;
+    }
+
+    let start_str = format!("{}_{}_{}_{}", parts[1], parts[2], parts[3], parts[4]);
+    let end_str = format!("{}_{}_{}_{}", parts[5], parts[6], parts[7], parts[8]);
+
+    let start_naive = NaiveDateTime::parse_from_str(&start_str, "%Y_%m_%d_%H%M%S").ok()?;
+    let end_naive = NaiveDateTime::parse_from_str(&end_str, "%Y_%m_%d_%H%M%S").ok()?;
+
+    let start = local_to_utc(tz, start_naive)?;
+    let end = local_to_utc(tz, end_naive)?;
+    if end <= start {
+        return None;
+    }
+
+    Some((asset, start, end))
+}
+
+fn local_to_utc(tz: Tz, naive: NaiveDateTime) -> Option<DateTime<Utc>> {
+    match tz.from_local_datetime(&naive) {
+        LocalResult::Single(dt) => Some(dt.with_timezone(&Utc)),
+        LocalResult::Ambiguous(first, _) => Some(first.with_timezone(&Utc)),
+        LocalResult::None => None,
+    }
+}
+
+fn resolve_clip_sources(
+    objects: &[VideoObject],
+    clip_start: DateTime<Utc>,
+    clip_end: DateTime<Utc>,
+) -> std::result::Result<ClipSourcePlan, (StatusCode, &'static str)> {
+    if objects.is_empty() {
+        return Err((StatusCode::NOT_FOUND, "no video objects available"));
+    }
+
+    let grace = ChronoDuration::seconds(1);
+
+    for object in objects {
+        if object.start - grace <= clip_start && object.end + grace >= clip_end {
+            return Ok(ClipSourcePlan::Single(object.clone()));
+        }
+    }
+
+    let left = objects
+        .iter()
+        .rev()
+        .find(|entry| entry.start - grace <= clip_start && entry.end + grace >= clip_start)
+        .cloned();
+    let right = objects
+        .iter()
+        .find(|entry| entry.start - grace <= clip_end && entry.end + grace >= clip_end)
+        .cloned();
+
+    let (Some(left), Some(right)) = (left, right) else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            "no source object covers requested interval",
+        ));
+    };
+
+    if left.name == right.name {
+        return Ok(ClipSourcePlan::Single(left));
+    }
+
+    if right.start > left.end + grace {
+        return Err((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "requested interval spans a gap between video objects",
+        ));
+    }
+
+    if left.start - grace <= clip_start && right.end + grace >= clip_end {
+        return Ok(ClipSourcePlan::Stitch(left, right));
+    }
+
+    Err((
+        StatusCode::NOT_FOUND,
+        "requested interval is not fully covered by available objects",
+    ))
+}
+
+async fn download_object_to_file(
+    store: &ObjectStore,
+    object_name: &str,
+    target: &Path,
+) -> Result<()> {
+    let mut object = store
+        .get(object_name)
+        .await
+        .map_err(|e| anyhow!("failed to get object '{}': {e}", object_name))?;
+
+    let mut file = tokio::fs::File::create(target)
+        .await
+        .with_context(|| format!("failed to create target file {}", target.display()))?;
+
+    tokio::io::copy(&mut object, &mut file)
+        .await
+        .with_context(|| format!("failed to download object '{}'", object_name))?;
+
+    Ok(())
+}
+
+async fn run_ffmpeg_trim(
+    ffmpeg_bin: &str,
+    input_path: &Path,
+    output_path: &Path,
+    offset_sec: f64,
+    duration_sec: f64,
+) -> Result<()> {
+    if duration_sec <= 0.0 {
+        return Err(anyhow!("trim duration must be positive"));
+    }
+
+    let output = Command::new(ffmpeg_bin)
+        .arg("-y")
+        .arg("-hide_banner")
+        .arg("-loglevel")
+        .arg("error")
+        .arg("-i")
+        .arg(input_path)
+        .arg("-ss")
+        .arg(format!("{offset_sec:.3}"))
+        .arg("-t")
+        .arg(format!("{duration_sec:.3}"))
+        .arg("-map")
+        .arg("0:v:0")
+        .arg("-map")
+        .arg("0:a?")
+        .arg("-c:v")
+        .arg("libx264")
+        .arg("-preset")
+        .arg("veryfast")
+        .arg("-crf")
+        .arg("23")
+        .arg("-c:a")
+        .arg("aac")
+        .arg("-movflags")
+        .arg("+faststart")
+        .arg(output_path)
+        .output()
+        .await
+        .with_context(|| format!("failed to invoke ffmpeg binary '{}'", ffmpeg_bin))?;
+
+    if !output.status.success() {
+        return Err(anyhow!(
+            "ffmpeg trim failed (status {}): {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    Ok(())
+}
+
+async fn run_ffmpeg_concat_and_trim(
+    ffmpeg_bin: &str,
+    left_part: &Path,
+    right_part: &Path,
+    output_path: &Path,
+    total_duration_sec: f64,
+    temp_dir: &Path,
+) -> Result<()> {
+    let list_path = temp_dir.join("concat-list.txt");
+    let left_escaped = escape_ffmpeg_path(left_part);
+    let right_escaped = escape_ffmpeg_path(right_part);
+    let list_content = format!("file '{}'\nfile '{}'\n", left_escaped, right_escaped);
+    tokio::fs::write(&list_path, list_content)
+        .await
+        .with_context(|| format!("failed to write concat list {}", list_path.display()))?;
+
+    let stitched_path = temp_dir.join("stitched.mp4");
+    let concat_output = Command::new(ffmpeg_bin)
+        .arg("-y")
+        .arg("-hide_banner")
+        .arg("-loglevel")
+        .arg("error")
+        .arg("-f")
+        .arg("concat")
+        .arg("-safe")
+        .arg("0")
+        .arg("-i")
+        .arg(&list_path)
+        .arg("-c")
+        .arg("copy")
+        .arg(&stitched_path)
+        .output()
+        .await
+        .with_context(|| format!("failed to invoke ffmpeg concat with '{}'", ffmpeg_bin))?;
+
+    if !concat_output.status.success() {
+        return Err(anyhow!(
+            "ffmpeg concat failed (status {}): {}",
+            concat_output.status,
+            String::from_utf8_lossy(&concat_output.stderr)
+        ));
+    }
+
+    run_ffmpeg_trim(
+        ffmpeg_bin,
+        &stitched_path,
+        output_path,
+        0.0,
+        total_duration_sec,
+    )
+    .await?;
+
+    Ok(())
+}
+
+fn escape_ffmpeg_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\'', "'\\\\''")
+}
+
+fn seconds_between(start: DateTime<Utc>, end: DateTime<Utc>) -> Result<f64> {
+    if end < start {
+        return Err(anyhow!("negative time delta"));
+    }
+
+    let delta = end - start;
+    let milliseconds = delta.num_milliseconds();
+    Ok(milliseconds as f64 / 1000.0)
 }
 
 async fn handle_ws(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
@@ -96,7 +693,9 @@ async fn process_socket(mut socket: WebSocket, state: AppState) -> Result<()> {
     let Message::Text(text) = msg? else {
         socket
             .send(Message::Text(
-                json!({"type":"error","message":"expected JSON request"}).to_string(),
+                json!({"type":"error","message":"expected JSON request"})
+                    .to_string()
+                    .into(),
             ))
             .await
             .ok();
@@ -109,7 +708,9 @@ async fn process_socket(mut socket: WebSocket, state: AppState) -> Result<()> {
     if req.channels.is_empty() {
         socket
             .send(Message::Text(
-                json!({"type":"error","message":"no channels requested"}).to_string(),
+                json!({"type":"error","message":"no channels requested"})
+                    .to_string()
+                    .into(),
             ))
             .await
             .ok();
@@ -122,7 +723,9 @@ async fn process_socket(mut socket: WebSocket, state: AppState) -> Result<()> {
     if end < start {
         socket
             .send(Message::Text(
-                json!({"type":"error","message":"end must be after start"}).to_string(),
+                json!({"type":"error","message":"end must be after start"})
+                    .to_string()
+                    .into(),
             ))
             .await
             .ok();
@@ -132,7 +735,9 @@ async fn process_socket(mut socket: WebSocket, state: AppState) -> Result<()> {
     if !matches!(req.format, ExportFormat::Csv) {
         socket
             .send(Message::Text(
-                json!({"type":"error","message":"parquet streaming not yet supported"}).to_string(),
+                json!({"type":"error","message":"parquet streaming not yet supported"})
+                    .to_string()
+                    .into(),
             ))
             .await
             .ok();
@@ -155,7 +760,8 @@ async fn process_socket(mut socket: WebSocket, state: AppState) -> Result<()> {
                 "fileName": file_name,
                 "contentType": "text/csv"
             })
-            .to_string(),
+            .to_string()
+            .into(),
         ))
         .await?;
 
@@ -179,12 +785,7 @@ struct CsvStreamer {
 impl CsvStreamer {
     const CHUNK_SIZE: usize = 128 * 1024;
 
-    fn new(
-        socket: WebSocket,
-        asset: u32,
-        start: DateTime<Utc>,
-        end: DateTime<Utc>,
-    ) -> Self {
+    fn new(socket: WebSocket, asset: u32, start: DateTime<Utc>, end: DateTime<Utc>) -> Self {
         let mut chunk = Vec::with_capacity(Self::CHUNK_SIZE);
         chunk.extend_from_slice(b"timestamp,channel,raw_value,calibrated_value,calibration_id\n");
         Self {
@@ -217,7 +818,7 @@ impl CsvStreamer {
         }
         let data = std::mem::take(&mut self.chunk);
         self.bytes_sent += data.len();
-        self.socket.send(Message::Binary(data)).await?;
+        self.socket.send(Message::Binary(data.into())).await?;
         self.chunk = Vec::with_capacity(Self::CHUNK_SIZE);
         Ok(())
     }
@@ -249,9 +850,11 @@ impl CsvStreamer {
             "bytesSent": self.bytes_sent,
             "missingChannels": missing_channels
         });
-        self.socket.send(Message::Text(summary.to_string())).await?;
         self.socket
-            .send(Message::Text(json!({"type":"complete"}).to_string()))
+            .send(Message::Text(summary.to_string().into()))
+            .await?;
+        self.socket
+            .send(Message::Text(json!({"type":"complete"}).to_string().into()))
             .await?;
         self.socket.close().await.ok();
         Ok(())
@@ -326,11 +929,7 @@ fn read_calibration_from_metadata(
     reader: &SerializedFileReader<fs::File>,
     path: &Path,
 ) -> CalibrationSpec {
-    let Some(kv) = reader
-        .metadata()
-        .file_metadata()
-        .key_value_metadata()
-    else {
+    let Some(kv) = reader.metadata().file_metadata().key_value_metadata() else {
         return CalibrationSpec::default();
     };
 
@@ -376,4 +975,82 @@ fn date_range(start: NaiveDate, end: NaiveDate) -> Vec<NaiveDate> {
         current += ChronoDuration::days(1);
     }
     days
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dt_utc(s: &str) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(s)
+            .expect("valid dt")
+            .with_timezone(&Utc)
+    }
+
+    #[test]
+    fn parse_key_accepts_valid_object_name() {
+        let tz: Tz = "America/New_York".parse().unwrap();
+        let parsed =
+            parse_video_key_interval("asset1456/V_2026_02_13_090035_2026_02_13_091035.mp4", tz)
+                .expect("should parse");
+
+        assert_eq!(parsed.0, 1456);
+        assert!(parsed.2 > parsed.1);
+    }
+
+    #[test]
+    fn parse_key_rejects_invalid_name() {
+        let tz: Tz = "America/New_York".parse().unwrap();
+        let parsed = parse_video_key_interval("asset1456/bad_name.mp4", tz);
+        assert!(parsed.is_none());
+    }
+
+    #[test]
+    fn resolve_clip_single_source() {
+        let objects = vec![VideoObject {
+            name: "asset1456/V_2026_02_13_090000_2026_02_13_091000.mp4".to_string(),
+            start: dt_utc("2026-02-13T14:00:00Z"),
+            end: dt_utc("2026-02-13T14:10:00Z"),
+        }];
+
+        let plan = resolve_clip_sources(
+            &objects,
+            dt_utc("2026-02-13T14:05:00Z"),
+            dt_utc("2026-02-13T14:05:10Z"),
+        )
+        .expect("single source");
+
+        match plan {
+            ClipSourcePlan::Single(_) => {}
+            ClipSourcePlan::Stitch(_, _) => panic!("expected single source"),
+        }
+    }
+
+    #[test]
+    fn resolve_clip_stitched_sources() {
+        let objects = vec![
+            VideoObject {
+                name: "asset1456/V_2026_02_13_090000_2026_02_13_091000.mp4".to_string(),
+                start: dt_utc("2026-02-13T14:00:00Z"),
+                end: dt_utc("2026-02-13T14:10:00Z"),
+            },
+            VideoObject {
+                name: "asset1456/V_2026_02_13_091000_2026_02_13_092000.mp4".to_string(),
+                start: dt_utc("2026-02-13T14:10:00Z"),
+                end: dt_utc("2026-02-13T14:20:00Z"),
+            },
+        ];
+
+        let plan = resolve_clip_sources(
+            &objects,
+            dt_utc("2026-02-13T14:09:55Z"),
+            dt_utc("2026-02-13T14:10:05Z"),
+        )
+        .expect("stitch source");
+
+        match plan {
+            ClipSourcePlan::Single(_) => panic!("expected stitched source"),
+            ClipSourcePlan::Stitch(_, _) => {}
+        }
+    }
 }

@@ -8,6 +8,7 @@ WEBAPP_DIR="$APP_DIR/webapp"
 
 # Defaults for Tailnet deployment
 EXPORTER_WS_URL="${EXPORTER_WS_URL:-ws://100.64.0.75:9001/export}"
+EXPORTER_HTTP_URL="${EXPORTER_HTTP_URL:-http://100.64.0.75:9001}"
 WEB_PORT="${WEB_PORT:-3002}"
 
 command -v pnpm >/dev/null || { echo "pnpm is required"; exit 1; }
@@ -36,7 +37,7 @@ WEB_PORT="$WEB_PORT" pm2 start bash \
   --name "$APP_NAME" \
   --cwd "$WEBAPP_DIR" \
   -- \
-  -lc "pnpm run preview -- --host 0.0.0.0 --port ${WEB_PORT}"
+  -lc "EXPORTER_HTTP_URL='${EXPORTER_HTTP_URL}' pnpm run preview -- --host 0.0.0.0 --port ${WEB_PORT}"
 
 pm2 save
 
@@ -46,3 +47,4 @@ host_ip=$(tailscale ip -4 2>/dev/null | head -n1 || hostname -I | awk '{print $1
 echo ">>> Deployment complete."
 echo ">>> Web UI: http://${host_ip}:${WEB_PORT}"
 echo ">>> Exporter expected at ${EXPORTER_WS_URL}"
+echo ">>> Video API expected at ${EXPORTER_HTTP_URL}/video/clip"

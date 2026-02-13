@@ -3,6 +3,7 @@
     import { page } from "$app/stores";
     import { connect, getKeyValue, getKeys } from "$lib/nats.svelte";
     import { downloadExportViaWebSocket, type ExportRequestPayload } from "$lib/exporter";
+    import { requestVideoClip, type VideoClipRequestPayload } from "$lib/video";
     import { applyCalibration, normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
     import { FlatBufferParser, calculateSampleTimestamps } from "$lib/flatbuffer-parser";
@@ -119,6 +120,11 @@
     let exporting = $state<boolean>(false);
     let exportProgress = $state<number>(0);
     let exportTotal = $state<number | null>(null);
+    let videoDemoTime = $state<string>("");
+    let videoLoading = $state<boolean>(false);
+    let videoError = $state<string>("");
+    let videoUrl = $state<string>("");
+    let videoFileName = $state<string>("");
     
     // Get asset number from URL params
     $effect(() => {
@@ -644,6 +650,55 @@
         return date.toISOString();
     }
 
+    function clearVideoPreview() {
+        if (videoUrl) {
+            URL.revokeObjectURL(videoUrl);
+            videoUrl = "";
+        }
+        videoFileName = "";
+    }
+
+    async function fetchVideoDemoClip() {
+        if (!labjackConfig) {
+            videoError = "Configuration not loaded";
+            return;
+        }
+
+        if (!videoDemoTime) {
+            videoError = "Please select date and time";
+            return;
+        }
+
+        let centerIso: string;
+        try {
+            centerIso = toRfc3339(videoDemoTime);
+        } catch {
+            videoError = "Invalid date/time selection";
+            return;
+        }
+
+        videoLoading = true;
+        videoError = "";
+
+        try {
+            const payload: VideoClipRequestPayload = {
+                asset: labjackConfig.asset_number,
+                center_time: centerIso,
+                pre_sec: 5,
+                post_sec: 5
+            };
+            const result = await requestVideoClip(payload);
+            clearVideoPreview();
+            videoUrl = URL.createObjectURL(result.blob);
+            videoFileName = result.filename;
+        } catch (err) {
+            clearVideoPreview();
+            videoError = err instanceof Error ? err.message : "Failed to fetch video clip";
+        } finally {
+            videoLoading = false;
+        }
+    }
+
     function openExportModal() {
         if (!labjackConfig) return;
         const defaults = new Set(labjackConfig.sensor_settings.channels_enabled);
@@ -778,9 +833,14 @@
         uiNowTimer = setInterval(() => {
             uiNow = Date.now();
         }, 100);
+        if (!videoDemoTime) {
+            videoDemoTime = toLocalInputValue(new Date());
+        }
     });
     
     onDestroy(() => {
+        clearVideoPreview();
+
         if (uiNowTimer) {
             clearInterval(uiNowTimer);
             uiNowTimer = null;
@@ -935,6 +995,52 @@
                 >
                     Download Historical Data
                 </button>
+            </div>
+
+            <div class="card bg-base-100 shadow-xl mb-6">
+                <div class="card-body">
+                    <h4 class="card-title text-base-content">Video Clip Demo</h4>
+                    <p class="text-sm text-base-content/70">
+                        Manual clip around selected time for this asset (-5s to +5s).
+                    </p>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                        <div class="form-control md:col-span-2">
+                            <label class="label" for="video-demo-time">
+                                <span class="label-text">Center Time</span>
+                            </label>
+                            <input
+                                id="video-demo-time"
+                                type="datetime-local"
+                                step="1"
+                                class="input input-bordered"
+                                bind:value={videoDemoTime}
+                                disabled={videoLoading}
+                            />
+                        </div>
+                        <button
+                            class="btn btn-primary"
+                            onclick={fetchVideoDemoClip}
+                            disabled={videoLoading}
+                        >
+                            {videoLoading ? "Fetching..." : "Fetch 10s Clip"}
+                        </button>
+                    </div>
+
+                    {#if videoError}
+                        <div class="alert alert-error text-sm">
+                            <span>{videoError}</span>
+                        </div>
+                    {/if}
+
+                    {#if videoUrl}
+                        <div class="space-y-3">
+                            <video class="w-full rounded-lg bg-black max-h-96" controls src={videoUrl}></video>
+                            <a class="btn btn-outline btn-sm" href={videoUrl} download={videoFileName || `clip_asset${assetNumber}.mp4`}>
+                                Download {videoFileName || "clip"}
+                            </a>
+                        </div>
+                    {/if}
+                </div>
             </div>
 
 
