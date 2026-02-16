@@ -12,9 +12,18 @@ export const GET: RequestHandler = async ({ url, fetch }) => {
     return json({ error: 'EXPORTER_HTTP_URL is not set' }, { status: 500 });
   }
 
-  const upstream = await fetch(
-    `${exporterBase}/video/cameras?asset=${encodeURIComponent(String(asset))}`
-  );
+  let upstream: Response;
+  try {
+    upstream = await fetch(
+      `${exporterBase}/video/cameras?asset=${encodeURIComponent(String(asset))}`
+    );
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return json(
+      { error: `Failed to reach exporter video API at ${exporterBase}/video/cameras: ${reason}` },
+      { status: 502 }
+    );
+  }
 
   let body: any = null;
   try {

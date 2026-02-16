@@ -172,6 +172,7 @@
     let backendTriggerError = $state<string>("");
     let backendTriggerStatus = $state<string>("");
     let backendTriggerEvents = $state<BackendTriggerEvent[]>([]);
+    const MAX_BACKEND_TRIGGER_EVENTS = 10;
     const seenBackendTriggerKeys = new Set<string>();
     let autoVideoLastFetchAtMs = 0;
     
@@ -519,7 +520,7 @@
                 const key = backendTriggerEventKey(event);
                 if (seenBackendTriggerKeys.has(key)) continue;
                 rememberSeenTriggerKey(key);
-                backendTriggerEvents = [event, ...backendTriggerEvents].slice(0, 50);
+                backendTriggerEvents = [event, ...backendTriggerEvents].slice(0, MAX_BACKEND_TRIGGER_EVENTS);
                 void maybeFetchVideoFromTriggerEvent(event);
             }
         })();

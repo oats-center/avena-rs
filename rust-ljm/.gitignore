@@ -14,6 +14,10 @@
 # parquet files ignire
 parquet/*
 
+# runtime process/log artifacts
+.pids/
+logs/
+
 
 # creds
 apt.creds

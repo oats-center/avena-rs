@@ -8,3 +8,481 @@ JetStream stream 'labjack_triggers' already exists.
 [run #1] Connected to T7 (serial 470036330)
 [run #1] Streaming started: 20 scans/read @ 1000 Hz
 [watch_kv_config] Watching KV key 'labjackd.config.i69-mu1'
+[watch_kv_config] KV config updated (rev 152): SampleConfig { scans_per_read: 200, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {} }
+[run #1] Config change detected. Stopping stream...
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #2 with SampleConfig { scans_per_read: 200, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[run #2] Connected to T7 (serial 470036330)
+[run #2] Streaming started: 200 scans/read @ 1000 Hz
+[watch_kv_config] KV config updated (rev 153): SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {} }
+[run #2] Config change detected. Stopping stream...
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #3 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[run #3] Connected to T7 (serial 470036330)
+[run #3] Streaming started: 1000 scans/read @ 1000 Hz
+[watch_kv_config] KV config updated (rev 154): SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 0.0, holdoff_ms: 500 }} }
+[run #3] Config change detected. Stopping stream...
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #4 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 0.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[run #4] Connected to T7 (serial 470036330)
+[run #4] Streaming started: 1000 scans/read @ 1000 Hz
+[run #4] emitted 1 trigger event(s) for ch11
+[run #4] emitted 1 trigger event(s) for ch11
+[run #4] emitted 1 trigger event(s) for ch11
+[run #4] emitted 1 trigger event(s) for ch11
+[run #4] emitted 1 trigger event(s) for ch11
+[run #4] emitted 1 trigger event(s) for ch11
+[run #4] emitted 1 trigger event(s) for ch11
+[run #4] emitted 1 trigger event(s) for ch11
+[run #4] emitted 1 trigger event(s) for ch11
+[run #4] emitted 1 trigger event(s) for ch11
+[run #4] emitted 1 trigger event(s) for ch11
+[run #4] emitted 1 trigger event(s) for ch11
+[run #4] emitted 1 trigger event(s) for ch11
+[run #4] emitted 1 trigger event(s) for ch11
+[run #4] emitted 1 trigger event(s) for ch11
+[run #4] emitted 1 trigger event(s) for ch11
+[run #4] emitted 1 trigger event(s) for ch11
+[run #4] emitted 1 trigger event(s) for ch11
+[run #4] emitted 1 trigger event(s) for ch11
+[run #4] emitted 1 trigger event(s) for ch11
+[run #4] emitted 1 trigger event(s) for ch11
+[run #4] emitted 1 trigger event(s) for ch11
+[run #4] emitted 1 trigger event(s) for ch11
+[watch_kv_config] KV config updated (rev 155): SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 8.0, holdoff_ms: 500 }} }
+[run #4] Config change detected. Stopping stream...
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #5 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 8.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[run #5] Connected to T7 (serial 470036330)
+[run #5] Streaming started: 1000 scans/read @ 1000 Hz
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[watch_kv_config] KV config updated (rev 157): SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+[run #5] Config change detected. Stopping stream...
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #6 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[run #6] Connected to T7 (serial 470036330)
+[run #6] Streaming started: 1000 scans/read @ 1000 Hz
+Connected to NATS via creds!
+KV bucket 'avenabox' already exists.
+[bootstrap] Loaded initial config from KV 'avenabox:labjackd.config.i69-mu1': SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+[run_sampler] Starting sampler run #1 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+[watch_kv_config] Watching KV key 'labjackd.config.i69-mu1'
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[run #1] Connected to T7 (serial 470036330)
+[run #1] Streaming started: 1000 scans/read @ 1000 Hz
+[run #1] Error reading stream: LJMError::LibraryError(1224) (LJME_DEVICE_NOT_OPEN                                                                                                                                                                                                                                            )
+Connected to NATS via creds!
+KV bucket 'avenabox' already exists.
+[bootstrap] Loaded initial config from KV 'avenabox:labjackd.config.i69-mu1': SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+[run_sampler] Starting sampler run #1 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #2 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+[watch_kv_config] Watching KV key 'labjackd.config.i69-mu1'
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #3 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #4 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #5 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #6 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #7 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #8 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #9 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #10 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #11 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #12 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #13 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #14 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #15 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #16 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #17 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #18 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #19 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #20 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #21 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #22 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #23 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #24 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #25 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #26 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[labjack] attempting usb open via ANY
+[run_sampler] Sampler error: LibraryError::"Could not open LabJack with order 'ethernet,usb': ethernet(10.165.77.233): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0) | usb(ANY): LJMError::LibraryError(1227) (LJME_DEVICE_NOT_FOUND\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0)"
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #27 with SampleConfig { scans_per_read: 1000, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 80.0, holdoff_ms: 500 }} }
+Connected to NATS via creds!
+KV bucket 'avenabox' already exists.
+[bootstrap] Loaded initial config from KV 'avenabox:labjackd.config.i69-mu1': SampleConfig { scans_per_read: 500, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 8.0, holdoff_ms: 500 }} }
+[run_sampler] Starting sampler run #1 with SampleConfig { scans_per_read: 500, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 8.0, holdoff_ms: 500 }} }
+[watch_kv_config] Watching KV key 'labjackd.config.i69-mu1'
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[run #1] Connected to T7 (serial 470036330)
+[run #1] Streaming started: 500 scans/read @ 1000 Hz
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[run #1] emitted 1 trigger event(s) for ch11
+[watch_kv_config] KV config updated (rev 163): SampleConfig { scans_per_read: 100, suggested_scan_rate: 100.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 8.0, holdoff_ms: 500 }} }
+[run #1] Config change detected. Stopping stream...
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #2 with SampleConfig { scans_per_read: 100, suggested_scan_rate: 100.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 8.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[run #2] Connected to T7 (serial 470036330)
+[run #2] Streaming started: 100 scans/read @ 100 Hz
+[watch_kv_config] KV config updated (rev 164): SampleConfig { scans_per_read: 100, suggested_scan_rate: 100.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 4.0, holdoff_ms: 500 }} }
+[run #2] Config change detected. Stopping stream...
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #3 with SampleConfig { scans_per_read: 100, suggested_scan_rate: 100.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 4.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[run #3] Connected to T7 (serial 470036330)
+[run #3] Streaming started: 100 scans/read @ 100 Hz
+[run #3] emitted 1 trigger event(s) for ch11
+[run #3] emitted 1 trigger event(s) for ch11
+[run #3] emitted 1 trigger event(s) for ch11
+[run #3] emitted 1 trigger event(s) for ch11
+[run #3] emitted 1 trigger event(s) for ch11
+[run #3] emitted 1 trigger event(s) for ch11
+[run #3] emitted 1 trigger event(s) for ch11
+[run #3] emitted 1 trigger event(s) for ch11
+[run #3] emitted 1 trigger event(s) for ch11
+[run #3] emitted 1 trigger event(s) for ch11
+[run #3] emitted 1 trigger event(s) for ch11
+[run #3] emitted 1 trigger event(s) for ch11
+[run #3] emitted 1 trigger event(s) for ch11
+[run #3] emitted 1 trigger event(s) for ch11
+[run #3] emitted 1 trigger event(s) for ch11
+[run #3] emitted 1 trigger event(s) for ch11
+[run #3] emitted 1 trigger event(s) for ch11
+[run #3] emitted 1 trigger event(s) for ch11
+[run #3] emitted 1 trigger event(s) for ch11
+[run #3] emitted 1 trigger event(s) for ch11
+[run #3] emitted 1 trigger event(s) for ch11
+[run #3] emitted 1 trigger event(s) for ch11
+[run #3] emitted 1 trigger event(s) for ch11
+[watch_kv_config] KV config updated (rev 165): SampleConfig { scans_per_read: 100, suggested_scan_rate: 100.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 7.0, holdoff_ms: 500 }} }
+[run #3] Config change detected. Stopping stream...
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #4 with SampleConfig { scans_per_read: 100, suggested_scan_rate: 100.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 7.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[run #4] Connected to T7 (serial 470036330)
+[run #4] Streaming started: 100 scans/read @ 100 Hz
+[watch_kv_config] KV config updated (rev 166): SampleConfig { scans_per_read: 100, suggested_scan_rate: 100.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 4.5, holdoff_ms: 500 }} }
+[run #4] Config change detected. Stopping stream...
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #5 with SampleConfig { scans_per_read: 100, suggested_scan_rate: 100.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 4.5, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[run #5] Connected to T7 (serial 470036330)
+[run #5] Streaming started: 100 scans/read @ 100 Hz
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[run #5] emitted 1 trigger event(s) for ch11
+[watch_kv_config] KV config updated (rev 167): SampleConfig { scans_per_read: 100, suggested_scan_rate: 100.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 6.0, holdoff_ms: 500 }} }
+[run #5] Config change detected. Stopping stream...
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #6 with SampleConfig { scans_per_read: 100, suggested_scan_rate: 100.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 6.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[run #6] Connected to T7 (serial 470036330)
+[run #6] Streaming started: 100 scans/read @ 100 Hz

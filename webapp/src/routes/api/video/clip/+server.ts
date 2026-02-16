@@ -44,13 +44,22 @@ export const POST: RequestHandler = async ({ request, fetch }) => {
   if (!exporterBase) {
     return json({ error: 'EXPORTER_HTTP_URL is not set' }, { status: 500 });
   }
-  const upstream = await fetch(`${exporterBase}/video/clip`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${exporterBase}/video/clip`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return json(
+      { error: `Failed to reach exporter video API at ${exporterBase}/video/clip: ${reason}` },
+      { status: 502 }
+    );
+  }
 
   if (!upstream.ok) {
     let errorMessage = `Video clip request failed (${upstream.status})`;

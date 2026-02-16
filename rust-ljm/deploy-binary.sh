@@ -132,10 +132,41 @@ matches_bin() {
   local cmd
   cmd="$(ps -p "$pid" -o args= 2>/dev/null || true)"
   if [[ -n "$instance" ]]; then
-    [[ "$cmd" == *"INSTANCE=$instance"* && "$cmd" == *"$BIN_DIR/$bin"* ]]
+    [[ "$cmd" == *"${bin}@${instance}"* || ( "$cmd" == *"INSTANCE=$instance"* && "$cmd" == *"$BIN_DIR/$bin"* ) ]]
   else
     [[ "$cmd" == *"$BIN_DIR/$bin"* ]]
   fi
+}
+
+find_pid_by_logfile() {
+  local token="$1"
+  local bin="$2"
+  local instance="${3:-}"
+  local logfile
+  if [[ -n "$instance" ]]; then
+    logfile="$LOG_DIR/$token.log"
+  else
+    logfile="$LOG_DIR/$bin.log"
+  fi
+
+  [[ -f "$logfile" ]] || return 1
+  command -v lsof >/dev/null 2>&1 || return 1
+
+  local pids pid cmd
+  pids="$(lsof -t "$logfile" 2>/dev/null || true)"
+  [[ -n "$pids" ]] || return 1
+
+  while IFS= read -r pid; do
+    [[ -n "$pid" ]] || continue
+    is_running_pid "$pid" || continue
+    cmd="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+    if [[ "$cmd" == *"$BIN_DIR/$bin"* || ( -n "$instance" && "$cmd" == *"${bin}@${instance}"* ) ]]; then
+      echo "$pid"
+      return 0
+    fi
+  done <<< "$pids"
+
+  return 1
 }
 
 parse_token() {
@@ -168,14 +199,28 @@ get_running_pid() {
 
   local pids
   if [[ -n "$instance" ]]; then
-    pids="$(pgrep -f "INSTANCE=${instance} .*${BIN_DIR}/${bin}" 2>/dev/null || true)"
+    pids="$(pgrep -f "${bin}@${instance}" 2>/dev/null || true)"
+    if [[ -z "$pids" ]]; then
+      pids="$(pgrep -f "INSTANCE=${instance} .*${BIN_DIR}/${bin}" 2>/dev/null || true)"
+    fi
   else
     pids="$(pgrep -f "$BIN_DIR/$bin" 2>/dev/null || true)"
   fi
   if [[ -n "$pids" ]]; then
-    echo "$pids" | head -n1
+    local first_pid
+    first_pid="$(echo "$pids" | head -n1)"
+    echo "$first_pid" > "$pidfile"
+    echo "$first_pid"
     return 0
   fi
+
+  local log_pid
+  if log_pid="$(find_pid_by_logfile "$token" "$bin" "$instance")"; then
+    echo "$log_pid" > "$pidfile"
+    echo "$log_pid"
+    return 0
+  fi
+
   return 1
 }
 
@@ -240,9 +285,9 @@ start_one() {
       [[ -n "$settle_sec" ]] && env_args+=("VIDEO_UPLOAD_SETTLE_SEC=$settle_sec")
       [[ -n "$scan_sec" ]] && env_args+=("VIDEO_SCAN_INTERVAL_SEC=$scan_sec")
 
-      nohup env "${env_args[@]}" "$BIN_DIR/$bin" >> "$LOG_DIR/$token.log" 2>&1 &
+      nohup env "${env_args[@]}" bash -lc "exec -a '$token' '$BIN_DIR/$bin'" >> "$LOG_DIR/$token.log" 2>&1 &
     else
-      nohup env INSTANCE="$instance" "$BIN_DIR/$bin" >> "$LOG_DIR/$token.log" 2>&1 &
+      nohup env INSTANCE="$instance" bash -lc "exec -a '$token' '$BIN_DIR/$bin'" >> "$LOG_DIR/$token.log" 2>&1 &
     fi
   else
     nohup "$BIN_DIR/$bin" >> "$LOG_DIR/$bin.log" 2>&1 &
