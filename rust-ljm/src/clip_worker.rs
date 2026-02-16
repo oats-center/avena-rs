@@ -11,7 +11,8 @@ use async_nats::{
         self,
         consumer::{AckPolicy, pull},
         kv::{self, Store},
-        object_store::ObjectStore,
+        object_store::{self, ObjectStore},
+        stream,
     },
 };
 use chrono::{DateTime, Duration as ChronoDuration, LocalResult, NaiveDateTime, TimeZone, Utc};
@@ -224,6 +225,42 @@ async fn get_or_create_kv(js: &jetstream::Context, bucket: &str) -> Result<Store
     .with_context(|| format!("failed to create KV bucket '{}'", bucket))
 }
 
+async fn get_or_create_object_store(js: &jetstream::Context, bucket: &str) -> Result<ObjectStore> {
+    if let Ok(store) = js.get_object_store(bucket).await {
+        return Ok(store);
+    }
+    js.create_object_store(object_store::Config {
+        bucket: bucket.to_string(),
+        ..Default::default()
+    })
+    .await
+    .with_context(|| format!("failed to open or create VIDEO_BUCKET '{}'", bucket))
+}
+
+async fn get_or_create_trigger_stream(
+    js: &jetstream::Context,
+    cfg: &WorkerConfig,
+) -> Result<jetstream::stream::Stream> {
+    if let Ok(stream) = js.get_stream(cfg.trigger_stream.clone()).await {
+        return Ok(stream);
+    }
+
+    js.create_stream(stream::Config {
+        name: cfg.trigger_stream.clone(),
+        subjects: vec![cfg.trigger_subject_filter.clone()],
+        storage: stream::StorageType::File,
+        retention: stream::RetentionPolicy::Limits,
+        ..Default::default()
+    })
+    .await
+    .with_context(|| {
+        format!(
+            "failed to open or create trigger stream '{}' with subject '{}'",
+            cfg.trigger_stream, cfg.trigger_subject_filter
+        )
+    })
+}
+
 async fn connect_jetstream(cfg: &WorkerConfig) -> Result<jetstream::Context> {
     let opts = ConnectOptions::with_credentials_file(cfg.nats_creds_file.clone())
         .await
@@ -242,10 +279,7 @@ async fn init_trigger_consumer(
     js: &jetstream::Context,
     cfg: &WorkerConfig,
 ) -> Result<jetstream::consumer::Consumer<pull::Config>> {
-    let stream = js
-        .get_stream(cfg.trigger_stream.clone())
-        .await
-        .with_context(|| format!("failed to open trigger stream '{}'", cfg.trigger_stream))?;
+    let stream = get_or_create_trigger_stream(js, cfg).await?;
 
     stream
         .get_or_create_consumer(
@@ -900,10 +934,7 @@ async fn main() -> Result<()> {
     let cfg = WorkerConfig::from_env()?;
     let js = connect_jetstream(&cfg).await?;
     let state_store = get_or_create_kv(&js, &cfg.trigger_state_bucket).await?;
-    let store = js
-        .get_object_store(&cfg.video_bucket)
-        .await
-        .with_context(|| format!("failed to open VIDEO_BUCKET '{}'", cfg.video_bucket))?;
+    let store = get_or_create_object_store(&js, &cfg.video_bucket).await?;
     let consumer = init_trigger_consumer(&js, &cfg).await?;
 
     println!(

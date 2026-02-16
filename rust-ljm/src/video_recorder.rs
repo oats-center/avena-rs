@@ -7,7 +7,7 @@ use std::{
 use anyhow::{Context, Result, anyhow};
 use async_nats::{
     ConnectOptions, ServerAddr,
-    jetstream::{self, object_store::ObjectStore},
+    jetstream::{self, object_store, object_store::ObjectStore},
 };
 use chrono::{DateTime, Duration as ChronoDuration, LocalResult, NaiveDateTime, TimeZone};
 use chrono_tz::Tz;
@@ -151,10 +151,17 @@ async fn connect_jetstream(cfg: &RecorderConfig) -> Result<jetstream::Context> {
     Ok(jetstream::new(client))
 }
 
-async fn get_object_store(js: &jetstream::Context, bucket: &str) -> Result<ObjectStore> {
-    js.get_object_store(bucket)
-        .await
-        .with_context(|| format!("failed to open VIDEO_BUCKET '{}'", bucket))
+async fn get_or_create_object_store(js: &jetstream::Context, bucket: &str) -> Result<ObjectStore> {
+    if let Ok(store) = js.get_object_store(bucket).await {
+        return Ok(store);
+    }
+
+    js.create_object_store(object_store::Config {
+        bucket: bucket.to_string(),
+        ..Default::default()
+    })
+    .await
+    .with_context(|| format!("failed to open or create VIDEO_BUCKET '{}'", bucket))
 }
 
 async fn spawn_ffmpeg_segmenter(cfg: &RecorderConfig) -> Result<Child> {
@@ -307,7 +314,7 @@ async fn upload_ready_segments(store: &ObjectStore, cfg: &RecorderConfig) -> Res
 async fn main() -> Result<()> {
     let cfg = RecorderConfig::from_env()?;
     let js = connect_jetstream(&cfg).await?;
-    let store = get_object_store(&js, &cfg.video_bucket).await?;
+    let store = get_or_create_object_store(&js, &cfg.video_bucket).await?;
     let mut ffmpeg = spawn_ffmpeg_segmenter(&cfg).await?;
 
     let mut ticker = interval(Duration::from_secs(cfg.video_scan_interval_sec.max(1)));

@@ -5,16 +5,11 @@ Setup ENV Variables:
 CFG_BUCKET=avenabox
 NATS_CREDS_FILE=<file.creds>
 
-Then run following rust binaries. 
 
-1. Run Streamer on Edge
-2. Run Archiver on Edge
-3. Run Exporter on Edge
+Server
 
-    ```
-    bash
-    PARQUET_DIR=/src/avena/parquet_folder EXPORTER_ADDR=0.0.0.0:9001 ./target/release/exporter
-    ```
-
-4. Deploy Webapp on Server using `setup.sh`
+CFG_KEY=labjackd.config.i69-mu1 ROLE=server ./deploy-binary.sh start archiver@1001
+CFG_KEY=labjackd.config.macbook ROLE=server ./deploy-binary.sh start archiver@1456
+ROLE=server ./deploy-binary.sh start exporter clip-worker
+ROLE=server ./deploy-binary.sh status
 

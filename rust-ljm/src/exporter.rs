@@ -7,7 +7,7 @@ use std::{
 use anyhow::{Context, Result, anyhow};
 use async_nats::{
     ConnectOptions, ServerAddr,
-    jetstream::{self, object_store::ObjectStore},
+    jetstream::{self, object_store, object_store::ObjectStore},
 };
 use axum::{
     Router,
@@ -177,10 +177,20 @@ async fn build_video_state() -> Result<VideoState> {
         .map_err(|e| anyhow!("NATS connect failed: {e}"))?;
     let js = jetstream::new(nc);
 
-    // Validate bucket availability early.
-    js.get_object_store(&video_bucket)
+    // Ensure bucket exists for clip endpoints.
+    if js.get_object_store(&video_bucket).await.is_err() {
+        js.create_object_store(object_store::Config {
+            bucket: video_bucket.clone(),
+            ..Default::default()
+        })
         .await
-        .map_err(|e| anyhow!("failed to access VIDEO_BUCKET '{}': {e}", video_bucket))?;
+        .map_err(|e| {
+            anyhow!(
+                "failed to open or create VIDEO_BUCKET '{}': {e}",
+                video_bucket
+            )
+        })?;
+    }
 
     Ok(VideoState {
         jetstream: js,

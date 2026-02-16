@@ -7,11 +7,13 @@ fi
 
 set -eo pipefail
 
+_ENV_SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 : "${NATS_SUBJECT:=avenabox}"
 : "${NATS_SERVERS:=nats://nats1.oats:4222,nats://nats2.oats:4222,nats://nats3.oats:4222}"
 : "${ASSET_NUMBER:=1001}"
 : "${OUTPUT_DIR:=outputs}"
-: "${NATS_CREDS_FILE:=apt.creds}"
+: "${NATS_CREDS_FILE:=${_ENV_SETUP_DIR}/apt.creds}"
 : "${CFG_BUCKET:=avenabox}"
 : "${CFG_KEY:=labjackd.config.i69-mu1}"
 : "${LABJACK_IP:=10.165.77.233}"
@@ -63,3 +65,5 @@ if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
   eval "${_RUN_SH_SAVED_OPTS}"
   unset _RUN_SH_SAVED_OPTS
 fi
+
+unset _ENV_SETUP_DIR
