@@ -5,6 +5,7 @@ APP_NAME="avena-web"
 REPO_URL="https://github.com/oats-center/avena-rs.git"
 APP_DIR="$HOME/avena-rs"
 WEBAPP_DIR="$APP_DIR/webapp"
+TARGET_BRANCH="${TARGET_BRANCH:-videos}"
 
 # Defaults for Tailnet deployment
 EXPORTER_WS_URL="${EXPORTER_WS_URL:-ws://100.64.0.75:9001/export}"
@@ -19,9 +20,17 @@ if [ ! -d "$APP_DIR/.git" ]; then
   git clone "$REPO_URL" "$APP_DIR"
 fi
 
-echo ">>> Pulling latest code..."
+echo ">>> Checking out branch '${TARGET_BRANCH}'..."
 cd "$APP_DIR"
-git pull --rebase origin main
+git fetch origin "$TARGET_BRANCH"
+if git show-ref --verify --quiet "refs/heads/${TARGET_BRANCH}"; then
+  git checkout "$TARGET_BRANCH"
+else
+  git checkout -b "$TARGET_BRANCH" --track "origin/${TARGET_BRANCH}"
+fi
+
+echo ">>> Pulling latest code from '${TARGET_BRANCH}'..."
+git pull --rebase origin "$TARGET_BRANCH"
 
 echo ">>> Installing web dependencies..."
 cd "$WEBAPP_DIR"

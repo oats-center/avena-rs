@@ -84,3 +84,74 @@
 [video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130531.mp4 -> asset1001/camera_cam10/V_2026_02_16_130531_2026_02_16_130536.mp4
 [video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130533.mp4 -> asset1001/camera_cam10/V_2026_02_16_130533_2026_02_16_130538.mp4
 [video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130536.mp4 -> asset1001/camera_cam10/V_2026_02_16_130536_2026_02_16_130541.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130543.mp4 -> asset1001/camera_cam10/V_2026_02_16_130543_2026_02_16_130548.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130549.mp4 -> asset1001/camera_cam10/V_2026_02_16_130549_2026_02_16_130554.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130557.mp4 -> asset1001/camera_cam10/V_2026_02_16_130557_2026_02_16_130602.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130601.mp4 -> asset1001/camera_cam10/V_2026_02_16_130601_2026_02_16_130606.mp4
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 3769764, current: 3760206; changing to 3769765. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 3769765, current: 3761230; changing to 3769766. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 3769766, current: 3762254; changing to 3769767. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 3769767, current: 3763278; changing to 3769768. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 3769768, current: 3764302; changing to 3769769. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 3769769, current: 3765326; changing to 3769770. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 3769770, current: 3766350; changing to 3769771. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 3769771, current: 3767374; changing to 3769772. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 3769772, current: 3768398; changing to 3769773. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 3769773, current: 3769422; changing to 3769774. This may result in incorrect timestamps in the output file.
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130609.mp4 -> asset1001/camera_cam10/V_2026_02_16_130609_2026_02_16_130614.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130613.mp4 -> asset1001/camera_cam10/V_2026_02_16_130613_2026_02_16_130618.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130620.mp4 -> asset1001/camera_cam10/V_2026_02_16_130620_2026_02_16_130625.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130625.mp4 -> asset1001/camera_cam10/V_2026_02_16_130625_2026_02_16_130630.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130632.mp4 -> asset1001/camera_cam10/V_2026_02_16_130632_2026_02_16_130637.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130636.mp4 -> asset1001/camera_cam10/V_2026_02_16_130636_2026_02_16_130641.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130643.mp4 -> asset1001/camera_cam10/V_2026_02_16_130643_2026_02_16_130648.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130647.mp4 -> asset1001/camera_cam10/V_2026_02_16_130647_2026_02_16_130652.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130649.mp4 -> asset1001/camera_cam10/V_2026_02_16_130649_2026_02_16_130654.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130652.mp4 -> asset1001/camera_cam10/V_2026_02_16_130652_2026_02_16_130657.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130654.mp4 -> asset1001/camera_cam10/V_2026_02_16_130654_2026_02_16_130659.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130656.mp4 -> asset1001/camera_cam10/V_2026_02_16_130656_2026_02_16_130701.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130700.mp4 -> asset1001/camera_cam10/V_2026_02_16_130700_2026_02_16_130705.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130704.mp4 -> asset1001/camera_cam10/V_2026_02_16_130704_2026_02_16_130709.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130711.mp4 -> asset1001/camera_cam10/V_2026_02_16_130711_2026_02_16_130716.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130715.mp4 -> asset1001/camera_cam10/V_2026_02_16_130715_2026_02_16_130720.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130723.mp4 -> asset1001/camera_cam10/V_2026_02_16_130723_2026_02_16_130728.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130727.mp4 -> asset1001/camera_cam10/V_2026_02_16_130727_2026_02_16_130732.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130735.mp4 -> asset1001/camera_cam10/V_2026_02_16_130735_2026_02_16_130740.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130739.mp4 -> asset1001/camera_cam10/V_2026_02_16_130739_2026_02_16_130744.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130746.mp4 -> asset1001/camera_cam10/V_2026_02_16_130746_2026_02_16_130751.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130751.mp4 -> asset1001/camera_cam10/V_2026_02_16_130751_2026_02_16_130756.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130758.mp4 -> asset1001/camera_cam10/V_2026_02_16_130758_2026_02_16_130803.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130803.mp4 -> asset1001/camera_cam10/V_2026_02_16_130803_2026_02_16_130808.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130810.mp4 -> asset1001/camera_cam10/V_2026_02_16_130810_2026_02_16_130815.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130815.mp4 -> asset1001/camera_cam10/V_2026_02_16_130815_2026_02_16_130820.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130820.mp4 -> asset1001/camera_cam10/V_2026_02_16_130820_2026_02_16_130825.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130827.mp4 -> asset1001/camera_cam10/V_2026_02_16_130827_2026_02_16_130832.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130832.mp4 -> asset1001/camera_cam10/V_2026_02_16_130832_2026_02_16_130837.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130835.mp4 -> asset1001/camera_cam10/V_2026_02_16_130835_2026_02_16_130840.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130836.mp4 -> asset1001/camera_cam10/V_2026_02_16_130836_2026_02_16_130841.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130838.mp4 -> asset1001/camera_cam10/V_2026_02_16_130838_2026_02_16_130843.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130840.mp4 -> asset1001/camera_cam10/V_2026_02_16_130840_2026_02_16_130845.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130845.mp4 -> asset1001/camera_cam10/V_2026_02_16_130845_2026_02_16_130850.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130850.mp4 -> asset1001/camera_cam10/V_2026_02_16_130850_2026_02_16_130855.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130858.mp4 -> asset1001/camera_cam10/V_2026_02_16_130858_2026_02_16_130903.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130903.mp4 -> asset1001/camera_cam10/V_2026_02_16_130903_2026_02_16_130908.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130910.mp4 -> asset1001/camera_cam10/V_2026_02_16_130910_2026_02_16_130915.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130915.mp4 -> asset1001/camera_cam10/V_2026_02_16_130915_2026_02_16_130920.mp4
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 6847776, current: 6844236; changing to 6847777. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 6847777, current: 6845260; changing to 6847778. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 6847778, current: 6846284; changing to 6847779. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 6847779, current: 6847308; changing to 6847780. This may result in incorrect timestamps in the output file.
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130923.mp4 -> asset1001/camera_cam10/V_2026_02_16_130923_2026_02_16_130928.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130929.mp4 -> asset1001/camera_cam10/V_2026_02_16_130929_2026_02_16_130934.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130935.mp4 -> asset1001/camera_cam10/V_2026_02_16_130935_2026_02_16_130940.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130939.mp4 -> asset1001/camera_cam10/V_2026_02_16_130939_2026_02_16_130944.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130945.mp4 -> asset1001/camera_cam10/V_2026_02_16_130945_2026_02_16_130950.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130950.mp4 -> asset1001/camera_cam10/V_2026_02_16_130950_2026_02_16_130955.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130957.mp4 -> asset1001/camera_cam10/V_2026_02_16_130957_2026_02_16_131002.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_131002.mp4 -> asset1001/camera_cam10/V_2026_02_16_131002_2026_02_16_131007.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_131009.mp4 -> asset1001/camera_cam10/V_2026_02_16_131009_2026_02_16_131014.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_131011.mp4 -> asset1001/camera_cam10/V_2026_02_16_131011_2026_02_16_131016.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_131013.mp4 -> asset1001/camera_cam10/V_2026_02_16_131013_2026_02_16_131018.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_131015.mp4 -> asset1001/camera_cam10/V_2026_02_16_131015_2026_02_16_131020.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_131017.mp4 -> asset1001/camera_cam10/V_2026_02_16_131017_2026_02_16_131022.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_131020.mp4 -> asset1001/camera_cam10/V_2026_02_16_131020_2026_02_16_131025.mp4
