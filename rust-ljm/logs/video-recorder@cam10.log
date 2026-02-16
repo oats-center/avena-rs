@@ -5895,3 +5895,14 @@ Caused by:
 [aost#0:1/copy @ 0x7d1404600] Non-monotonic DTS; previous: 33615917, current: 33614740; changing to 33615918. This may result in incorrect timestamps in the output file.
 [aost#0:1/copy @ 0x7d1404600] Non-monotonic DTS; previous: 33615918, current: 33615764; changing to 33615919. This may result in incorrect timestamps in the output file.
 [video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_141715.mp4 -> asset1001/camera_cam10/V_2026_02_16_141715_2026_02_16_141720.mp4
+[aost#0:1/copy @ 0x8c9404600] Non-monotonic DTS; previous: 42520077, current: 42513785; changing to 42520078. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0x8c9404600] Non-monotonic DTS; previous: 42520078, current: 42514809; changing to 42520079. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0x8c9404600] Non-monotonic DTS; previous: 42520079, current: 42515833; changing to 42520080. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0x8c9404600] Non-monotonic DTS; previous: 42520080, current: 42516857; changing to 42520081. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0x8c9404600] Non-monotonic DTS; previous: 42520081, current: 42517881; changing to 42520082. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0x8c9404600] Non-monotonic DTS; previous: 42520082, current: 42518905; changing to 42520083. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0x8c9404600] Non-monotonic DTS; previous: 42520083, current: 42519929; changing to 42520084. This may result in incorrect timestamps in the output file.
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_141717.mp4 -> asset1001/camera_cam10/V_2026_02_16_141717_2026_02_16_141722.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_141719.mp4 -> asset1001/camera_cam10/V_2026_02_16_141719_2026_02_16_141724.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_141721.mp4 -> asset1001/camera_cam10/V_2026_02_16_141721_2026_02_16_141726.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_141722.mp4 -> asset1001/camera_cam10/V_2026_02_16_141722_2026_02_16_141727.mp4
