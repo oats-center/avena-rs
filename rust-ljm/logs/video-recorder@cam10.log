@@ -3673,3 +3673,7 @@ Caused by:
 [aost#0:1/copy @ 0x8c9404600] Non-monotonic DTS; previous: 23077593, current: 23075992; changing to 23077594. This may result in incorrect timestamps in the output file.
 [aost#0:1/copy @ 0x8c9404600] Non-monotonic DTS; previous: 23077594, current: 23077016; changing to 23077595. This may result in incorrect timestamps in the output file.
 [video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_140042.mp4 -> asset1001/camera_cam10/V_2026_02_16_140042_2026_02_16_140047.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_140045.mp4 -> asset1001/camera_cam10/V_2026_02_16_140045_2026_02_16_140050.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_140048.mp4 -> asset1001/camera_cam10/V_2026_02_16_140048_2026_02_16_140053.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_140049.mp4 -> asset1001/camera_cam10/V_2026_02_16_140049_2026_02_16_140054.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_140052.mp4 -> asset1001/camera_cam10/V_2026_02_16_140052_2026_02_16_140057.mp4
