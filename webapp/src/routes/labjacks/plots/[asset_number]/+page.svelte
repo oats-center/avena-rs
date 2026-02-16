@@ -3,7 +3,12 @@
     import { page } from "$app/stores";
     import { connect, getKeyValue, getKeys, putKeyValue } from "$lib/nats.svelte";
     import { downloadExportViaWebSocket, type ExportRequestPayload } from "$lib/exporter";
-    import { fetchVideoCameras, requestVideoClip, type VideoClipRequestPayload } from "$lib/video";
+    import {
+        fetchVideoCameras,
+        requestVideoClip,
+        type VideoClipRequestPayload,
+        type VideoCameraCoverage
+    } from "$lib/video";
     import { applyCalibration, normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
     import { FlatBufferParser, calculateSampleTimestamps } from "$lib/flatbuffer-parser";
@@ -114,6 +119,11 @@
         cameraId: string;
     }
 
+    interface TriggerFetchReadiness {
+        ready: boolean;
+        message: string;
+    }
+
     interface AxisSettings {
         autoY: boolean;
         yMin: number;
@@ -168,6 +178,7 @@
     let exportProgress = $state<number>(0);
     let exportTotal = $state<number | null>(null);
     let availableCameraIds = $state<string[]>([]);
+    let cameraCoverageById = $state<Map<string, VideoCameraCoverage>>(new Map());
     let cameraListLoading = $state<boolean>(false);
     let cameraListError = $state<string>("");
     let videoLoading = $state<boolean>(false);
@@ -286,6 +297,7 @@
         backendTriggerEvents = [];
         seenBackendTriggerKeys.clear();
         availableCameraIds = [];
+        cameraCoverageById = new Map();
         cameraListError = "";
         
         try {
@@ -552,8 +564,12 @@
         cameraListLoading = true;
         cameraListError = "";
         try {
-            const cameras = await fetchVideoCameras(labjackConfig.asset_number);
+            const result = await fetchVideoCameras(labjackConfig.asset_number);
+            const cameras = result.cameras;
             availableCameraIds = cameras;
+            cameraCoverageById = new Map(
+                result.coverage.map((entry) => [entry.camera_id, entry] as const)
+            );
             const preferred = cameras.find((camera) => camera !== "default") ?? cameras[0] ?? "";
             const nextRoutes = new Map(channelVideoRoutes);
             for (const channel of labjackConfig.sensor_settings.channels_enabled) {
@@ -923,6 +939,62 @@
         return trimmed.length > 0 ? trimmed : undefined;
     }
 
+    function parseIsoMs(value: string): number {
+        const ms = new Date(value).getTime();
+        return Number.isFinite(ms) ? ms : Number.NaN;
+    }
+
+    function getCameraCoverage(cameraId: string | undefined): VideoCameraCoverage | undefined {
+        if (!cameraId) return undefined;
+        return cameraCoverageById.get(cameraId);
+    }
+
+    function formatCoverageTime(iso: string): string {
+        const ms = parseIsoMs(iso);
+        if (!Number.isFinite(ms)) return iso;
+        return new Date(ms).toLocaleString();
+    }
+
+    function getTriggerFetchReadiness(event: BackendTriggerEvent): TriggerFetchReadiness {
+        const cameraId = resolveCameraIdForChannel(event.channel, true);
+        if (!cameraId) {
+            return {
+                ready: false,
+                message: `Video disabled for ch${event.channel.toString().padStart(2, "0")}`
+            };
+        }
+
+        const coverage = getCameraCoverage(cameraId);
+        if (!coverage) {
+            return {
+                ready: true,
+                message: `Coverage not available yet for ${cameraId}.`
+            };
+        }
+
+        const maxCenterMs = parseIsoMs(coverage.recommended_center_max);
+        const eventMs = Number.isFinite(event.trigger_time_unix_ms)
+            ? event.trigger_time_unix_ms
+            : parseIsoMs(event.trigger_time);
+        if (!Number.isFinite(maxCenterMs) || !Number.isFinite(eventMs)) {
+            return { ready: true, message: `${cameraId} coverage is available` };
+        }
+        if (eventMs > maxCenterMs) {
+            return {
+                ready: false,
+                message: `${cameraId} not caught up yet. Fetchable until ${formatCoverageTime(
+                    coverage.recommended_center_max
+                )}`
+            };
+        }
+        return {
+            ready: true,
+            message: `${cameraId} ready (fetchable until ${formatCoverageTime(
+                coverage.recommended_center_max
+            )})`
+        };
+    }
+
     function triggerAutoSaveBackendSettings() {
         triggerSettingsDirty = true;
         backendTriggerStatus = "Trigger settings changed. Saving to backend...";
@@ -1000,11 +1072,14 @@
 
     async function fetchClipForTriggerEvent(event: BackendTriggerEvent, sourceLabel: string) {
         manualVideoChannel = event.channel;
+        const readiness = getTriggerFetchReadiness(event);
+        if (!readiness.ready) {
+            videoError = readiness.message;
+            return;
+        }
         const cameraId = resolveCameraIdForChannel(event.channel, true);
         if (!cameraId) {
-            videoError = `Video feed is disabled for ch${event.channel
-                .toString()
-                .padStart(2, "0")}. Enable it in Per-Channel Video Routing.`;
+            videoError = "Camera is not configured for this channel";
             return;
         }
         await fetchClipByCenterIso(event.trigger_time, sourceLabel, cameraId);
@@ -1153,6 +1228,10 @@
             let fetched = 0;
             const maxFetch = 10;
             for (const event of triggerRangeResults.slice(0, maxFetch)) {
+                const readiness = getTriggerFetchReadiness(event);
+                if (!readiness.ready) {
+                    continue;
+                }
                 const cameraId = resolveCameraIdForChannel(event.channel, true);
                 if (!cameraId) {
                     continue;
@@ -1584,6 +1663,18 @@
                             <span class="text-xs text-error">{cameraListError}</span>
                         {/if}
                     </div>
+                    <div class="text-xs text-base-content/70">
+                        {#if cameraCoverageById.size === 0}
+                            Coverage not available yet. Refresh camera list to update fetch readiness.
+                        {:else}
+                            {#each Array.from(cameraCoverageById.entries()) as [cameraId, coverage]}
+                                <div>
+                                    <span class="font-semibold">{cameraId}</span>:
+                                    fetchable center time up to {formatCoverageTime(coverage.recommended_center_max)}
+                                </div>
+                            {/each}
+                        {/if}
+                    </div>
 
                     <div class="divider my-1">Recent Backend Trigger Events (Latest 10)</div>
                     {#if backendTriggerEvents.length === 0}
@@ -1604,6 +1695,7 @@
                                 </thead>
                                 <tbody>
                                     {#each backendTriggerEvents.slice(0, 10) as event}
+                                        {@const readiness = getTriggerFetchReadiness(event)}
                                         <tr>
                                             <td>{formatTriggerEventTime(event.trigger_time)}</td>
                                             <td>ch{event.channel.toString().padStart(2, "0")}</td>
@@ -1615,7 +1707,8 @@
                                                 <button
                                                     class="btn btn-primary btn-xs"
                                                     onclick={() => fetchClipForTriggerEvent(event, "Recent trigger")}
-                                                    disabled={videoLoading}
+                                                    disabled={videoLoading || !readiness.ready}
+                                                    title={readiness.message}
                                                 >
                                                     Fetch
                                                 </button>
@@ -1720,6 +1813,7 @@
                                 </thead>
                                 <tbody>
                                     {#each triggerRangeResults as event}
+                                        {@const readiness = getTriggerFetchReadiness(event)}
                                         <tr>
                                             <td>{formatTriggerEventTime(event.trigger_time)}</td>
                                             <td>ch{event.channel.toString().padStart(2, "0")}</td>
@@ -1729,7 +1823,8 @@
                                                 <button
                                                     class="btn btn-primary btn-xs"
                                                     onclick={() => fetchClipForTriggerEvent(event, "Range trigger")}
-                                                    disabled={videoLoading}
+                                                    disabled={videoLoading || !readiness.ready}
+                                                    title={readiness.message}
                                                 >
                                                     Fetch
                                                 </button>

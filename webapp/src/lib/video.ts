@@ -11,7 +11,21 @@ export interface VideoClipResult {
   filename: string;
 }
 
-export async function fetchVideoCameras(asset: number): Promise<string[]> {
+export interface VideoCameraCoverage {
+  camera_id: string;
+  latest_start: string;
+  latest_end: string;
+  recommended_center_max: string;
+}
+
+export interface VideoCameraListResult {
+  cameras: string[];
+  coverage: VideoCameraCoverage[];
+  default_clip_pre_sec: number;
+  default_clip_post_sec: number;
+}
+
+export async function fetchVideoCameras(asset: number): Promise<VideoCameraListResult> {
   const response = await fetch(`/api/video/cameras?asset=${encodeURIComponent(String(asset))}`);
   if (!response.ok) {
     let message = `Video camera request failed (${response.status})`;
@@ -28,8 +42,33 @@ export async function fetchVideoCameras(asset: number): Promise<string[]> {
   }
 
   const body = await response.json();
-  if (!Array.isArray(body?.cameras)) return [];
-  return body.cameras.filter((value: unknown): value is string => typeof value === 'string');
+  const cameras = Array.isArray(body?.cameras)
+    ? body.cameras.filter((value: unknown): value is string => typeof value === 'string')
+    : [];
+
+  const coverage = Array.isArray(body?.coverage)
+    ? body.coverage
+        .filter((entry: unknown): entry is Record<string, unknown> => !!entry && typeof entry === 'object')
+        .map((entry): VideoCameraCoverage | null => {
+          const camera_id = typeof entry.camera_id === 'string' ? entry.camera_id : '';
+          const latest_start = typeof entry.latest_start === 'string' ? entry.latest_start : '';
+          const latest_end = typeof entry.latest_end === 'string' ? entry.latest_end : '';
+          const recommended_center_max =
+            typeof entry.recommended_center_max === 'string' ? entry.recommended_center_max : '';
+          if (!camera_id) return null;
+          return { camera_id, latest_start, latest_end, recommended_center_max };
+        })
+        .filter((entry: VideoCameraCoverage | null): entry is VideoCameraCoverage => entry !== null)
+    : [];
+
+  return {
+    cameras,
+    coverage,
+    default_clip_pre_sec:
+      typeof body?.default_clip_pre_sec === 'number' ? body.default_clip_pre_sec : 5,
+    default_clip_post_sec:
+      typeof body?.default_clip_post_sec === 'number' ? body.default_clip_post_sec : 5,
+  };
 }
 
 function parseFilenameFromDisposition(disposition: string | null): string | null {

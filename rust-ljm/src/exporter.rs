@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
     sync::Arc,
@@ -94,6 +95,17 @@ struct ErrorPayload {
 struct VideoCameraListResponse {
     asset: u32,
     cameras: Vec<String>,
+    default_clip_pre_sec: f64,
+    default_clip_post_sec: f64,
+    coverage: Vec<VideoCameraCoverage>,
+}
+
+#[derive(Debug, Serialize)]
+struct VideoCameraCoverage {
+    camera_id: String,
+    latest_start: String,
+    latest_end: String,
+    recommended_center_max: String,
 }
 
 #[derive(Debug, Clone)]
@@ -266,13 +278,43 @@ async fn handle_video_cameras(
         }
     };
 
-    let mut cameras: Vec<String> = objects.into_iter().map(|obj| obj.camera_id).collect();
+    let mut cameras: Vec<String> = objects.iter().map(|obj| obj.camera_id.clone()).collect();
     cameras.sort();
     cameras.dedup();
+
+    let mut coverage_map: BTreeMap<String, (DateTime<Utc>, DateTime<Utc>)> = BTreeMap::new();
+    for object in &objects {
+        coverage_map
+            .entry(object.camera_id.clone())
+            .and_modify(|entry| {
+                if object.start > entry.0 {
+                    entry.0 = object.start;
+                }
+                if object.end > entry.1 {
+                    entry.1 = object.end;
+                }
+            })
+            .or_insert((object.start, object.end));
+    }
+    let default_pre_sec = 5.0;
+    let default_post_sec = 5.0;
+    let coverage = coverage_map
+        .into_iter()
+        .map(|(camera_id, (latest_start, latest_end))| VideoCameraCoverage {
+            camera_id,
+            latest_start: latest_start.to_rfc3339(),
+            latest_end: latest_end.to_rfc3339(),
+            recommended_center_max: (latest_end - ChronoDuration::seconds(default_post_sec as i64))
+                .to_rfc3339(),
+        })
+        .collect::<Vec<_>>();
 
     Json(VideoCameraListResponse {
         asset: req.asset,
         cameras,
+        default_clip_pre_sec: default_pre_sec,
+        default_clip_post_sec: default_post_sec,
+        coverage,
     })
     .into_response()
 }
