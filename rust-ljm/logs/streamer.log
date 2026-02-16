@@ -486,3 +486,76 @@ JetStream stream 'labjack_triggers' already exists.
 [labjack] attempting ethernet open via 10.165.77.233
 [run #6] Connected to T7 (serial 470036330)
 [run #6] Streaming started: 100 scans/read @ 100 Hz
+[watch_kv_config] KV config updated (rev 168): SampleConfig { scans_per_read: 100, suggested_scan_rate: 100.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: false, trigger_type: Rising, threshold: 6.0, holdoff_ms: 500 }} }
+[run #6] Config change detected. Stopping stream...
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #7 with SampleConfig { scans_per_read: 100, suggested_scan_rate: 100.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: false, trigger_type: Rising, threshold: 6.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[run #7] Connected to T7 (serial 470036330)
+[run #7] Streaming started: 100 scans/read @ 100 Hz
+[watch_kv_config] KV config updated (rev 169): SampleConfig { scans_per_read: 100, suggested_scan_rate: 100.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: false, trigger_type: Rising, threshold: 5.0, holdoff_ms: 500 }} }
+[run #7] Config change detected. Stopping stream...
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #8 with SampleConfig { scans_per_read: 100, suggested_scan_rate: 100.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: false, trigger_type: Rising, threshold: 5.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[run #8] Connected to T7 (serial 470036330)
+[run #8] Streaming started: 100 scans/read @ 100 Hz
+[watch_kv_config] KV config updated (rev 170): SampleConfig { scans_per_read: 100, suggested_scan_rate: 100.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: false, trigger_type: Rising, threshold: 4.8, holdoff_ms: 500 }} }
+[run #8] Config change detected. Stopping stream...
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #9 with SampleConfig { scans_per_read: 100, suggested_scan_rate: 100.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: false, trigger_type: Rising, threshold: 4.8, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[run #9] Connected to T7 (serial 470036330)
+[run #9] Streaming started: 100 scans/read @ 100 Hz
+[watch_kv_config] KV config updated (rev 172): SampleConfig { scans_per_read: 100, suggested_scan_rate: 100.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 4.8, holdoff_ms: 500 }} }
+[run #9] Config change detected. Stopping stream...
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #10 with SampleConfig { scans_per_read: 100, suggested_scan_rate: 100.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 4.8, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[run #10] Connected to T7 (serial 470036330)
+[run #10] Streaming started: 100 scans/read @ 100 Hz
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[run #10] emitted 1 trigger event(s) for ch11
+[watch_kv_config] KV config updated (rev 175): SampleConfig { scans_per_read: 100, suggested_scan_rate: 100.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 6.0, holdoff_ms: 500 }} }
+[run #10] Config change detected. Stopping stream...
+[run_sampler] Restarting sampler after config change...
+[run_sampler] Starting sampler run #11 with SampleConfig { scans_per_read: 100, suggested_scan_rate: 100.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {11: TriggerSettings { enabled: true, trigger_type: Rising, threshold: 6.0, holdoff_ms: 500 }} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[run #11] Connected to T7 (serial 470036330)
+[run #11] Streaming started: 100 scans/read @ 100 Hz

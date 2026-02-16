@@ -103,6 +103,17 @@
         calibration_id: string;
     }
 
+    interface TriggerRecordEntry {
+        id?: string;
+        event?: unknown;
+        status?: string;
+    }
+
+    interface ChannelVideoRoute {
+        enabled: boolean;
+        cameraId: string;
+    }
+
     interface AxisSettings {
         autoY: boolean;
         yMin: number;
@@ -156,8 +167,6 @@
     let exporting = $state<boolean>(false);
     let exportProgress = $state<number>(0);
     let exportTotal = $state<number | null>(null);
-    let videoDemoTime = $state<string>("");
-    let videoCameraId = $state<string>("");
     let availableCameraIds = $state<string[]>([]);
     let cameraListLoading = $state<boolean>(false);
     let cameraListError = $state<string>("");
@@ -165,16 +174,23 @@
     let videoError = $state<string>("");
     let videoUrl = $state<string>("");
     let videoFileName = $state<string>("");
-    let autoVideoOnTrigger = $state<boolean>(false);
-    let autoVideoCooldownSec = $state<number>(5);
-    let autoVideoStatus = $state<string>("");
     let backendTriggerSaving = $state<boolean>(false);
     let backendTriggerError = $state<string>("");
     let backendTriggerStatus = $state<string>("");
     let backendTriggerEvents = $state<BackendTriggerEvent[]>([]);
     const MAX_BACKEND_TRIGGER_EVENTS = 10;
     const seenBackendTriggerKeys = new Set<string>();
-    let autoVideoLastFetchAtMs = 0;
+    let manualVideoChannel = $state<number>(0);
+    let channelVideoRoutes = $state<Map<number, ChannelVideoRoute>>(new Map());
+    let triggerSettingsDirty = $state<boolean>(false);
+    let triggerAutoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+    let triggerRangeStart = $state<string>("");
+    let triggerRangeEnd = $state<string>("");
+    let triggerRangeLoading = $state<boolean>(false);
+    let triggerRangeError = $state<string>("");
+    let triggerRangeStatus = $state<string>("");
+    let triggerRangeResults = $state<BackendTriggerEvent[]>([]);
+    let triggerRangeFetchLoading = $state<boolean>(false);
     
     // Get asset number from URL params
     $effect(() => {
@@ -193,11 +209,6 @@
         axisSettings;
         triggerSettings;
         updateMaxDataPoints();
-    });
-
-    $effect(() => {
-        if (typeof window === "undefined") return;
-        localStorage.setItem("videoCameraId", videoCameraId);
     });
 
     function updateMaxDataPoints() {
@@ -273,7 +284,6 @@
         backendTriggerError = "";
         backendTriggerStatus = "";
         backendTriggerEvents = [];
-        autoVideoStatus = "";
         seenBackendTriggerKeys.clear();
         availableCameraIds = [];
         cameraListError = "";
@@ -349,6 +359,7 @@
         const newChannelTriggerTime = new Map<number, number>();
         const newChannelRearmTime = new Map<number, number>();
         const newChannelPrebufferReady = new Map<number, boolean>();
+        const nextVideoRoutes = new Map<number, ChannelVideoRoute>(channelVideoRoutes);
         channelLastTimestamp.clear();
         channelFrozenCapture.clear();
         
@@ -377,6 +388,12 @@
             newChannelTriggerTime.set(channel, 0);
             newChannelRearmTime.set(channel, 0);
             newChannelPrebufferReady.set(channel, false);
+
+            const existingRoute = nextVideoRoutes.get(channel);
+            nextVideoRoutes.set(channel, {
+                enabled: existingRoute?.enabled ?? false,
+                cameraId: existingRoute?.cameraId ?? ""
+            });
         });
         
         channelData = newChannelData;
@@ -388,6 +405,8 @@
         channelTriggerTime = newChannelTriggerTime;
         channelRearmTime = newChannelRearmTime;
         channelPrebufferReady = newChannelPrebufferReady;
+        channelVideoRoutes = nextVideoRoutes;
+        manualVideoChannel = labjackConfig.sensor_settings.channels_enabled[0] ?? 0;
     }
     
     async function startDataSubscription() {
@@ -470,25 +489,28 @@
         return "";
     }
 
+    function parseBackendTriggerEventObject(parsed: any): BackendTriggerEvent | null {
+        if (!parsed || typeof parsed !== "object") return null;
+        if (!Number.isInteger(parsed.asset) || !Number.isInteger(parsed.channel)) return null;
+        if (typeof parsed.trigger_time !== "string") return null;
+        return {
+            asset: parsed.asset,
+            channel: parsed.channel,
+            trigger_time: parsed.trigger_time,
+            trigger_time_unix_ms: Number(parsed.trigger_time_unix_ms ?? 0),
+            raw_value: Number(parsed.raw_value ?? 0),
+            calibrated_value: Number(parsed.calibrated_value ?? 0),
+            threshold: Number(parsed.threshold ?? 0),
+            trigger_type: parsed.trigger_type === "falling" ? "falling" : "rising",
+            holdoff_ms: Math.max(0, Number(parsed.holdoff_ms ?? 0)),
+            calibration_id:
+                typeof parsed.calibration_id === "string" ? parsed.calibration_id : "identity"
+        };
+    }
+
     function parseBackendTriggerEvent(data: any): BackendTriggerEvent | null {
         try {
-            const parsed = JSON.parse(decodeMessageText(data));
-            if (!parsed || typeof parsed !== "object") return null;
-            if (!Number.isInteger(parsed.asset) || !Number.isInteger(parsed.channel)) return null;
-            if (typeof parsed.trigger_time !== "string") return null;
-            return {
-                asset: parsed.asset,
-                channel: parsed.channel,
-                trigger_time: parsed.trigger_time,
-                trigger_time_unix_ms: Number(parsed.trigger_time_unix_ms ?? 0),
-                raw_value: Number(parsed.raw_value ?? 0),
-                calibrated_value: Number(parsed.calibrated_value ?? 0),
-                threshold: Number(parsed.threshold ?? 0),
-                trigger_type: parsed.trigger_type === "falling" ? "falling" : "rising",
-                holdoff_ms: Math.max(0, Number(parsed.holdoff_ms ?? 0)),
-                calibration_id:
-                    typeof parsed.calibration_id === "string" ? parsed.calibration_id : "identity"
-            };
+            return parseBackendTriggerEventObject(JSON.parse(decodeMessageText(data)));
         } catch {
             return null;
         }
@@ -521,7 +543,6 @@
                 if (seenBackendTriggerKeys.has(key)) continue;
                 rememberSeenTriggerKey(key);
                 backendTriggerEvents = [event, ...backendTriggerEvents].slice(0, MAX_BACKEND_TRIGGER_EVENTS);
-                void maybeFetchVideoFromTriggerEvent(event);
             }
         })();
     }
@@ -533,13 +554,20 @@
         try {
             const cameras = await fetchVideoCameras(labjackConfig.asset_number);
             availableCameraIds = cameras;
-
-            if (cameras.length > 0) {
-                const trimmed = videoCameraId.trim();
-                if (!trimmed || !cameras.includes(trimmed)) {
-                    videoCameraId = cameras[0];
-                }
+            const preferred = cameras.find((camera) => camera !== "default") ?? cameras[0] ?? "";
+            const nextRoutes = new Map(channelVideoRoutes);
+            for (const channel of labjackConfig.sensor_settings.channels_enabled) {
+                const existing = nextRoutes.get(channel);
+                const currentCamera = existing?.cameraId?.trim() ?? "";
+                const cameraId = cameras.length > 0
+                    ? (cameras.includes(currentCamera) ? currentCamera : preferred)
+                    : currentCamera;
+                nextRoutes.set(channel, {
+                    enabled: existing?.enabled ?? false,
+                    cameraId
+                });
             }
+            channelVideoRoutes = nextRoutes;
         } catch (err) {
             cameraListError =
                 err instanceof Error ? err.message : "Failed to load available cameras";
@@ -765,6 +793,7 @@
 
         channelModes.set(channel, nextMode);
         channelModes = new Map(channelModes);
+        triggerAutoSaveBackendSettings();
     }
 
     function updateAxisSettings(channel: number, updates: Partial<AxisSettings>) {
@@ -869,9 +898,61 @@
         return date.toISOString();
     }
 
-    function normalizedVideoCameraId(): string | undefined {
-        const trimmed = videoCameraId.trim();
+    function getChannelVideoRoute(channel: number): ChannelVideoRoute {
+        const current = channelVideoRoutes.get(channel);
+        if (current) return current;
+        return {
+            enabled: false,
+            cameraId: availableCameraIds.find((camera) => camera !== "default") ?? availableCameraIds[0] ?? ""
+        };
+    }
+
+    function setChannelVideoRoute(channel: number, patch: Partial<ChannelVideoRoute>) {
+        const current = getChannelVideoRoute(channel);
+        channelVideoRoutes.set(channel, { ...current, ...patch });
+        channelVideoRoutes = new Map(channelVideoRoutes);
+    }
+
+    function resolveCameraIdForChannel(channel: number, requireEnabled: boolean): string | undefined {
+        const route = getChannelVideoRoute(channel);
+        if (requireEnabled && !route.enabled) {
+            return undefined;
+        }
+        const fallbackCamera = availableCameraIds.find((camera) => camera !== "default") ?? availableCameraIds[0] ?? "";
+        const trimmed = (route.cameraId.trim() || fallbackCamera).trim();
         return trimmed.length > 0 ? trimmed : undefined;
+    }
+
+    function triggerAutoSaveBackendSettings() {
+        triggerSettingsDirty = true;
+        backendTriggerStatus = "Trigger settings changed. Saving to backend...";
+        if (triggerAutoSaveTimer) {
+            clearTimeout(triggerAutoSaveTimer);
+        }
+        triggerAutoSaveTimer = setTimeout(() => {
+            void saveBackendTriggerSettings(true);
+        }, 500);
+    }
+
+    function updateTriggerSetting(channel: number, patch: Partial<TriggerSettings>, saveToBackend: boolean = false) {
+        const setting = triggerSettings.get(channel);
+        if (!setting) return;
+        triggerSettings.set(channel, { ...setting, ...patch });
+        triggerSettings = new Map(triggerSettings);
+        if (saveToBackend) {
+            triggerAutoSaveBackendSettings();
+        }
+    }
+
+    function downloadBlob(blob: Blob, filename: string) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
     }
 
     function clearVideoPreview() {
@@ -882,7 +963,11 @@
         videoFileName = "";
     }
 
-    async function fetchClipByCenterIso(centerIso: string, sourceLabel: string) {
+    async function fetchClipByCenterIso(
+        centerIso: string,
+        sourceLabel: string,
+        cameraIdOverride?: string
+    ) {
         if (!labjackConfig) {
             videoError = "Configuration not loaded";
             return;
@@ -894,7 +979,7 @@
         try {
             const payload: VideoClipRequestPayload = {
                 asset: labjackConfig.asset_number,
-                camera_id: normalizedVideoCameraId(),
+                camera_id: cameraIdOverride,
                 center_time: centerIso,
                 pre_sec: 5,
                 post_sec: 5
@@ -903,61 +988,34 @@
             clearVideoPreview();
             videoUrl = URL.createObjectURL(result.blob);
             videoFileName = result.filename;
-            autoVideoStatus = `${sourceLabel}: loaded ${result.filename}`;
         } catch (err) {
             clearVideoPreview();
-            videoError = err instanceof Error ? err.message : "Failed to fetch video clip";
-            autoVideoStatus = `${sourceLabel}: failed`;
+            videoError = `${sourceLabel}: ${
+                err instanceof Error ? err.message : "Failed to fetch video clip"
+            }`;
         } finally {
             videoLoading = false;
         }
     }
 
-    async function fetchVideoDemoClip() {
-        if (!videoDemoTime) {
-            videoError = "Please select date and time";
+    async function fetchClipForTriggerEvent(event: BackendTriggerEvent, sourceLabel: string) {
+        manualVideoChannel = event.channel;
+        const cameraId = resolveCameraIdForChannel(event.channel, true);
+        if (!cameraId) {
+            videoError = `Video feed is disabled for ch${event.channel
+                .toString()
+                .padStart(2, "0")}. Enable it in Per-Channel Video Routing.`;
             return;
         }
-
-        let centerIso: string;
-        try {
-            centerIso = toRfc3339(videoDemoTime);
-        } catch {
-            videoError = "Invalid date/time selection";
-            return;
-        }
-
-        await fetchClipByCenterIso(centerIso, "Manual fetch");
-    }
-
-    async function maybeFetchVideoFromTriggerEvent(event: BackendTriggerEvent) {
-        if (!autoVideoOnTrigger || videoLoading) return;
-        if (!labjackConfig || event.asset !== labjackConfig.asset_number) return;
-
-        const cooldownMs = Math.max(0, autoVideoCooldownSec) * 1000;
-        const now = Date.now();
-        if (cooldownMs > 0 && now - autoVideoLastFetchAtMs < cooldownMs) {
-            return;
-        }
-
-        autoVideoLastFetchAtMs = now;
-        const triggerDate = new Date(event.trigger_time);
-        if (!isNaN(triggerDate.getTime())) {
-            videoDemoTime = toLocalInputValue(triggerDate, true);
-        }
-        autoVideoStatus = `Auto fetching clip from trigger ch${event.channel
-            .toString()
-            .padStart(2, "0")} @ ${formatTriggerEventTime(event.trigger_time)}${
-            normalizedVideoCameraId() ? ` camera=${normalizedVideoCameraId()}` : ""
-        }`;
-        await fetchClipByCenterIso(event.trigger_time, "Auto trigger");
+        await fetchClipByCenterIso(event.trigger_time, sourceLabel, cameraId);
     }
 
     function buildBackendTriggerSettings() {
         const settings: Record<string, BackendTriggerSetting> = {};
         for (const [channel, trigger] of triggerSettings.entries()) {
+            const mode = channelModes.get(channel) ?? "free_run";
             settings[String(channel)] = {
-                enabled: true,
+                enabled: mode === "trigger_normal",
                 type: trigger.type,
                 threshold: Number.isFinite(trigger.threshold) ? trigger.threshold : 0,
                 holdoff_ms: Math.max(0, Math.round(trigger.holdoffMs || 0))
@@ -966,7 +1024,7 @@
         return settings;
     }
 
-    async function saveBackendTriggerSettings() {
+    async function saveBackendTriggerSettings(auto: boolean = false) {
         if (!natsService || !labjackConfig || !labjackConfigKey) {
             backendTriggerError = "LabJack config key not loaded";
             return;
@@ -974,7 +1032,9 @@
 
         backendTriggerSaving = true;
         backendTriggerError = "";
-        backendTriggerStatus = "";
+        if (!auto) {
+            backendTriggerStatus = "";
+        }
 
         try {
             const nextConfig = labjackConfigRaw && typeof labjackConfigRaw === "object"
@@ -995,6 +1055,7 @@
 
             labjackConfigRaw = nextConfig;
             labjackConfig = normalizeLabJackConfig(nextConfig);
+            triggerSettingsDirty = false;
             backendTriggerStatus = `Saved trigger settings to ${labjackConfigKey}`;
         } catch (err) {
             backendTriggerError =
@@ -1008,6 +1069,112 @@
         const dt = new Date(value);
         if (isNaN(dt.getTime())) return value;
         return dt.toLocaleString();
+    }
+
+    async function searchTriggerEventsInRange() {
+        if (!natsService || !labjackConfig) {
+            triggerRangeError = "NATS connection or config unavailable";
+            return;
+        }
+
+        const hasStart = triggerRangeStart.trim().length > 0;
+        const hasEnd = triggerRangeEnd.trim().length > 0;
+        if (!hasStart || !hasEnd) {
+            triggerRangeError = "Please set both start and end time";
+            return;
+        }
+
+        let startMs = Number.NaN;
+        let endMs = Number.NaN;
+        try {
+            startMs = new Date(toRfc3339(triggerRangeStart)).getTime();
+            endMs = new Date(toRfc3339(triggerRangeEnd)).getTime();
+        } catch {
+            triggerRangeError = "Invalid date/time range";
+            return;
+        }
+        if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) {
+            triggerRangeError = "Invalid range (end must be after start)";
+            return;
+        }
+
+        triggerRangeLoading = true;
+        triggerRangeError = "";
+        triggerRangeStatus = "";
+        triggerRangeResults = [];
+
+        try {
+            const keys = await getKeys(natsService, "video_trigger_events", "event.*");
+            const matching: BackendTriggerEvent[] = [];
+            const maxEntriesToScan = 1000;
+            let scanned = 0;
+
+            for (const key of keys) {
+                if (scanned >= maxEntriesToScan) break;
+                scanned += 1;
+                try {
+                    const raw = await getKeyValue(natsService, "video_trigger_events", key);
+                    if (!raw || raw === "Key value does not exist") continue;
+                    const parsed = JSON.parse(raw) as TriggerRecordEntry;
+                    const event = parseBackendTriggerEventObject(parsed?.event ?? parsed);
+                    if (!event) continue;
+                    if (event.asset !== labjackConfig.asset_number) continue;
+                    const eventMs = Number.isFinite(event.trigger_time_unix_ms)
+                        ? event.trigger_time_unix_ms
+                        : new Date(event.trigger_time).getTime();
+                    if (!Number.isFinite(eventMs)) continue;
+                    if (eventMs >= startMs && eventMs <= endMs) {
+                        matching.push(event);
+                    }
+                } catch {
+                    continue;
+                }
+            }
+
+            matching.sort((a, b) => b.trigger_time_unix_ms - a.trigger_time_unix_ms);
+            triggerRangeResults = matching.slice(0, 200);
+            triggerRangeStatus = `Found ${matching.length} trigger(s) in range${matching.length > 200 ? " (showing latest 200)" : ""}.`;
+        } catch (err) {
+            triggerRangeError =
+                err instanceof Error ? err.message : "Failed searching trigger history";
+        } finally {
+            triggerRangeLoading = false;
+        }
+    }
+
+    async function fetchSelectedRangeClips() {
+        if (triggerRangeResults.length === 0) {
+            triggerRangeError = "No triggers in range to fetch";
+            return;
+        }
+        triggerRangeFetchLoading = true;
+        triggerRangeError = "";
+        try {
+            let fetched = 0;
+            const maxFetch = 10;
+            for (const event of triggerRangeResults.slice(0, maxFetch)) {
+                const cameraId = resolveCameraIdForChannel(event.channel, true);
+                if (!cameraId) {
+                    continue;
+                }
+                const payload: VideoClipRequestPayload = {
+                    asset: event.asset,
+                    camera_id: cameraId,
+                    center_time: event.trigger_time,
+                    pre_sec: 5,
+                    post_sec: 5
+                };
+                const result = await requestVideoClip(payload);
+                downloadBlob(result.blob, result.filename || `clip_${event.channel}_${event.trigger_time_unix_ms}.mp4`);
+                fetched += 1;
+            }
+            triggerRangeStatus = `Fetched ${fetched} clip(s) from range (max 10 per action).`;
+        } catch (err) {
+            triggerRangeError =
+                err instanceof Error ? err.message : "Failed fetching range clips";
+        } finally {
+            triggerRangeFetchLoading = false;
+        }
     }
 
     function openExportModal() {
@@ -1144,19 +1311,21 @@
         uiNowTimer = setInterval(() => {
             uiNow = Date.now();
         }, 100);
-        if (!videoDemoTime) {
-            videoDemoTime = toLocalInputValue(new Date());
+        if (!triggerRangeEnd) {
+            triggerRangeEnd = toLocalInputValue(new Date(), true);
         }
-        const persistedCameraId = localStorage.getItem("videoCameraId");
-        if (persistedCameraId) {
-            videoCameraId = persistedCameraId;
-        } else {
-            videoCameraId = "cam11";
+        if (!triggerRangeStart) {
+            triggerRangeStart = toLocalInputValue(new Date(Date.now() - 30 * 60 * 1000), true);
         }
     });
     
     onDestroy(() => {
         clearVideoPreview();
+
+        if (triggerAutoSaveTimer) {
+            clearTimeout(triggerAutoSaveTimer);
+            triggerAutoSaveTimer = null;
+        }
 
         if (uiNowTimer) {
             clearInterval(uiNowTimer);
@@ -1315,22 +1484,26 @@
             </div>
 
             <div class="card bg-base-100 shadow-xl mb-6">
-                <div class="card-body">
+                <div class="card-body gap-4">
                     <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div>
                             <h4 class="card-title text-base-content">Backend Trigger Integration</h4>
                             <p class="text-sm text-base-content/70">
-                                Save threshold/edge/holdoff to KV so streamer trigger detection uses calibrated values.
+                                Threshold/edge/holdoff auto-save to backend KV. Only channels in Trigger Normal are enabled on backend.
                             </p>
                         </div>
                         <button
                             class="btn btn-secondary"
-                            onclick={saveBackendTriggerSettings}
+                            onclick={() => saveBackendTriggerSettings(false)}
                             disabled={backendTriggerSaving || !labjackConfigKey}
                         >
-                            {backendTriggerSaving ? "Saving..." : "Save Trigger Settings To Backend"}
+                            {backendTriggerSaving ? "Saving..." : "Save Now"}
                         </button>
                     </div>
+
+                    {#if triggerSettingsDirty}
+                        <div class="badge badge-warning">Pending backend save</div>
+                    {/if}
 
                     {#if backendTriggerError}
                         <div class="alert alert-error text-sm">
@@ -1344,7 +1517,75 @@
                         </div>
                     {/if}
 
-                    <div class="divider my-2">Recent Backend Trigger Events</div>
+                    <div class="divider my-1">Per-Channel Video Routing</div>
+                    <p class="text-sm text-base-content/70">
+                        Video fetch stays manual. Toggle per channel to choose camera feed used for trigger clip actions.
+                    </p>
+                    <div class="overflow-x-auto">
+                        <table class="table table-zebra table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Channel</th>
+                                    <th>Use Video Feed</th>
+                                    <th>Camera</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {#each labjackConfig.sensor_settings.channels_enabled as channel}
+                                    {@const route = getChannelVideoRoute(channel)}
+                                    <tr>
+                                        <td>ch{channel.toString().padStart(2, "0")}</td>
+                                        <td>
+                                            <input
+                                                type="checkbox"
+                                                class="toggle toggle-primary toggle-sm"
+                                                checked={route.enabled}
+                                                onchange={(e) => {
+                                                    if (e.target instanceof HTMLInputElement) {
+                                                        setChannelVideoRoute(channel, { enabled: e.target.checked });
+                                                    }
+                                                }}
+                                            />
+                                        </td>
+                                        <td>
+                                            {#if availableCameraIds.length > 0}
+                                                <select
+                                                    class="select select-bordered select-sm"
+                                                    value={route.cameraId}
+                                                    disabled={cameraListLoading}
+                                                    onchange={(e) => {
+                                                        if (e.target instanceof HTMLSelectElement) {
+                                                            setChannelVideoRoute(channel, { cameraId: e.target.value });
+                                                        }
+                                                    }}
+                                                >
+                                                    {#each availableCameraIds as cameraId}
+                                                        <option value={cameraId}>{cameraId}</option>
+                                                    {/each}
+                                                </select>
+                                            {:else}
+                                                <span class="text-xs text-base-content/70">No cameras discovered</span>
+                                            {/if}
+                                        </td>
+                                    </tr>
+                                {/each}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <button
+                            class="btn btn-outline btn-sm"
+                            onclick={refreshAvailableCameras}
+                            disabled={cameraListLoading || videoLoading}
+                        >
+                            {cameraListLoading ? "Refreshing..." : "Refresh Camera List"}
+                        </button>
+                        {#if cameraListError}
+                            <span class="text-xs text-error">{cameraListError}</span>
+                        {/if}
+                    </div>
+
+                    <div class="divider my-1">Recent Backend Trigger Events (Latest 10)</div>
                     {#if backendTriggerEvents.length === 0}
                         <p class="text-sm text-base-content/70">No backend trigger events received yet.</p>
                     {:else}
@@ -1358,10 +1599,11 @@
                                         <th>Calibrated</th>
                                         <th>Threshold</th>
                                         <th>Raw</th>
+                                        <th>Clip</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {#each backendTriggerEvents as event}
+                                    {#each backendTriggerEvents.slice(0, 10) as event}
                                         <tr>
                                             <td>{formatTriggerEventTime(event.trigger_time)}</td>
                                             <td>ch{event.channel.toString().padStart(2, "0")}</td>
@@ -1369,6 +1611,15 @@
                                             <td>{event.calibrated_value.toFixed(4)}</td>
                                             <td>{event.threshold.toFixed(4)}</td>
                                             <td>{event.raw_value.toFixed(4)}</td>
+                                            <td>
+                                                <button
+                                                    class="btn btn-primary btn-xs"
+                                                    onclick={() => fetchClipForTriggerEvent(event, "Recent trigger")}
+                                                    disabled={videoLoading}
+                                                >
+                                                    Fetch
+                                                </button>
+                                            </td>
                                         </tr>
                                     {/each}
                                 </tbody>
@@ -1379,108 +1630,116 @@
             </div>
 
             <div class="card bg-base-100 shadow-xl mb-6">
-                <div class="card-body">
-                    <h4 class="card-title text-base-content">Video Clip Demo</h4>
+                <div class="card-body gap-4">
+                    <h4 class="card-title text-base-content">Trigger History Search</h4>
                     <p class="text-sm text-base-content/70">
-                        Manual clip around selected time or auto-fetch on backend trigger events (-5s to +5s).
+                        Find triggers in a date/time range, then fetch individual clips manually.
                     </p>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end mb-2">
-                        <label class="label cursor-pointer">
-                            <span class="label-text">Auto Fetch On Backend Trigger</span>
-                            <input
-                                type="checkbox"
-                                class="toggle toggle-primary"
-                                bind:checked={autoVideoOnTrigger}
-                                disabled={videoLoading}
-                            />
-                        </label>
-                        <div class="form-control">
-                            <label class="label" for="auto-video-cooldown">
-                                <span class="label-text">Auto Cooldown (s)</span>
-                            </label>
-                            <input
-                                id="auto-video-cooldown"
-                                type="number"
-                                min="0"
-                                step="1"
-                                class="input input-bordered"
-                                value={autoVideoCooldownSec}
-                                onchange={(e) => {
-                                    if (e.target instanceof HTMLInputElement) {
-                                        const parsed = parseInt(e.target.value, 10);
-                                        autoVideoCooldownSec = Number.isFinite(parsed)
-                                            ? Math.max(0, parsed)
-                                            : 0;
-                                    }
-                                }}
-                                disabled={videoLoading}
-                            />
-                        </div>
-                        <div class="text-xs text-base-content/70">
-                            {autoVideoStatus || "No auto-trigger clip fetch yet."}
-                        </div>
-                    </div>
+
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                        <div class="form-control md:col-span-2">
-                            <label class="label" for="video-demo-time">
-                                <span class="label-text">Center Time</span>
+                        <div class="form-control">
+                            <label class="label" for="trigger-range-start">
+                                <span class="label-text">Start</span>
                             </label>
                             <input
-                                id="video-demo-time"
+                                id="trigger-range-start"
                                 type="datetime-local"
                                 step="1"
                                 class="input input-bordered"
-                                bind:value={videoDemoTime}
-                                disabled={videoLoading}
+                                bind:value={triggerRangeStart}
+                                disabled={triggerRangeLoading}
                             />
                         </div>
                         <div class="form-control">
-                            <label class="label" for="video-camera-id">
-                                <span class="label-text">Camera ID</span>
+                            <label class="label" for="trigger-range-end">
+                                <span class="label-text">End</span>
                             </label>
-                            <div class="flex gap-2">
-                                {#if availableCameraIds.length > 0}
-                                    <select
-                                        id="video-camera-id"
-                                        class="select select-bordered w-full"
-                                        bind:value={videoCameraId}
-                                        disabled={videoLoading || cameraListLoading}
-                                    >
-                                        {#each availableCameraIds as cameraId}
-                                            <option value={cameraId}>{cameraId}</option>
-                                        {/each}
-                                    </select>
-                                {:else}
-                                    <input
-                                        id="video-camera-id"
-                                        type="text"
-                                        class="input input-bordered w-full"
-                                        placeholder="cam11"
-                                        bind:value={videoCameraId}
-                                        disabled={videoLoading || cameraListLoading}
-                                    />
-                                {/if}
-                                <button
-                                    class="btn btn-outline"
-                                    onclick={refreshAvailableCameras}
-                                    disabled={videoLoading || cameraListLoading}
-                                    title="Refresh camera list"
-                                >
-                                    {cameraListLoading ? "..." : "Refresh"}
-                                </button>
-                            </div>
-                            {#if cameraListError}
-                                <span class="text-xs text-error mt-1">{cameraListError}</span>
-                            {/if}
+                            <input
+                                id="trigger-range-end"
+                                type="datetime-local"
+                                step="1"
+                                class="input input-bordered"
+                                bind:value={triggerRangeEnd}
+                                disabled={triggerRangeLoading}
+                            />
                         </div>
-                        <button
-                            class="btn btn-primary"
-                            onclick={fetchVideoDemoClip}
-                            disabled={videoLoading}
-                        >
-                            {videoLoading ? "Fetching..." : "Fetch 10s Clip"}
-                        </button>
+                        <div class="form-control">
+                            <label class="label" for="manual-video-channel">
+                                <span class="label-text">Manual Channel</span>
+                            </label>
+                            <select
+                                id="manual-video-channel"
+                                class="select select-bordered"
+                                bind:value={manualVideoChannel}
+                            >
+                                {#each labjackConfig.sensor_settings.channels_enabled as channel}
+                                    <option value={channel}>ch{channel.toString().padStart(2, "0")}</option>
+                                {/each}
+                            </select>
+                        </div>
+                        <div class="flex gap-2">
+                            <button
+                                class="btn btn-primary"
+                                onclick={searchTriggerEventsInRange}
+                                disabled={triggerRangeLoading}
+                            >
+                                {triggerRangeLoading ? "Searching..." : "Search"}
+                            </button>
+                            <button
+                                class="btn btn-outline"
+                                onclick={fetchSelectedRangeClips}
+                                disabled={triggerRangeFetchLoading || triggerRangeResults.length === 0}
+                            >
+                                {triggerRangeFetchLoading ? "Fetching..." : "Fetch Top 10"}
+                            </button>
+                        </div>
                     </div>
+
+                    {#if triggerRangeError}
+                        <div class="alert alert-error text-sm">
+                            <span>{triggerRangeError}</span>
+                        </div>
+                    {/if}
+                    {#if triggerRangeStatus}
+                        <div class="alert alert-info text-sm">
+                            <span>{triggerRangeStatus}</span>
+                        </div>
+                    {/if}
+
+                    {#if triggerRangeResults.length > 0}
+                        <div class="overflow-x-auto">
+                            <table class="table table-zebra table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Channel</th>
+                                        <th>Type</th>
+                                        <th>Calibrated</th>
+                                        <th>Clip</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {#each triggerRangeResults as event}
+                                        <tr>
+                                            <td>{formatTriggerEventTime(event.trigger_time)}</td>
+                                            <td>ch{event.channel.toString().padStart(2, "0")}</td>
+                                            <td>{event.trigger_type}</td>
+                                            <td>{event.calibrated_value.toFixed(4)}</td>
+                                            <td>
+                                                <button
+                                                    class="btn btn-primary btn-xs"
+                                                    onclick={() => fetchClipForTriggerEvent(event, "Range trigger")}
+                                                    disabled={videoLoading}
+                                                >
+                                                    Fetch
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    {/each}
+                                </tbody>
+                            </table>
+                        </div>
+                    {/if}
 
                     {#if videoError}
                         <div class="alert alert-error text-sm">
@@ -1697,13 +1956,12 @@
                                                 id="trigger-type-{channel}"
                                                 value={channelTriggerSetting?.type || 'rising'}
                                                 onchange={(e) => {
-                                                    const setting = triggerSettings.get(channel);
-                                                    if (setting && e.target instanceof HTMLSelectElement) {
-                                                        triggerSettings.set(channel, {
-                                                            ...setting,
-                                                            type: e.target.value as 'rising' | 'falling'
-                                                        });
-                                                        triggerSettings = new Map(triggerSettings);
+                                                    if (e.target instanceof HTMLSelectElement) {
+                                                        updateTriggerSetting(
+                                                            channel,
+                                                            { type: e.target.value as 'rising' | 'falling' },
+                                                            true
+                                                        );
                                                     }
                                                 }}
                                                 class="select select-bordered select-warning"
@@ -1722,13 +1980,12 @@
                                                 step="0.01"
                                                 value={channelTriggerSetting?.threshold || 0}
                                                 onchange={(e) => {
-                                                    const setting = triggerSettings.get(channel);
-                                                    if (setting && e.target instanceof HTMLInputElement) {
-                                                        triggerSettings.set(channel, {
-                                                            ...setting,
-                                                            threshold: parseFloat(e.target.value) || 0
-                                                        });
-                                                        triggerSettings = new Map(triggerSettings);
+                                                    if (e.target instanceof HTMLInputElement) {
+                                                        updateTriggerSetting(
+                                                            channel,
+                                                            { threshold: parseFloat(e.target.value) || 0 },
+                                                            true
+                                                        );
                                                     }
                                                 }}
                                                 class="input input-bordered input-warning"
@@ -1745,13 +2002,12 @@
                                                 step="10"
                                                 value={channelTriggerSetting?.holdoffMs || 0}
                                                 onchange={(e) => {
-                                                    const setting = triggerSettings.get(channel);
-                                                    if (setting && e.target instanceof HTMLInputElement) {
-                                                        triggerSettings.set(channel, {
-                                                            ...setting,
-                                                            holdoffMs: Math.max(0, parseInt(e.target.value, 10) || 0)
-                                                        });
-                                                        triggerSettings = new Map(triggerSettings);
+                                                    if (e.target instanceof HTMLInputElement) {
+                                                        updateTriggerSetting(
+                                                            channel,
+                                                            { holdoffMs: Math.max(0, parseInt(e.target.value, 10) || 0) },
+                                                            true
+                                                        );
                                                     }
                                                 }}
                                                 class="input input-bordered input-warning"
@@ -1769,15 +2025,12 @@
                                                 step="1"
                                                 value={channelTriggerSetting?.preTriggerPercent || 0}
                                                 onchange={(e) => {
-                                                    const setting = triggerSettings.get(channel);
-                                                    if (setting && e.target instanceof HTMLInputElement) {
+                                                    if (e.target instanceof HTMLInputElement) {
                                                         const raw = parseInt(e.target.value, 10) || 0;
-                                                        triggerSettings.set(channel, {
-                                                            ...setting,
+                                                        updateTriggerSetting(channel, {
                                                             preTriggerPercent: Math.min(95, Math.max(0, raw))
                                                         });
-                                                        triggerSettings = new Map(triggerSettings);
-                                                    }
+                                                    } 
                                                 }}
                                                 class="input input-bordered input-warning"
                                             />
@@ -1793,15 +2046,12 @@
                                                 step="0.1"
                                                 value={channelTriggerSetting?.postTriggerWindowSec || timeWindow}
                                                 onchange={(e) => {
-                                                    const setting = triggerSettings.get(channel);
-                                                    if (setting && e.target instanceof HTMLInputElement) {
+                                                    if (e.target instanceof HTMLInputElement) {
                                                         const raw = parseFloat(e.target.value) || 0.01;
-                                                        triggerSettings.set(channel, {
-                                                            ...setting,
+                                                        updateTriggerSetting(channel, {
                                                             postTriggerWindowSec: Math.max(0.01, raw)
                                                         });
-                                                        triggerSettings = new Map(triggerSettings);
-                                                    }
+                                                    } 
                                                 }}
                                                 class="input input-bordered input-warning"
                                             />
