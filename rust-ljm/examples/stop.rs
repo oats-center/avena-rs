@@ -2,7 +2,7 @@ use ljmrs::handle::{ConnectionType, DeviceType};
 use ljmrs::{LJMError, LJMLibrary};
 
 fn open_labjack_with_fallback(device_type: DeviceType) -> Result<i32, LJMError> {
-    let lj_ip = std::env::var("LABJACK_IP").unwrap_or_else(|_| "10.165.77.233".to_string());
+    let lj_ip = std::env::var("LABJACK_IP").ok();
     let usb_id = std::env::var("LABJACK_USB_ID").unwrap_or_else(|_| "ANY".to_string());
     let order = std::env::var("LABJACK_OPEN_ORDER").unwrap_or_else(|_| "ethernet,usb".to_string());
 
@@ -20,12 +20,17 @@ fn open_labjack_with_fallback(device_type: DeviceType) -> Result<i32, LJMError> 
     for mode in modes {
         match mode.as_str() {
             "ethernet" | "tcp" => {
-                match LJMLibrary::open_jack(device_type, ConnectionType::ETHERNET, lj_ip.as_str()) {
+                let Some(lj_ip) = lj_ip.as_deref() else {
+                    errors.push("ethernet: LABJACK_IP not set".to_string());
+                    continue;
+                };
+                match LJMLibrary::open_jack(device_type, ConnectionType::ETHERNET, lj_ip) {
                     Ok(handle) => return Ok(handle),
                     Err(e) => errors.push(format!("ethernet({}): {:?}", lj_ip, e)),
                 }
             }
-            "usb" => match LJMLibrary::open_jack(device_type, ConnectionType::USB, usb_id.as_str()) {
+            "usb" => match LJMLibrary::open_jack(device_type, ConnectionType::USB, usb_id.as_str())
+            {
                 Ok(handle) => return Ok(handle),
                 Err(e) => errors.push(format!("usb({}): {:?}", usb_id, e)),
             },

@@ -13,7 +13,7 @@ use axum::{
     Router,
     body::Body,
     extract::{
-        Json, State,
+        Json, Query, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
     http::{HeaderValue, StatusCode, header},
@@ -41,7 +41,7 @@ use calibration::CalibrationSpec;
 #[derive(Clone)]
 struct AppState {
     parquet_root: Arc<PathBuf>,
-    video: Option<Arc<VideoState>>,
+    video: Arc<VideoState>,
 }
 
 #[derive(Clone)]
@@ -74,9 +74,15 @@ struct ExportRequest {
 #[derive(Debug, Deserialize)]
 struct VideoClipRequest {
     asset: u32,
+    camera_id: Option<String>,
     center_time: String,
     pre_sec: Option<f64>,
     post_sec: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct VideoCameraListRequest {
+    asset: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -84,9 +90,16 @@ struct ErrorPayload {
     error: String,
 }
 
+#[derive(Debug, Serialize)]
+struct VideoCameraListResponse {
+    asset: u32,
+    cameras: Vec<String>,
+}
+
 #[derive(Debug, Clone)]
 struct VideoObject {
     name: String,
+    camera_id: String,
     start: DateTime<Utc>,
     end: DateTime<Utc>,
 }
@@ -112,31 +125,22 @@ async fn main() -> Result<()> {
         );
     }
 
-    let video = match build_video_state().await {
-        Ok(video_state) => {
-            println!(
-                "[exporter] Video clip API enabled. Bucket='{}', tmp='{}'",
-                video_state.video_bucket,
-                video_state.video_tmp_dir.display()
-            );
-            Some(Arc::new(video_state))
-        }
-        Err(err) => {
-            eprintln!(
-                "[exporter] Warning: video clip API disabled due to initialization error: {err}"
-            );
-            None
-        }
-    };
+    let video_state = build_video_state().await?;
+    println!(
+        "[exporter] Video clip API enabled. Bucket='{}', tmp='{}'",
+        video_state.video_bucket,
+        video_state.video_tmp_dir.display()
+    );
 
     let state = AppState {
         parquet_root: Arc::new(root_path),
-        video,
+        video: Arc::new(video_state),
     };
 
     let app = Router::new()
         .route("/export", get(handle_ws))
         .route("/video/clip", post(handle_video_clip))
+        .route("/video/cameras", get(handle_video_cameras))
         .with_state(state);
 
     println!("[exporter] Listening on http://{listen_addr} (ws /export, post /video/clip)");
@@ -165,11 +169,7 @@ async fn build_video_state() -> Result<VideoState> {
         .map_err(|e| anyhow!("failed to load NATS creds: {e}"))?
         .request_timeout(None);
 
-    let servers: Vec<ServerAddr> = vec![
-        "nats://nats1.oats:4222".parse()?,
-        "nats://nats2.oats:4222".parse()?,
-        "nats://nats3.oats:4222".parse()?,
-    ];
+    let servers = parse_nats_servers_from_env()?;
 
     let nc = opts
         .connect(servers)
@@ -191,6 +191,25 @@ async fn build_video_state() -> Result<VideoState> {
     })
 }
 
+fn parse_nats_servers_from_env() -> Result<Vec<ServerAddr>> {
+    let raw = std::env::var("NATS_SERVERS")
+        .map_err(|_| anyhow!("NATS_SERVERS must be set (comma-separated nats:// URLs)"))?;
+    let servers = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            part.parse::<ServerAddr>()
+                .map_err(|e| anyhow!("invalid NATS server '{}': {e}", part))
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    if servers.is_empty() {
+        return Err(anyhow!("NATS_SERVERS resolved to an empty list"));
+    }
+    Ok(servers)
+}
+
 fn error_response(status: StatusCode, message: impl Into<String>) -> Response {
     let payload = Json(ErrorPayload {
         error: message.into(),
@@ -208,16 +227,51 @@ async fn handle_video_clip(
     }
 }
 
+async fn handle_video_cameras(
+    State(state): State<AppState>,
+    Query(req): Query<VideoCameraListRequest>,
+) -> Response {
+    let video = state.video.clone();
+
+    let store = match video.jetstream.get_object_store(&video.video_bucket).await {
+        Ok(store) => store,
+        Err(err) => {
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!(
+                    "failed to open object store '{}': {err}",
+                    video.video_bucket
+                ),
+            );
+        }
+    };
+
+    let objects = match list_asset_video_objects(&store, req.asset, video.video_tz).await {
+        Ok(objects) => objects,
+        Err(err) => {
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to list video objects: {err}"),
+            );
+        }
+    };
+
+    let mut cameras: Vec<String> = objects.into_iter().map(|obj| obj.camera_id).collect();
+    cameras.sort();
+    cameras.dedup();
+
+    Json(VideoCameraListResponse {
+        asset: req.asset,
+        cameras,
+    })
+    .into_response()
+}
+
 async fn process_video_clip(
     state: AppState,
     req: VideoClipRequest,
 ) -> std::result::Result<Response, (StatusCode, String)> {
-    let Some(video) = state.video.clone() else {
-        return Err((
-            StatusCode::SERVICE_UNAVAILABLE,
-            "video clip API is disabled on this exporter".to_string(),
-        ));
-    };
+    let video = state.video.clone();
 
     let pre_sec = req.pre_sec.unwrap_or(5.0);
     let post_sec = req.post_sec.unwrap_or(5.0);
@@ -236,6 +290,12 @@ async fn process_video_clip(
     let post_ms = (post_sec * 1000.0).round() as i64;
     let clip_start = center_time - ChronoDuration::milliseconds(pre_ms);
     let clip_end = center_time + ChronoDuration::milliseconds(post_ms);
+    let requested_camera = req
+        .camera_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned);
 
     if clip_end <= clip_start {
         return Err((
@@ -274,7 +334,44 @@ async fn process_video_clip(
         ));
     }
 
-    let plan = resolve_clip_sources(&objects, clip_start, clip_end)
+    let selected_camera = if let Some(camera) = requested_camera.clone() {
+        camera
+    } else {
+        let mut cameras: Vec<String> = objects.iter().map(|obj| obj.camera_id.clone()).collect();
+        cameras.sort();
+        cameras.dedup();
+        if cameras.len() > 1 {
+            return Err((
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!(
+                    "multiple camera feeds found for asset {} ({}); provide camera_id",
+                    req.asset,
+                    cameras.join(", ")
+                ),
+            ));
+        }
+        cameras
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| "default".to_string())
+    };
+
+    let filtered_objects: Vec<VideoObject> = objects
+        .into_iter()
+        .filter(|obj| obj.camera_id == selected_camera)
+        .collect();
+
+    if filtered_objects.is_empty() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            format!(
+                "no video objects found for asset {} camera_id {}",
+                req.asset, selected_camera
+            ),
+        ));
+    }
+
+    let plan = resolve_clip_sources(&filtered_objects, clip_start, clip_end)
         .map_err(|(code, msg)| (code, msg.to_string()))?;
 
     let request_dir = video.video_tmp_dir.join(format!("clip-{}", Uuid::new_v4()));
@@ -380,8 +477,9 @@ async fn process_video_clip(
             .with_context(|| format!("failed to read generated clip {}", output_path.display()))?;
 
         let filename = format!(
-            "clip_asset{}_{}_{}.mp4",
+            "clip_asset{}_camera{}_{}_{}.mp4",
             req.asset,
+            selected_camera,
             clip_start.format("%Y%m%dT%H%M%S"),
             clip_end.format("%Y%m%dT%H%M%S")
         );
@@ -431,10 +529,11 @@ async fn list_asset_video_objects(
     let mut out = Vec::new();
     while let Some(item) = list.next().await {
         let info = item.map_err(|e| anyhow!("failed reading object metadata: {e}"))?;
-        if let Some((key_asset, start, end)) = parse_video_key_interval(&info.name, tz) {
+        if let Some((key_asset, camera_id, start, end)) = parse_video_key_interval(&info.name, tz) {
             if key_asset == asset {
                 out.push(VideoObject {
                     name: info.name,
+                    camera_id,
                     start,
                     end,
                 });
@@ -446,8 +545,25 @@ async fn list_asset_video_objects(
     Ok(out)
 }
 
-fn parse_video_key_interval(name: &str, tz: Tz) -> Option<(u32, DateTime<Utc>, DateTime<Utc>)> {
-    let (asset_prefix, file_name) = name.split_once('/')?;
+fn parse_video_key_interval(
+    name: &str,
+    tz: Tz,
+) -> Option<(u32, String, DateTime<Utc>, DateTime<Utc>)> {
+    let parts: Vec<&str> = name.split('/').collect();
+    let (asset_prefix, camera_id, file_name) = match parts.as_slice() {
+        // Backward compatibility: asset1456/V_...mp4
+        [asset, file] => (*asset, "default".to_string(), *file),
+        // New format: asset1456/camera_cam11/V_...mp4
+        [asset, camera_prefix, file] => {
+            let camera = camera_prefix
+                .strip_prefix("camera_")
+                .unwrap_or(camera_prefix)
+                .to_string();
+            (*asset, camera, *file)
+        }
+        _ => return None,
+    };
+
     let asset_str = asset_prefix.strip_prefix("asset")?;
     let asset: u32 = asset_str.parse().ok()?;
 
@@ -469,7 +585,7 @@ fn parse_video_key_interval(name: &str, tz: Tz) -> Option<(u32, DateTime<Utc>, D
         return None;
     }
 
-    Some((asset, start, end))
+    Some((asset, camera_id, start, end))
 }
 
 fn local_to_utc(tz: Tz, naive: NaiveDateTime) -> Option<DateTime<Utc>> {
@@ -831,9 +947,8 @@ impl CsvStreamer {
         calibrated_value: f64,
         calibration_id: &str,
     ) -> Result<()> {
-        let line = format!(
-            "{timestamp},ch{channel:02},{raw_value},{calibrated_value},{calibration_id}\n"
-        );
+        let line =
+            format!("{timestamp},ch{channel:02},{raw_value},{calibrated_value},{calibration_id}\n");
         self.chunk.extend_from_slice(line.as_bytes());
         if self.chunk.len() >= Self::CHUNK_SIZE {
             self.flush().await?;
@@ -990,12 +1105,15 @@ mod tests {
     #[test]
     fn parse_key_accepts_valid_object_name() {
         let tz: Tz = "America/New_York".parse().unwrap();
-        let parsed =
-            parse_video_key_interval("asset1456/V_2026_02_13_090035_2026_02_13_091035.mp4", tz)
-                .expect("should parse");
+        let parsed = parse_video_key_interval(
+            "asset1456/camera_cam11/V_2026_02_13_090035_2026_02_13_091035.mp4",
+            tz,
+        )
+        .expect("should parse");
 
         assert_eq!(parsed.0, 1456);
-        assert!(parsed.2 > parsed.1);
+        assert_eq!(parsed.1, "cam11");
+        assert!(parsed.3 > parsed.2);
     }
 
     #[test]
@@ -1006,9 +1124,21 @@ mod tests {
     }
 
     #[test]
+    fn parse_key_supports_legacy_without_camera_prefix() {
+        let tz: Tz = "America/New_York".parse().unwrap();
+        let parsed =
+            parse_video_key_interval("asset1456/V_2026_02_13_090035_2026_02_13_091035.mp4", tz)
+                .expect("should parse");
+        assert_eq!(parsed.0, 1456);
+        assert_eq!(parsed.1, "default");
+        assert!(parsed.3 > parsed.2);
+    }
+
+    #[test]
     fn resolve_clip_single_source() {
         let objects = vec![VideoObject {
             name: "asset1456/V_2026_02_13_090000_2026_02_13_091000.mp4".to_string(),
+            camera_id: "default".to_string(),
             start: dt_utc("2026-02-13T14:00:00Z"),
             end: dt_utc("2026-02-13T14:10:00Z"),
         }];
@@ -1031,11 +1161,13 @@ mod tests {
         let objects = vec![
             VideoObject {
                 name: "asset1456/V_2026_02_13_090000_2026_02_13_091000.mp4".to_string(),
+                camera_id: "default".to_string(),
                 start: dt_utc("2026-02-13T14:00:00Z"),
                 end: dt_utc("2026-02-13T14:10:00Z"),
             },
             VideoObject {
                 name: "asset1456/V_2026_02_13_091000_2026_02_13_092000.mp4".to_string(),
+                camera_id: "default".to_string(),
                 start: dt_utc("2026-02-13T14:10:00Z"),
                 end: dt_utc("2026-02-13T14:20:00Z"),
             },

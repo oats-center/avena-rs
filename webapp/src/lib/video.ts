@@ -1,5 +1,6 @@
 export interface VideoClipRequestPayload {
   asset: number;
+  camera_id?: string;
   center_time: string;
   pre_sec?: number;
   post_sec?: number;
@@ -8,6 +9,27 @@ export interface VideoClipRequestPayload {
 export interface VideoClipResult {
   blob: Blob;
   filename: string;
+}
+
+export async function fetchVideoCameras(asset: number): Promise<string[]> {
+  const response = await fetch(`/api/video/cameras?asset=${encodeURIComponent(String(asset))}`);
+  if (!response.ok) {
+    let message = `Video camera request failed (${response.status})`;
+    try {
+      const body = await response.json();
+      if (body?.error && typeof body.error === 'string') {
+        message = body.error;
+      }
+    } catch {
+      const text = await response.text();
+      if (text) message = text;
+    }
+    throw new Error(message);
+  }
+
+  const body = await response.json();
+  if (!Array.isArray(body?.cameras)) return [];
+  return body.cameras.filter((value: unknown): value is string => typeof value === 'string');
 }
 
 function parseFilenameFromDisposition(disposition: string | null): string | null {

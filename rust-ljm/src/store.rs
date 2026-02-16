@@ -355,13 +355,29 @@ fn spawn_channel_logger(
     }
 }
 
+fn parse_nats_servers_from_env() -> Result<Vec<ServerAddr>, Box<dyn std::error::Error>> {
+    let raw = std::env::var("NATS_SERVERS")
+        .map_err(|_| "NATS_SERVERS must be set (comma-separated nats:// URLs)")?;
+
+    let mut servers = Vec::new();
+    for part in raw
+        .split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+    {
+        servers.push(part.parse::<ServerAddr>()?);
+    }
+
+    if servers.is_empty() {
+        return Err("NATS_SERVERS resolved to an empty list".into());
+    }
+
+    Ok(servers)
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let servers: Vec<ServerAddr> = vec![
-        "nats://nats1.oats:4222".parse()?,
-        "nats://nats2.oats:4222".parse()?,
-        "nats://nats3.oats:4222".parse()?,
-    ];
+    let servers = parse_nats_servers_from_env()?;
 
     // Connect using creds
     let creds_path = std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| "apt.creds".into());

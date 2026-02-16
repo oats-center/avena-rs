@@ -1,6 +1,7 @@
 use chrono::{TimeZone, Utc};
 use chrono_tz::America::New_York;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use tokio::sync::{mpsc, watch};
 use tokio::time::Duration;
 
@@ -13,10 +14,12 @@ use async_nats::{ConnectOptions, ServerAddr};
 use flatbuffers::FlatBufferBuilder;
 use futures_util::StreamExt;
 
+mod calibration;
 mod sample_data_generated {
     #![allow(dead_code, unused_imports)]
     include!("data_generated.rs");
 }
+use calibration::CalibrationSpec;
 use sample_data_generated::sampler::{self, ScanArgs};
 
 #[allow(dead_code)]
@@ -41,6 +44,53 @@ struct SensorSettings {
     data_formats: Vec<String>,
     measurement_units: Vec<String>,
     labjack_on_off: bool,
+    calibrations: Option<HashMap<String, CalibrationSpec>>,
+    trigger_settings: Option<HashMap<String, TriggerSettings>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum TriggerType {
+    Rising,
+    Falling,
+}
+
+fn default_trigger_enabled() -> bool {
+    true
+}
+
+fn default_trigger_type() -> TriggerType {
+    TriggerType::Rising
+}
+
+fn default_trigger_holdoff_ms() -> u64 {
+    500
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+struct TriggerSettings {
+    #[serde(default = "default_trigger_enabled")]
+    enabled: bool,
+    #[serde(default = "default_trigger_type", rename = "type")]
+    trigger_type: TriggerType,
+    #[serde(default)]
+    threshold: f64,
+    #[serde(default = "default_trigger_holdoff_ms", alias = "holdoffMs")]
+    holdoff_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct TriggerEvent {
+    asset: u32,
+    channel: u8,
+    trigger_time: String,
+    trigger_time_unix_ms: i64,
+    raw_value: f64,
+    calibrated_value: f64,
+    threshold: f64,
+    trigger_type: TriggerType,
+    holdoff_ms: u64,
+    calibration_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -52,21 +102,89 @@ struct SampleConfig {
     nats_subject: String,
     nats_stream: String,
     rotate_secs: u64,
+    trigger_stream: String,
+    calibrations: HashMap<u8, CalibrationSpec>,
+    trigger_settings: HashMap<u8, TriggerSettings>,
 }
 
-impl From<(NestedConfig, &SampleConfig)> for SampleConfig {
-    fn from((nested, base): (NestedConfig, &SampleConfig)) -> Self {
-        let raw = nested.sensor_settings;
-        SampleConfig {
-            scans_per_read: raw.scan_rate,
-            suggested_scan_rate: raw.sampling_rate,
-            channels: raw.channels_enabled,
-            asset_number: base.asset_number,
-            nats_subject: base.nats_subject.clone(),
-            nats_stream: base.nats_stream.clone(),
-            rotate_secs: base.rotate_secs,
+#[derive(Debug, Clone, Default)]
+struct ChannelTriggerState {
+    last_calibrated: Option<f64>,
+    next_eligible_at_ms: i64,
+}
+
+fn parse_calibrations(raw: &SensorSettings) -> HashMap<u8, CalibrationSpec> {
+    let mut out = HashMap::new();
+    let Some(calibrations) = raw.calibrations.as_ref() else {
+        return out;
+    };
+
+    for (key, spec) in calibrations {
+        match key.parse::<u8>() {
+            Ok(ch) => {
+                out.insert(ch, spec.clone());
+            }
+            Err(_) => {
+                eprintln!("[streamer] Invalid calibration channel key '{key}', expected u8.");
+            }
         }
     }
+
+    out
+}
+
+fn parse_trigger_settings(raw: &SensorSettings) -> HashMap<u8, TriggerSettings> {
+    let mut out = HashMap::new();
+    let Some(trigger_settings) = raw.trigger_settings.as_ref() else {
+        return out;
+    };
+
+    for (key, spec) in trigger_settings {
+        match key.parse::<u8>() {
+            Ok(ch) => {
+                out.insert(ch, spec.clone());
+            }
+            Err(_) => {
+                eprintln!("[streamer] Invalid trigger channel key '{key}', expected u8.");
+            }
+        }
+    }
+
+    out
+}
+
+fn default_trigger_stream() -> String {
+    std::env::var("TRIGGER_STREAM").unwrap_or_else(|_| "labjack_triggers".to_string())
+}
+
+fn sample_config_from_nested(nested: NestedConfig, base: Option<&SampleConfig>) -> SampleConfig {
+    let raw = nested.sensor_settings;
+    let calibrations = parse_calibrations(&raw);
+    let trigger_settings = parse_trigger_settings(&raw);
+
+    SampleConfig {
+        scans_per_read: raw.scan_rate,
+        suggested_scan_rate: raw.sampling_rate,
+        channels: raw.channels_enabled,
+        asset_number: nested.asset_number,
+        nats_subject: nested.nats_subject,
+        nats_stream: nested.nats_stream,
+        rotate_secs: nested.rotate_secs,
+        trigger_stream: base
+            .map(|cfg| cfg.trigger_stream.clone())
+            .unwrap_or_else(default_trigger_stream),
+        calibrations,
+        trigger_settings,
+    }
+}
+
+fn parse_nested_config(
+    bytes: &[u8],
+    base: Option<&SampleConfig>,
+) -> Result<SampleConfig, LJMError> {
+    let nested_cfg: NestedConfig = serde_json::from_slice(bytes)
+        .map_err(|e| LJMError::LibraryError(format!("Config JSON parse error: {}", e)))?;
+    Ok(sample_config_from_nested(nested_cfg, base))
 }
 
 struct LabJackGuard {
@@ -81,7 +199,7 @@ impl Drop for LabJackGuard {
 }
 
 fn open_labjack_with_fallback(device_type: DeviceType) -> Result<i32, LJMError> {
-    let lj_ip = std::env::var("LABJACK_IP").unwrap_or_else(|_| "10.165.77.233".to_string());
+    let lj_ip = std::env::var("LABJACK_IP").ok();
     let usb_id = std::env::var("LABJACK_USB_ID").unwrap_or_else(|_| "ANY".to_string());
     let order = std::env::var("LABJACK_OPEN_ORDER").unwrap_or_else(|_| "ethernet,usb".to_string());
 
@@ -100,8 +218,12 @@ fn open_labjack_with_fallback(device_type: DeviceType) -> Result<i32, LJMError> 
     for mode in modes {
         match mode.as_str() {
             "ethernet" | "tcp" => {
+                let Some(lj_ip) = lj_ip.as_deref() else {
+                    errors.push("ethernet: LABJACK_IP not set".to_string());
+                    continue;
+                };
                 println!("[labjack] attempting ethernet open via {}", lj_ip);
-                match LJMLibrary::open_jack(device_type, ConnectionType::ETHERNET, lj_ip.as_str()) {
+                match LJMLibrary::open_jack(device_type, ConnectionType::ETHERNET, lj_ip) {
                     Ok(handle) => return Ok(handle),
                     Err(e) => errors.push(format!("ethernet({}): {:?}", lj_ip, e)),
                 }
@@ -147,6 +269,43 @@ fn channel_subject(prefix: &str, asset: u32, ch: u8) -> String {
 
 fn stream_subject_wildcard(prefix: &str, asset: u32) -> String {
     format!("{}.{}.data.*", prefix, pad_asset(asset))
+}
+
+fn trigger_subject(prefix: &str, asset: u32, ch: u8) -> String {
+    format!(
+        "{}.{}.trigger.{}",
+        prefix,
+        pad_asset(asset),
+        pad_channel(ch)
+    )
+}
+
+fn trigger_stream_subject_wildcard(prefix: &str) -> String {
+    format!("{}.*.trigger.*", prefix)
+}
+
+fn parse_nats_servers_from_env() -> Result<Vec<ServerAddr>, LJMError> {
+    let raw = std::env::var("NATS_SERVERS")
+        .map_err(|_| LJMError::LibraryError("NATS_SERVERS must be set".to_string()))?;
+
+    let servers = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            part.parse::<ServerAddr>().map_err(|e| {
+                LJMError::LibraryError(format!("invalid server addr '{}': {}", part, e))
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if servers.is_empty() {
+        return Err(LJMError::LibraryError(
+            "NATS_SERVERS resolved to an empty list".to_string(),
+        ));
+    }
+
+    Ok(servers)
 }
 
 async fn ensure_stream_exists(
@@ -201,22 +360,7 @@ async fn ensure_kv_bucket(js: &jetstream::Context, bucket: &str) -> Result<kv::S
 
 async fn load_config_from_kv(store: &kv::Store, key: &str) -> Result<SampleConfig, LJMError> {
     match store.entry(key).await {
-        Ok(Some(entry)) => {
-            let nested_cfg: NestedConfig = serde_json::from_slice(entry.value.as_ref())
-                .map_err(|e| LJMError::LibraryError(format!("Config JSON parse error: {}", e)))?;
-
-            let cfg = SampleConfig {
-                scans_per_read: nested_cfg.sensor_settings.scan_rate,
-                suggested_scan_rate: nested_cfg.sensor_settings.sampling_rate,
-                channels: nested_cfg.sensor_settings.channels_enabled.clone(),
-                asset_number: nested_cfg.asset_number,
-                nats_subject: nested_cfg.nats_subject.clone(),
-                nats_stream: nested_cfg.nats_stream.clone(),
-                rotate_secs: nested_cfg.rotate_secs,
-            };
-
-            Ok(cfg)
-        }
+        Ok(Some(entry)) => parse_nested_config(entry.value.as_ref(), None),
         Ok(None) => Err(LJMError::LibraryError(format!(
             "KV key '{}' not found",
             key
@@ -249,38 +393,8 @@ async fn watch_kv_config(
                 match maybe {
                     Some(Ok(entry)) => {
                         if entry.operation == Operation::Put {
-                            // try nested format first
-                            let parsed = serde_json::from_slice::<NestedConfig>(entry.value.as_ref())
-                                .map(|nested| {
-                                    let raw = nested.sensor_settings;
-                                    let base = config_tx.borrow().clone();
-
-                                    SampleConfig {
-                                        scans_per_read: raw.scan_rate,
-                                        suggested_scan_rate: raw.sampling_rate,
-                                        channels: raw.channels_enabled,
-                                        asset_number: base.asset_number,
-                                        nats_subject: base.nats_subject,
-                                        nats_stream: base.nats_stream,
-                                        rotate_secs: base.rotate_secs,
-                                    }
-
-                                })
-                                .or_else(|_| {
-                                    serde_json::from_slice::<NestedConfig>(entry.value.as_ref())
-                                        .map(|nested| {
-                                            let raw = nested.sensor_settings;
-                                            SampleConfig {
-                                                scans_per_read: raw.scan_rate,
-                                                suggested_scan_rate: raw.sampling_rate,
-                                                channels: raw.channels_enabled,
-                                                asset_number: nested.asset_number,
-                                                nats_subject: nested.nats_subject,
-                                                nats_stream: nested.nats_stream,
-                                                rotate_secs: nested.rotate_secs,
-                                            }
-                                        })
-                                });
+                            let current_cfg = config_tx.borrow().clone();
+                            let parsed = parse_nested_config(entry.value.as_ref(), Some(&current_cfg));
 
                             match parsed {
                                 Ok(new_cfg) => {
@@ -293,7 +407,10 @@ async fn watch_kv_config(
                                     }
                                 }
                                 Err(e) => {
-                                    eprintln!("[watch_kv_config] Failed to parse JSON for key '{}': {}", entry.key, e);
+                                    eprintln!(
+                                        "[watch_kv_config] Failed to parse JSON for key '{}': {:?}",
+                                        entry.key, e
+                                    );
                                 }
                             }
                         } else {
@@ -327,6 +444,12 @@ async fn sample_with_config(
         &js,
         &cfg.nats_stream,
         &stream_subject_wildcard(&cfg.nats_subject, cfg.asset_number),
+    )
+    .await?;
+    ensure_stream_exists(
+        &js,
+        &cfg.trigger_stream,
+        &trigger_stream_subject_wildcard(&cfg.nats_subject),
     )
     .await?;
 
@@ -394,11 +517,24 @@ async fn sample_with_config(
     });
 
     let mut builder = FlatBufferBuilder::new();
+    let mut trigger_states: HashMap<u8, ChannelTriggerState> = cfg
+        .channels
+        .iter()
+        .map(|ch| (*ch, ChannelTriggerState::default()))
+        .collect();
 
     loop {
         tokio::select! {
             Some(batch) = scan_rx.recv() => {
-                let batch_timestamp = New_York.from_utc_datetime(&Utc::now().naive_utc()).to_rfc3339();
+                let batch_end_utc = Utc::now();
+                let batch_timestamp = New_York
+                    .from_utc_datetime(&batch_end_utc.naive_utc())
+                    .to_rfc3339();
+                let sample_period_ms = if cfg.suggested_scan_rate > 0.0 {
+                    1000.0 / cfg.suggested_scan_rate
+                } else {
+                    0.0
+                };
 
                 let scans = batch.chunks(num_channels);
                 let mut per_channel: Vec<Vec<f64>> = (0..num_channels)
@@ -426,6 +562,91 @@ async fn sample_with_config(
 
                     if let Err(e) = js.publish(subject, data.into()).await {
                         eprintln!("[run #{run_id}] Failed to publish to NATS: {}", e);
+                    }
+
+                    if let Some(trigger_state) = trigger_states.get_mut(&ch_num) {
+                        let calibration = cfg.calibrations.get(&ch_num).cloned().unwrap_or_default();
+                        let trigger_settings = cfg.trigger_settings.get(&ch_num);
+                        let mut emitted = 0_u32;
+
+                        for (sample_idx, raw_value) in values.iter().enumerate() {
+                            let calibrated = calibration.apply(*raw_value);
+                            let sample_offset_ms = if sample_period_ms > 0.0 {
+                                let remaining = values.len().saturating_sub(sample_idx + 1);
+                                (remaining as f64 * sample_period_ms).round() as i64
+                            } else {
+                                0
+                            };
+                            let sample_time = batch_end_utc - chrono::Duration::milliseconds(sample_offset_ms);
+                            let sample_time_unix_ms = sample_time.timestamp_millis();
+
+                            if let (Some(prev), Some(trigger)) =
+                                (trigger_state.last_calibrated, trigger_settings)
+                            {
+                                if trigger.enabled && sample_time_unix_ms >= trigger_state.next_eligible_at_ms {
+                                    let crossed = match trigger.trigger_type {
+                                        TriggerType::Rising => {
+                                            prev <= trigger.threshold && calibrated > trigger.threshold
+                                        }
+                                        TriggerType::Falling => {
+                                            prev >= trigger.threshold && calibrated < trigger.threshold
+                                        }
+                                    };
+
+                                    if crossed {
+                                        let event = TriggerEvent {
+                                            asset: cfg.asset_number,
+                                            channel: ch_num,
+                                            trigger_time: sample_time.to_rfc3339(),
+                                            trigger_time_unix_ms: sample_time_unix_ms,
+                                            raw_value: *raw_value,
+                                            calibrated_value: calibrated,
+                                            threshold: trigger.threshold,
+                                            trigger_type: trigger.trigger_type.clone(),
+                                            holdoff_ms: trigger.holdoff_ms,
+                                            calibration_id: calibration.id_or_default().to_string(),
+                                        };
+                                        let trigger_payload = match serde_json::to_vec(&event) {
+                                            Ok(payload) => payload,
+                                            Err(err) => {
+                                                eprintln!("[run #{run_id}] Failed to encode trigger event: {}", err);
+                                                trigger_state.last_calibrated = Some(calibrated);
+                                                continue;
+                                            }
+                                        };
+
+                                        let trigger_subject = trigger_subject(
+                                            &cfg.nats_subject,
+                                            cfg.asset_number,
+                                            ch_num,
+                                        );
+                                        if let Err(err) = js
+                                            .publish(trigger_subject, trigger_payload.into())
+                                            .await
+                                        {
+                                            eprintln!(
+                                                "[run #{run_id}] Failed to publish trigger event for channel {}: {}",
+                                                ch_num, err
+                                            );
+                                        } else {
+                                            emitted += 1;
+                                        }
+
+                                        trigger_state.next_eligible_at_ms = sample_time_unix_ms
+                                            + trigger.holdoff_ms as i64;
+                                    }
+                                }
+                            }
+
+                            trigger_state.last_calibrated = Some(calibrated);
+                        }
+
+                        if emitted > 0 {
+                            println!(
+                                "[run #{run_id}] emitted {} trigger event(s) for ch{}",
+                                emitted, ch_num
+                            );
+                        }
                     }
                 }
             }
@@ -490,17 +711,7 @@ async fn main() -> Result<(), LJMError> {
         .await
         .map_err(|e| LJMError::LibraryError(format!("Failed to load creds: {}", e)))?;
 
-    let servers: Vec<ServerAddr> = vec![
-        "nats://nats1.oats:4222"
-            .parse()
-            .map_err(|e| LJMError::LibraryError(format!("invalid server addr: {}", e)))?,
-        "nats://nats2.oats:4222"
-            .parse()
-            .map_err(|e| LJMError::LibraryError(format!("invalid server addr: {}", e)))?,
-        "nats://nats3.oats:4222"
-            .parse()
-            .map_err(|e| LJMError::LibraryError(format!("invalid server addr: {}", e)))?,
-    ];
+    let servers = parse_nats_servers_from_env()?;
 
     let nc = opts
         .connect(servers)

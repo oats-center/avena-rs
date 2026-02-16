@@ -22,10 +22,12 @@ usage() {
 Usage: ./deploy-binary.sh <start|stop|restart|status|build> [bin...]
 
 Defaults to: streamer archiver exporter
-Set ROLE=edge to run streamer only.
-Set ROLE=server to run archiver + exporter.
+Set ROLE=edge to run streamer + video-recorder.
+Set VIDEO_MULTI_CAMERA_INSTANCES=cam11,cam10 to run streamer + one video-recorder per camera instance.
+Set ROLE=server to run archiver + exporter + clip-worker.
 Set INCLUDE_SUBSCRIBER=1 to include subscriber by default.
 Instance names are supported with the @ suffix (e.g. archiver@edge01).
+For video-recorder instances, use env overrides like VIDEO_SOURCE_URL_CAM11, VIDEO_ASSET_NUMBER_CAM11, VIDEO_CAMERA_ID_CAM11.
 Set BIN_DIR/LOG_DIR/PID_DIR/ENV_SETUP to override paths.
 EOF
 }
@@ -34,7 +36,7 @@ resolve_bins() {
   local -a bins
   if [[ "$#" -gt 0 ]]; then
     if [[ "$1" == "all" ]]; then
-      bins=("streamer" "archiver" "exporter" "subscriber")
+      bins=("streamer" "archiver" "exporter" "video-recorder" "clip-worker" "subscriber")
     else
       bins=("$@")
     fi
@@ -42,9 +44,21 @@ resolve_bins() {
     case "${ROLE}" in
       edge)
         bins=("streamer")
+        if [[ -n "${VIDEO_MULTI_CAMERA_INSTANCES:-}" ]]; then
+          IFS=',' read -r -a camera_instances <<< "${VIDEO_MULTI_CAMERA_INSTANCES}"
+          for instance in "${camera_instances[@]}"; do
+            instance="$(echo "$instance" | xargs)"
+            [[ -n "$instance" ]] && bins+=("video-recorder@${instance}")
+          done
+          if [[ "${#bins[@]}" -eq 1 ]]; then
+            bins+=("video-recorder")
+          fi
+        else
+          bins+=("video-recorder")
+        fi
         ;;
       server)
-        bins=("archiver" "exporter")
+        bins=("archiver" "exporter" "clip-worker")
         ;;
       ""|*)
         bins=("${DEFAULT_BINS[@]}")
@@ -55,6 +69,20 @@ resolve_bins() {
     fi
   fi
   echo "${bins[@]}"
+}
+
+instance_suffix() {
+  local instance="$1"
+  echo "$instance" | tr '[:lower:]-' '[:upper:]_' | tr -cd 'A-Z0-9_'
+}
+
+instance_override() {
+  local key="$1"
+  local instance="$2"
+  local suffix
+  suffix="$(instance_suffix "$instance")"
+  local override_key="${key}_${suffix}"
+  echo "${!override_key:-}"
 }
 
 pidfile_for() {
@@ -151,7 +179,38 @@ start_one() {
   fi
   echo ">>> Starting $token..."
   if [[ -n "$instance" ]]; then
-    nohup env INSTANCE="$instance" "$BIN_DIR/$bin" >> "$LOG_DIR/$token.log" 2>&1 &
+    if [[ "$bin" == "video-recorder" ]]; then
+      local source_url asset_number camera_id spool_dir transport segment_sec settle_sec scan_sec
+      local -a env_args
+      source_url="$(instance_override VIDEO_SOURCE_URL "$instance")"
+      asset_number="$(instance_override VIDEO_ASSET_NUMBER "$instance")"
+      camera_id="$(instance_override VIDEO_CAMERA_ID "$instance")"
+      spool_dir="$(instance_override VIDEO_SPOOL_DIR "$instance")"
+      transport="$(instance_override VIDEO_RTSP_TRANSPORT "$instance")"
+      segment_sec="$(instance_override VIDEO_SEGMENT_SEC "$instance")"
+      settle_sec="$(instance_override VIDEO_UPLOAD_SETTLE_SEC "$instance")"
+      scan_sec="$(instance_override VIDEO_SCAN_INTERVAL_SEC "$instance")"
+
+      [[ -z "$camera_id" ]] && camera_id="$instance"
+      [[ -z "$spool_dir" ]] && spool_dir="/tmp/avena-video-recorder-${instance}"
+
+      echo ">>> video-recorder instance=$instance camera_id=$camera_id source=${source_url:-${VIDEO_SOURCE_URL:-unset}}"
+      env_args=(
+        "INSTANCE=$instance"
+        "VIDEO_CAMERA_ID=$camera_id"
+        "VIDEO_SPOOL_DIR=$spool_dir"
+      )
+      [[ -n "$source_url" ]] && env_args+=("VIDEO_SOURCE_URL=$source_url")
+      [[ -n "$asset_number" ]] && env_args+=("VIDEO_ASSET_NUMBER=$asset_number")
+      [[ -n "$transport" ]] && env_args+=("VIDEO_RTSP_TRANSPORT=$transport")
+      [[ -n "$segment_sec" ]] && env_args+=("VIDEO_SEGMENT_SEC=$segment_sec")
+      [[ -n "$settle_sec" ]] && env_args+=("VIDEO_UPLOAD_SETTLE_SEC=$settle_sec")
+      [[ -n "$scan_sec" ]] && env_args+=("VIDEO_SCAN_INTERVAL_SEC=$scan_sec")
+
+      nohup env "${env_args[@]}" "$BIN_DIR/$bin" >> "$LOG_DIR/$token.log" 2>&1 &
+    else
+      nohup env INSTANCE="$instance" "$BIN_DIR/$bin" >> "$LOG_DIR/$token.log" 2>&1 &
+    fi
   else
     nohup "$BIN_DIR/$bin" >> "$LOG_DIR/$bin.log" 2>&1 &
   fi

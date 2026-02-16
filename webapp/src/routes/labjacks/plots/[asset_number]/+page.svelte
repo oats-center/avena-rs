@@ -1,9 +1,9 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
     import { page } from "$app/stores";
-    import { connect, getKeyValue, getKeys } from "$lib/nats.svelte";
+    import { connect, getKeyValue, getKeys, putKeyValue } from "$lib/nats.svelte";
     import { downloadExportViaWebSocket, type ExportRequestPayload } from "$lib/exporter";
-    import { requestVideoClip, type VideoClipRequestPayload } from "$lib/video";
+    import { fetchVideoCameras, requestVideoClip, type VideoClipRequestPayload } from "$lib/video";
     import { applyCalibration, normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
     import { FlatBufferParser, calculateSampleTimestamps } from "$lib/flatbuffer-parser";
@@ -18,6 +18,14 @@
         measurement_units: string[];
         labjack_on_off: boolean;
         calibrations?: Record<string, CalibrationSpec>;
+        trigger_settings?: Record<string, BackendTriggerSetting>;
+    }
+
+    interface BackendTriggerSetting {
+        enabled: boolean;
+        type: "rising" | "falling";
+        threshold: number;
+        holdoff_ms: number;
     }
     
     interface LabJackConfig {
@@ -38,7 +46,8 @@
         data_formats: [],
         measurement_units: [],
         labjack_on_off: false,
-        calibrations: {}
+        calibrations: {},
+        trigger_settings: {}
     };
 
     function normalizeLabJackConfig(raw: any): LabJackConfig | null {
@@ -51,6 +60,7 @@
         if (!Number.isFinite(sensor.sampling_rate)) sensor.sampling_rate = DEFAULT_SENSOR_SETTINGS.sampling_rate;
         if (!Number.isFinite(sensor.gains)) sensor.gains = DEFAULT_SENSOR_SETTINGS.gains;
         if (!sensor.calibrations || typeof sensor.calibrations !== "object") sensor.calibrations = {};
+        if (!sensor.trigger_settings || typeof sensor.trigger_settings !== "object") sensor.trigger_settings = {};
         while (sensor.data_formats.length < sensor.channels_enabled.length) sensor.data_formats.push("voltage");
         while (sensor.measurement_units.length < sensor.channels_enabled.length) sensor.measurement_units.push("V");
 
@@ -80,6 +90,19 @@
         postTriggerWindowSec: number;
     }
 
+    interface BackendTriggerEvent {
+        asset: number;
+        channel: number;
+        trigger_time: string;
+        trigger_time_unix_ms: number;
+        raw_value: number;
+        calibrated_value: number;
+        threshold: number;
+        trigger_type: "rising" | "falling";
+        holdoff_ms: number;
+        calibration_id: string;
+    }
+
     interface AxisSettings {
         autoY: boolean;
         yMin: number;
@@ -101,6 +124,8 @@
     
     let assetNumber = $state<number>(0);
     let labjackConfig = $state<LabJackConfig | null>(null);
+    let labjackConfigKey = $state<string>("");
+    let labjackConfigRaw = $state<any>(null);
     let loading = $state<boolean>(true);
     let error = $state<string>("");
     let natsService: any = null;
@@ -132,10 +157,23 @@
     let exportProgress = $state<number>(0);
     let exportTotal = $state<number | null>(null);
     let videoDemoTime = $state<string>("");
+    let videoCameraId = $state<string>("");
+    let availableCameraIds = $state<string[]>([]);
+    let cameraListLoading = $state<boolean>(false);
+    let cameraListError = $state<string>("");
     let videoLoading = $state<boolean>(false);
     let videoError = $state<string>("");
     let videoUrl = $state<string>("");
     let videoFileName = $state<string>("");
+    let autoVideoOnTrigger = $state<boolean>(false);
+    let autoVideoCooldownSec = $state<number>(5);
+    let autoVideoStatus = $state<string>("");
+    let backendTriggerSaving = $state<boolean>(false);
+    let backendTriggerError = $state<string>("");
+    let backendTriggerStatus = $state<string>("");
+    let backendTriggerEvents = $state<BackendTriggerEvent[]>([]);
+    const seenBackendTriggerKeys = new Set<string>();
+    let autoVideoLastFetchAtMs = 0;
     
     // Get asset number from URL params
     $effect(() => {
@@ -154,6 +192,11 @@
         axisSettings;
         triggerSettings;
         updateMaxDataPoints();
+    });
+
+    $effect(() => {
+        if (typeof window === "undefined") return;
+        localStorage.setItem("videoCameraId", videoCameraId);
     });
 
     function updateMaxDataPoints() {
@@ -226,6 +269,13 @@
     async function loadLabJackConfig() {
         loading = true;
         error = "";
+        backendTriggerError = "";
+        backendTriggerStatus = "";
+        backendTriggerEvents = [];
+        autoVideoStatus = "";
+        seenBackendTriggerKeys.clear();
+        availableCameraIds = [];
+        cameraListError = "";
         
         try {
             const serverName = sessionStorage.getItem("serverName");
@@ -247,14 +297,19 @@
             // Find the LabJack config by asset number
             const keys = await getKeys(natsService, "avenabox", "labjackd.config.*");
             let foundConfig: LabJackConfig | null = null;
+            let foundConfigKey = "";
+            let foundConfigRaw: any = null;
             
             for (const key of keys) {
                 try {
                     const configStr = await getKeyValue(natsService, "avenabox", key);
-                    const config = normalizeLabJackConfig(JSON.parse(configStr));
+                    const parsed = JSON.parse(configStr);
+                    const config = normalizeLabJackConfig(parsed);
                     if (!config) continue;
                     if (config.asset_number === assetNumber) {
                         foundConfig = config;
+                        foundConfigKey = key;
+                        foundConfigRaw = parsed;
                         break;
                     }
                 } catch (err) {
@@ -264,9 +319,12 @@
             
             if (foundConfig) {
                 labjackConfig = foundConfig;
+                labjackConfigKey = foundConfigKey;
+                labjackConfigRaw = foundConfigRaw;
                 updateMaxDataPoints();
                 initializeChannelData();
                 await startDataSubscription();
+                await refreshAvailableCameras();
             } else {
                 error = `LabJack with asset number ${assetNumber} not found`;
             }
@@ -294,6 +352,7 @@
         channelFrozenCapture.clear();
         
         labjackConfig.sensor_settings.channels_enabled.forEach(channel => {
+            const backendTriggerSetting = labjackConfig?.sensor_settings.trigger_settings?.[String(channel)];
             newChannelData.set(channel, []);
             newFrozenChannelData.set(channel, []);
             newChannelModes.set(channel, 'free_run');
@@ -307,9 +366,9 @@
             });
             channelLastTimestamp.set(channel, Number.NaN);
             newTriggerSettings.set(channel, {
-                type: 'rising',
-                threshold: 0,
-                holdoffMs: 500,
+                type: backendTriggerSetting?.type === "falling" ? "falling" : "rising",
+                threshold: Number.isFinite(backendTriggerSetting?.threshold) ? backendTriggerSetting!.threshold : 0,
+                holdoffMs: Number.isFinite(backendTriggerSetting?.holdoff_ms) ? Math.max(0, backendTriggerSetting!.holdoff_ms) : 500,
                 preTriggerPercent: 40,
                 postTriggerWindowSec: timeWindow
             });
@@ -391,10 +450,100 @@
                     }
                 })();
             }
+            await startTriggerEventSubscription();
             isConnected = true;
         } catch (err) {
             console.error("Error starting data subscription:", err);
             error = "Failed to start data subscription";
+        }
+    }
+
+    function decodeMessageText(data: any): string {
+        if (typeof data === "string") return data;
+        if (data instanceof Uint8Array) {
+            return new TextDecoder().decode(data);
+        }
+        if (data instanceof ArrayBuffer) {
+            return new TextDecoder().decode(new Uint8Array(data));
+        }
+        return "";
+    }
+
+    function parseBackendTriggerEvent(data: any): BackendTriggerEvent | null {
+        try {
+            const parsed = JSON.parse(decodeMessageText(data));
+            if (!parsed || typeof parsed !== "object") return null;
+            if (!Number.isInteger(parsed.asset) || !Number.isInteger(parsed.channel)) return null;
+            if (typeof parsed.trigger_time !== "string") return null;
+            return {
+                asset: parsed.asset,
+                channel: parsed.channel,
+                trigger_time: parsed.trigger_time,
+                trigger_time_unix_ms: Number(parsed.trigger_time_unix_ms ?? 0),
+                raw_value: Number(parsed.raw_value ?? 0),
+                calibrated_value: Number(parsed.calibrated_value ?? 0),
+                threshold: Number(parsed.threshold ?? 0),
+                trigger_type: parsed.trigger_type === "falling" ? "falling" : "rising",
+                holdoff_ms: Math.max(0, Number(parsed.holdoff_ms ?? 0)),
+                calibration_id:
+                    typeof parsed.calibration_id === "string" ? parsed.calibration_id : "identity"
+            };
+        } catch {
+            return null;
+        }
+    }
+
+    function backendTriggerEventKey(event: BackendTriggerEvent): string {
+        return `${event.asset}:${event.channel}:${event.trigger_time_unix_ms}:${event.trigger_type}`;
+    }
+
+    function rememberSeenTriggerKey(key: string) {
+        seenBackendTriggerKeys.add(key);
+        if (seenBackendTriggerKeys.size > 200) {
+            const first = seenBackendTriggerKeys.values().next().value;
+            if (first) seenBackendTriggerKeys.delete(first);
+        }
+    }
+
+    async function startTriggerEventSubscription() {
+        if (!natsService || !labjackConfig) return;
+
+        const subject = `${labjackConfig.nats_subject}.${labjackConfig.asset_number}.trigger.*`;
+        const subscription = natsService.connection.subscribe(subject);
+        subscriptions.push(subscription);
+
+        (async () => {
+            for await (const msg of subscription) {
+                const event = parseBackendTriggerEvent(msg.data);
+                if (!event) continue;
+                const key = backendTriggerEventKey(event);
+                if (seenBackendTriggerKeys.has(key)) continue;
+                rememberSeenTriggerKey(key);
+                backendTriggerEvents = [event, ...backendTriggerEvents].slice(0, 50);
+                void maybeFetchVideoFromTriggerEvent(event);
+            }
+        })();
+    }
+
+    async function refreshAvailableCameras() {
+        if (!labjackConfig) return;
+        cameraListLoading = true;
+        cameraListError = "";
+        try {
+            const cameras = await fetchVideoCameras(labjackConfig.asset_number);
+            availableCameraIds = cameras;
+
+            if (cameras.length > 0) {
+                const trimmed = videoCameraId.trim();
+                if (!trimmed || !cameras.includes(trimmed)) {
+                    videoCameraId = cameras[0];
+                }
+            }
+        } catch (err) {
+            cameraListError =
+                err instanceof Error ? err.message : "Failed to load available cameras";
+        } finally {
+            cameraListLoading = false;
         }
     }
     
@@ -704,9 +853,11 @@
         window.location.href = "/labjacks";
     }
 
-    function toLocalInputValue(date: Date): string {
+    function toLocalInputValue(date: Date, includeSeconds: boolean = false): string {
         const pad = (value: number) => value.toString().padStart(2, "0");
-        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+        const base = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+        if (!includeSeconds) return base;
+        return `${base}:${pad(date.getSeconds())}`;
     }
 
     function toRfc3339(value: string): string {
@@ -717,6 +868,11 @@
         return date.toISOString();
     }
 
+    function normalizedVideoCameraId(): string | undefined {
+        const trimmed = videoCameraId.trim();
+        return trimmed.length > 0 ? trimmed : undefined;
+    }
+
     function clearVideoPreview() {
         if (videoUrl) {
             URL.revokeObjectURL(videoUrl);
@@ -725,12 +881,38 @@
         videoFileName = "";
     }
 
-    async function fetchVideoDemoClip() {
+    async function fetchClipByCenterIso(centerIso: string, sourceLabel: string) {
         if (!labjackConfig) {
             videoError = "Configuration not loaded";
             return;
         }
 
+        videoLoading = true;
+        videoError = "";
+
+        try {
+            const payload: VideoClipRequestPayload = {
+                asset: labjackConfig.asset_number,
+                camera_id: normalizedVideoCameraId(),
+                center_time: centerIso,
+                pre_sec: 5,
+                post_sec: 5
+            };
+            const result = await requestVideoClip(payload);
+            clearVideoPreview();
+            videoUrl = URL.createObjectURL(result.blob);
+            videoFileName = result.filename;
+            autoVideoStatus = `${sourceLabel}: loaded ${result.filename}`;
+        } catch (err) {
+            clearVideoPreview();
+            videoError = err instanceof Error ? err.message : "Failed to fetch video clip";
+            autoVideoStatus = `${sourceLabel}: failed`;
+        } finally {
+            videoLoading = false;
+        }
+    }
+
+    async function fetchVideoDemoClip() {
         if (!videoDemoTime) {
             videoError = "Please select date and time";
             return;
@@ -744,26 +926,87 @@
             return;
         }
 
-        videoLoading = true;
-        videoError = "";
+        await fetchClipByCenterIso(centerIso, "Manual fetch");
+    }
+
+    async function maybeFetchVideoFromTriggerEvent(event: BackendTriggerEvent) {
+        if (!autoVideoOnTrigger || videoLoading) return;
+        if (!labjackConfig || event.asset !== labjackConfig.asset_number) return;
+
+        const cooldownMs = Math.max(0, autoVideoCooldownSec) * 1000;
+        const now = Date.now();
+        if (cooldownMs > 0 && now - autoVideoLastFetchAtMs < cooldownMs) {
+            return;
+        }
+
+        autoVideoLastFetchAtMs = now;
+        const triggerDate = new Date(event.trigger_time);
+        if (!isNaN(triggerDate.getTime())) {
+            videoDemoTime = toLocalInputValue(triggerDate, true);
+        }
+        autoVideoStatus = `Auto fetching clip from trigger ch${event.channel
+            .toString()
+            .padStart(2, "0")} @ ${formatTriggerEventTime(event.trigger_time)}${
+            normalizedVideoCameraId() ? ` camera=${normalizedVideoCameraId()}` : ""
+        }`;
+        await fetchClipByCenterIso(event.trigger_time, "Auto trigger");
+    }
+
+    function buildBackendTriggerSettings() {
+        const settings: Record<string, BackendTriggerSetting> = {};
+        for (const [channel, trigger] of triggerSettings.entries()) {
+            settings[String(channel)] = {
+                enabled: true,
+                type: trigger.type,
+                threshold: Number.isFinite(trigger.threshold) ? trigger.threshold : 0,
+                holdoff_ms: Math.max(0, Math.round(trigger.holdoffMs || 0))
+            };
+        }
+        return settings;
+    }
+
+    async function saveBackendTriggerSettings() {
+        if (!natsService || !labjackConfig || !labjackConfigKey) {
+            backendTriggerError = "LabJack config key not loaded";
+            return;
+        }
+
+        backendTriggerSaving = true;
+        backendTriggerError = "";
+        backendTriggerStatus = "";
 
         try {
-            const payload: VideoClipRequestPayload = {
-                asset: labjackConfig.asset_number,
-                center_time: centerIso,
-                pre_sec: 5,
-                post_sec: 5
-            };
-            const result = await requestVideoClip(payload);
-            clearVideoPreview();
-            videoUrl = URL.createObjectURL(result.blob);
-            videoFileName = result.filename;
+            const nextConfig = labjackConfigRaw && typeof labjackConfigRaw === "object"
+                ? JSON.parse(JSON.stringify(labjackConfigRaw))
+                : JSON.parse(JSON.stringify(labjackConfig));
+
+            if (!nextConfig.sensor_settings || typeof nextConfig.sensor_settings !== "object") {
+                nextConfig.sensor_settings = {};
+            }
+            nextConfig.sensor_settings.trigger_settings = buildBackendTriggerSettings();
+
+            await putKeyValue(
+                natsService,
+                "avenabox",
+                labjackConfigKey,
+                JSON.stringify(nextConfig, null, 2)
+            );
+
+            labjackConfigRaw = nextConfig;
+            labjackConfig = normalizeLabJackConfig(nextConfig);
+            backendTriggerStatus = `Saved trigger settings to ${labjackConfigKey}`;
         } catch (err) {
-            clearVideoPreview();
-            videoError = err instanceof Error ? err.message : "Failed to fetch video clip";
+            backendTriggerError =
+                err instanceof Error ? err.message : "Failed to save trigger settings";
         } finally {
-            videoLoading = false;
+            backendTriggerSaving = false;
         }
+    }
+
+    function formatTriggerEventTime(value: string): string {
+        const dt = new Date(value);
+        if (isNaN(dt.getTime())) return value;
+        return dt.toLocaleString();
     }
 
     function openExportModal() {
@@ -902,6 +1145,12 @@
         }, 100);
         if (!videoDemoTime) {
             videoDemoTime = toLocalInputValue(new Date());
+        }
+        const persistedCameraId = localStorage.getItem("videoCameraId");
+        if (persistedCameraId) {
+            videoCameraId = persistedCameraId;
+        } else {
+            videoCameraId = "cam11";
         }
     });
     
@@ -1066,11 +1315,111 @@
 
             <div class="card bg-base-100 shadow-xl mb-6">
                 <div class="card-body">
+                    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                            <h4 class="card-title text-base-content">Backend Trigger Integration</h4>
+                            <p class="text-sm text-base-content/70">
+                                Save threshold/edge/holdoff to KV so streamer trigger detection uses calibrated values.
+                            </p>
+                        </div>
+                        <button
+                            class="btn btn-secondary"
+                            onclick={saveBackendTriggerSettings}
+                            disabled={backendTriggerSaving || !labjackConfigKey}
+                        >
+                            {backendTriggerSaving ? "Saving..." : "Save Trigger Settings To Backend"}
+                        </button>
+                    </div>
+
+                    {#if backendTriggerError}
+                        <div class="alert alert-error text-sm">
+                            <span>{backendTriggerError}</span>
+                        </div>
+                    {/if}
+
+                    {#if backendTriggerStatus}
+                        <div class="alert alert-success text-sm">
+                            <span>{backendTriggerStatus}</span>
+                        </div>
+                    {/if}
+
+                    <div class="divider my-2">Recent Backend Trigger Events</div>
+                    {#if backendTriggerEvents.length === 0}
+                        <p class="text-sm text-base-content/70">No backend trigger events received yet.</p>
+                    {:else}
+                        <div class="overflow-x-auto">
+                            <table class="table table-zebra table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Channel</th>
+                                        <th>Type</th>
+                                        <th>Calibrated</th>
+                                        <th>Threshold</th>
+                                        <th>Raw</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {#each backendTriggerEvents as event}
+                                        <tr>
+                                            <td>{formatTriggerEventTime(event.trigger_time)}</td>
+                                            <td>ch{event.channel.toString().padStart(2, "0")}</td>
+                                            <td>{event.trigger_type}</td>
+                                            <td>{event.calibrated_value.toFixed(4)}</td>
+                                            <td>{event.threshold.toFixed(4)}</td>
+                                            <td>{event.raw_value.toFixed(4)}</td>
+                                        </tr>
+                                    {/each}
+                                </tbody>
+                            </table>
+                        </div>
+                    {/if}
+                </div>
+            </div>
+
+            <div class="card bg-base-100 shadow-xl mb-6">
+                <div class="card-body">
                     <h4 class="card-title text-base-content">Video Clip Demo</h4>
                     <p class="text-sm text-base-content/70">
-                        Manual clip around selected time for this asset (-5s to +5s).
+                        Manual clip around selected time or auto-fetch on backend trigger events (-5s to +5s).
                     </p>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end mb-2">
+                        <label class="label cursor-pointer">
+                            <span class="label-text">Auto Fetch On Backend Trigger</span>
+                            <input
+                                type="checkbox"
+                                class="toggle toggle-primary"
+                                bind:checked={autoVideoOnTrigger}
+                                disabled={videoLoading}
+                            />
+                        </label>
+                        <div class="form-control">
+                            <label class="label" for="auto-video-cooldown">
+                                <span class="label-text">Auto Cooldown (s)</span>
+                            </label>
+                            <input
+                                id="auto-video-cooldown"
+                                type="number"
+                                min="0"
+                                step="1"
+                                class="input input-bordered"
+                                value={autoVideoCooldownSec}
+                                onchange={(e) => {
+                                    if (e.target instanceof HTMLInputElement) {
+                                        const parsed = parseInt(e.target.value, 10);
+                                        autoVideoCooldownSec = Number.isFinite(parsed)
+                                            ? Math.max(0, parsed)
+                                            : 0;
+                                    }
+                                }}
+                                disabled={videoLoading}
+                            />
+                        </div>
+                        <div class="text-xs text-base-content/70">
+                            {autoVideoStatus || "No auto-trigger clip fetch yet."}
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                         <div class="form-control md:col-span-2">
                             <label class="label" for="video-demo-time">
                                 <span class="label-text">Center Time</span>
@@ -1083,6 +1432,45 @@
                                 bind:value={videoDemoTime}
                                 disabled={videoLoading}
                             />
+                        </div>
+                        <div class="form-control">
+                            <label class="label" for="video-camera-id">
+                                <span class="label-text">Camera ID</span>
+                            </label>
+                            <div class="flex gap-2">
+                                {#if availableCameraIds.length > 0}
+                                    <select
+                                        id="video-camera-id"
+                                        class="select select-bordered w-full"
+                                        bind:value={videoCameraId}
+                                        disabled={videoLoading || cameraListLoading}
+                                    >
+                                        {#each availableCameraIds as cameraId}
+                                            <option value={cameraId}>{cameraId}</option>
+                                        {/each}
+                                    </select>
+                                {:else}
+                                    <input
+                                        id="video-camera-id"
+                                        type="text"
+                                        class="input input-bordered w-full"
+                                        placeholder="cam11"
+                                        bind:value={videoCameraId}
+                                        disabled={videoLoading || cameraListLoading}
+                                    />
+                                {/if}
+                                <button
+                                    class="btn btn-outline"
+                                    onclick={refreshAvailableCameras}
+                                    disabled={videoLoading || cameraListLoading}
+                                    title="Refresh camera list"
+                                >
+                                    {cameraListLoading ? "..." : "Refresh"}
+                                </button>
+                            </div>
+                            {#if cameraListError}
+                                <span class="text-xs text-error mt-1">{cameraListError}</span>
+                            {/if}
                         </div>
                         <button
                             class="btn btn-primary"

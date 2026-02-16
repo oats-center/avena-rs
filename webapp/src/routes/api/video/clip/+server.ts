@@ -2,6 +2,7 @@ import { json, type RequestHandler } from '@sveltejs/kit';
 
 interface VideoClipRequest {
   asset: number;
+  camera_id?: string;
   center_time: string;
   pre_sec?: number;
   post_sec?: number;
@@ -27,6 +28,10 @@ export const POST: RequestHandler = async ({ request, fetch }) => {
     return json({ error: 'center_time must be an RFC3339 string' }, { status: 400 });
   }
 
+  if (payload.camera_id !== undefined && typeof payload.camera_id !== 'string') {
+    return json({ error: 'camera_id must be a string when provided' }, { status: 400 });
+  }
+
   if (payload.pre_sec !== undefined && (typeof payload.pre_sec !== 'number' || !Number.isFinite(payload.pre_sec) || payload.pre_sec < 0)) {
     return json({ error: 'pre_sec must be a non-negative number' }, { status: 400 });
   }
@@ -35,7 +40,10 @@ export const POST: RequestHandler = async ({ request, fetch }) => {
     return json({ error: 'post_sec must be a non-negative number' }, { status: 400 });
   }
 
-  const exporterBase = process.env.EXPORTER_HTTP_URL ?? 'http://127.0.0.1:9001';
+  const exporterBase = process.env.EXPORTER_HTTP_URL;
+  if (!exporterBase) {
+    return json({ error: 'EXPORTER_HTTP_URL is not set' }, { status: 500 });
+  }
   const upstream = await fetch(`${exporterBase}/video/clip`, {
     method: 'POST',
     headers: {

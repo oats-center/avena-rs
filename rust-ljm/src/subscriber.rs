@@ -34,6 +34,26 @@ fn open_csv_for_channel(out_dir: &Path, asset: u32, ch_token: &str) -> std::io::
     Ok(file)
 }
 
+fn parse_nats_servers_from_env() -> Result<Vec<ServerAddr>, Box<dyn Error>> {
+    let raw = std::env::var("NATS_SERVERS")
+        .map_err(|_| "NATS_SERVERS must be set (comma-separated nats:// URLs)")?;
+
+    let mut servers = Vec::new();
+    for part in raw
+        .split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+    {
+        servers.push(part.parse::<ServerAddr>()?);
+    }
+
+    if servers.is_empty() {
+        return Err("NATS_SERVERS resolved to an empty list".into());
+    }
+
+    Ok(servers)
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     // match JSON config keys
@@ -56,12 +76,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let wildcard = format!("{}.{}.data.*", subject_prefix, pad_asset(asset_number));
     println!("Subscribing to subject '{}'", wildcard);
 
-    // Build server list
-    let servers: Vec<ServerAddr> = vec![
-        "nats://nats1.oats:4222".parse()?,
-        "nats://nats2.oats:4222".parse()?,
-        "nats://nats3.oats:4222".parse()?,
-    ];
+    let servers = parse_nats_servers_from_env()?;
 
     // Connect using creds
     let creds_path = std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| "apt.creds".into());
