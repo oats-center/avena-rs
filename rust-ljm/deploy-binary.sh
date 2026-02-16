@@ -85,6 +85,36 @@ instance_override() {
   echo "${!override_key:-}"
 }
 
+ensure_labjack_runtime_lib() {
+  local lib_file="${LJM_LIB_FILE:-}"
+  if [[ -z "$lib_file" ]]; then
+    return 0
+  fi
+
+  if [[ ! -f "$lib_file" ]]; then
+    echo ">>> streamer runtime error: LJM_LIB_FILE does not exist: $lib_file"
+    return 1
+  fi
+
+  local lib_name link_path
+  lib_name="$(basename "$lib_file")"
+  link_path="$ROOT_DIR/$lib_name"
+
+  if [[ -L "$link_path" ]]; then
+    local target
+    target="$(readlink "$link_path" || true)"
+    if [[ "$target" == "$lib_file" ]]; then
+      return 0
+    fi
+    rm -f "$link_path"
+  elif [[ -e "$link_path" ]]; then
+    echo ">>> streamer runtime error: $link_path exists and is not a symlink"
+    return 1
+  fi
+
+  ln -s "$lib_file" "$link_path"
+}
+
 pidfile_for() {
   local token="$1"
   echo "$PID_DIR/${token}.pid"
@@ -176,6 +206,9 @@ start_one() {
   if [[ ! -x "$BIN_DIR/$bin" ]]; then
     echo ">>> $bin not found at $BIN_DIR/$bin"
     return 1
+  fi
+  if [[ "$bin" == "streamer" ]]; then
+    ensure_labjack_runtime_lib || return 1
   fi
   echo ">>> Starting $token..."
   if [[ -n "$instance" ]]; then
@@ -279,7 +312,12 @@ case "$cmd" in
     if [[ "$#" -gt 0 ]]; then
       bins=($(resolve_bins "$@"))
     else
-      mapfile -t bins < <(ls -1 "$PID_DIR"/*.pid 2>/dev/null | xargs -n1 basename 2>/dev/null | sed 's/\.pid$//' || true)
+      bins=()
+      for pid_path in "$PID_DIR"/*.pid; do
+        [[ -e "$pid_path" ]] || continue
+        token="$(basename "$pid_path")"
+        bins+=("${token%.pid}")
+      done
       if [[ "${#bins[@]}" -eq 0 ]]; then
         bins=($(resolve_bins))
       fi

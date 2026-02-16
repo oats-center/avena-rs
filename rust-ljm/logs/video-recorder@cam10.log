@@ -1,0 +1,86 @@
+[video-recorder] starting ffmpeg source=rtsp://admin:1ubuntu9%40@127.0.0.1:8556 segment=5s pattern=/tmp/avena-video-recorder-cam10/segment_%Y%m%d_%H%M%S.mp4
+[video-recorder] running asset=1001 camera_id=cam10 bucket='avena_videos' tz='America/New_York' spool='/tmp/avena-video-recorder-cam10' source=rtsp://admin:1ubuntu9%40@127.0.0.1:8556
+[segment @ 0xaccc33480] Timestamps are unset in a packet for stream 0. This is deprecated and will stop working in the future. Fix your code to set the timestamps properly
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130213.mp4 -> asset1001/camera_cam10/V_2026_02_16_130213_2026_02_16_130218.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130220.mp4 -> asset1001/camera_cam10/V_2026_02_16_130220_2026_02_16_130225.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130224.mp4 -> asset1001/camera_cam10/V_2026_02_16_130224_2026_02_16_130229.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130233.mp4 -> asset1001/camera_cam10/V_2026_02_16_130233_2026_02_16_130238.mp4
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 445959, current: 432792; changing to 445960. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 445960, current: 433816; changing to 445961. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 445961, current: 434840; changing to 445962. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 445962, current: 435864; changing to 445963. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 445963, current: 436888; changing to 445964. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 445964, current: 437912; changing to 445965. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 445965, current: 438936; changing to 445966. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 445966, current: 439960; changing to 445967. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 445967, current: 440984; changing to 445968. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 445968, current: 442008; changing to 445969. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 445969, current: 443032; changing to 445970. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 445970, current: 444056; changing to 445971. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 445971, current: 445080; changing to 445972. This may result in incorrect timestamps in the output file.
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130237.mp4 -> asset1001/camera_cam10/V_2026_02_16_130237_2026_02_16_130242.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130245.mp4 -> asset1001/camera_cam10/V_2026_02_16_130245_2026_02_16_130250.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130250.mp4 -> asset1001/camera_cam10/V_2026_02_16_130250_2026_02_16_130255.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130257.mp4 -> asset1001/camera_cam10/V_2026_02_16_130257_2026_02_16_130302.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130302.mp4 -> asset1001/camera_cam10/V_2026_02_16_130302_2026_02_16_130307.mp4
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 992440, current: 988522; changing to 992441. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 992441, current: 989546; changing to 992442. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 992442, current: 990570; changing to 992443. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 992443, current: 991594; changing to 992444. This may result in incorrect timestamps in the output file.
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130312.mp4 -> asset1001/camera_cam10/V_2026_02_16_130312_2026_02_16_130317.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130319.mp4 -> asset1001/camera_cam10/V_2026_02_16_130319_2026_02_16_130324.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130327.mp4 -> asset1001/camera_cam10/V_2026_02_16_130327_2026_02_16_130332.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130333.mp4 -> asset1001/camera_cam10/V_2026_02_16_130333_2026_02_16_130338.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130341.mp4 -> asset1001/camera_cam10/V_2026_02_16_130341_2026_02_16_130346.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130343.mp4 -> asset1001/camera_cam10/V_2026_02_16_130343_2026_02_16_130348.mp4
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 1499725, current: 1484845; changing to 1499726. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 1499726, current: 1485869; changing to 1499727. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 1499727, current: 1486893; changing to 1499728. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 1499728, current: 1487917; changing to 1499729. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 1499729, current: 1488941; changing to 1499730. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 1499730, current: 1489965; changing to 1499731. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 1499731, current: 1490989; changing to 1499732. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 1499732, current: 1492013; changing to 1499733. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 1499733, current: 1493037; changing to 1499734. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 1499734, current: 1494061; changing to 1499735. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 1499735, current: 1495085; changing to 1499736. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 1499736, current: 1496109; changing to 1499737. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 1499737, current: 1497133; changing to 1499738. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 1499738, current: 1498157; changing to 1499739. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 1499739, current: 1499181; changing to 1499740. This may result in incorrect timestamps in the output file.
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130346.mp4 -> asset1001/camera_cam10/V_2026_02_16_130346_2026_02_16_130351.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130348.mp4 -> asset1001/camera_cam10/V_2026_02_16_130348_2026_02_16_130353.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130352.mp4 -> asset1001/camera_cam10/V_2026_02_16_130352_2026_02_16_130357.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130358.mp4 -> asset1001/camera_cam10/V_2026_02_16_130358_2026_02_16_130403.mp4
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 1870228, current: 1866699; changing to 1870229. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 1870229, current: 1867723; changing to 1870230. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 1870230, current: 1868747; changing to 1870231. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 1870231, current: 1869771; changing to 1870232. This may result in incorrect timestamps in the output file.
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130407.mp4 -> asset1001/camera_cam10/V_2026_02_16_130407_2026_02_16_130412.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130414.mp4 -> asset1001/camera_cam10/V_2026_02_16_130414_2026_02_16_130419.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130418.mp4 -> asset1001/camera_cam10/V_2026_02_16_130418_2026_02_16_130423.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130420.mp4 -> asset1001/camera_cam10/V_2026_02_16_130420_2026_02_16_130425.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130422.mp4 -> asset1001/camera_cam10/V_2026_02_16_130422_2026_02_16_130427.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130426.mp4 -> asset1001/camera_cam10/V_2026_02_16_130426_2026_02_16_130431.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130427.mp4 -> asset1001/camera_cam10/V_2026_02_16_130427_2026_02_16_130432.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130432.mp4 -> asset1001/camera_cam10/V_2026_02_16_130432_2026_02_16_130437.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130440.mp4 -> asset1001/camera_cam10/V_2026_02_16_130440_2026_02_16_130445.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130445.mp4 -> asset1001/camera_cam10/V_2026_02_16_130445_2026_02_16_130450.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130452.mp4 -> asset1001/camera_cam10/V_2026_02_16_130452_2026_02_16_130457.mp4
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 2704748, current: 2698151; changing to 2704749. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 2704749, current: 2699175; changing to 2704750. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 2704750, current: 2700199; changing to 2704751. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 2704751, current: 2701223; changing to 2704752. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 2704752, current: 2702247; changing to 2704753. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 2704753, current: 2703271; changing to 2704754. This may result in incorrect timestamps in the output file.
+[aost#0:1/copy @ 0xacd42c600] Non-monotonic DTS; previous: 2704754, current: 2704295; changing to 2704755. This may result in incorrect timestamps in the output file.
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130457.mp4 -> asset1001/camera_cam10/V_2026_02_16_130457_2026_02_16_130502.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130506.mp4 -> asset1001/camera_cam10/V_2026_02_16_130506_2026_02_16_130511.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130511.mp4 -> asset1001/camera_cam10/V_2026_02_16_130511_2026_02_16_130516.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130516.mp4 -> asset1001/camera_cam10/V_2026_02_16_130516_2026_02_16_130521.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130524.mp4 -> asset1001/camera_cam10/V_2026_02_16_130524_2026_02_16_130529.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130526.mp4 -> asset1001/camera_cam10/V_2026_02_16_130526_2026_02_16_130531.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130528.mp4 -> asset1001/camera_cam10/V_2026_02_16_130528_2026_02_16_130533.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130531.mp4 -> asset1001/camera_cam10/V_2026_02_16_130531_2026_02_16_130536.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130533.mp4 -> asset1001/camera_cam10/V_2026_02_16_130533_2026_02_16_130538.mp4
+[video-recorder] uploaded /tmp/avena-video-recorder-cam10/segment_20260216_130536.mp4 -> asset1001/camera_cam10/V_2026_02_16_130536_2026_02_16_130541.mp4

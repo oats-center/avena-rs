@@ -1,0 +1,10 @@
+Connected to NATS via creds!
+KV bucket 'avenabox' already exists.
+[bootstrap] Loaded initial config from KV 'avenabox:labjackd.config.i69-mu1': SampleConfig { scans_per_read: 20, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {} }
+[run_sampler] Starting sampler run #1 with SampleConfig { scans_per_read: 20, suggested_scan_rate: 1000.0, channels: [11], asset_number: 1001, nats_subject: "avenabox", nats_stream: "labjacks", rotate_secs: 600, trigger_stream: "labjack_triggers", calibrations: {11: CalibrationSpec { id: None, formula: Identity }}, trigger_settings: {} }
+JetStream stream 'labjacks' already exists.
+JetStream stream 'labjack_triggers' already exists.
+[labjack] attempting ethernet open via 10.165.77.233
+[run #1] Connected to T7 (serial 470036330)
+[run #1] Streaming started: 20 scans/read @ 1000 Hz
+[watch_kv_config] Watching KV key 'labjackd.config.i69-mu1'

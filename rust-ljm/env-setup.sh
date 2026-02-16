@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 
-# If sourced, don't leak shell options into the parent shell.
-if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
-  _RUN_SH_SAVED_OPTS="$(set +o)"
+# Detect whether this file is sourced (works in bash/zsh).
+_ENV_SETUP_SOURCED=0
+(return 0 2>/dev/null) && _ENV_SETUP_SOURCED=1
+
+# Only set strict options when executed directly, not when sourced into an interactive shell.
+if [[ "$_ENV_SETUP_SOURCED" -eq 0 ]]; then
+  set -eo pipefail
 fi
 
-set -eo pipefail
-
 _ENV_SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ENV_SETUP_OS="$(uname -s 2>/dev/null || echo unknown)"
 
 : "${NATS_SUBJECT:=avenabox}"
 : "${NATS_SERVERS:=nats://nats1.oats:4222,nats://nats2.oats:4222,nats://nats3.oats:4222}"
@@ -19,6 +22,11 @@ _ENV_SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 : "${LABJACK_IP:=10.165.77.233}"
 : "${LABJACK_USB_ID:=ANY}"
 : "${LABJACK_OPEN_ORDER:=ethernet,usb}"
+if [[ "${_ENV_SETUP_OS}" == "Darwin" ]]; then
+  : "${LJM_LIB_FILE:=/usr/local/lib/libLabJackM-1.23.4.dylib}"
+else
+  : "${LJM_LIB_FILE:=}"
+fi
 : "${TRIGGER_STREAM:=labjack_triggers}"
 : "${VIDEO_BUCKET:=avena_videos}"
 : "${VIDEO_TZ:=America/New_York}"
@@ -57,13 +65,25 @@ _ENV_SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 : "${ROLE:=server}"
 
 export NATS_SUBJECT NATS_SERVERS ASSET_NUMBER OUTPUT_DIR NATS_CREDS_FILE CFG_BUCKET CFG_KEY LABJACK_IP LABJACK_USB_ID LABJACK_OPEN_ORDER TRIGGER_STREAM
+export LJM_LIB_FILE
 export VIDEO_BUCKET VIDEO_TZ FFMPEG_BIN VIDEO_TMP_DIR VIDEO_ASSET_NUMBER VIDEO_SOURCE_URL VIDEO_CAMERA_ID VIDEO_RTSP_TRANSPORT VIDEO_SEGMENT_SEC VIDEO_UPLOAD_SETTLE_SEC VIDEO_SCAN_INTERVAL_SEC VIDEO_SPOOL_DIR VIDEO_MULTI_CAMERA_INSTANCES VIDEO_SOURCE_URL_CAM11 VIDEO_SOURCE_URL_CAM10 VIDEO_ASSET_NUMBER_CAM11 VIDEO_ASSET_NUMBER_CAM10 VIDEO_CAMERA_ID_CAM11 VIDEO_CAMERA_ID_CAM10 VIDEO_SPOOL_DIR_CAM11 VIDEO_SPOOL_DIR_CAM10 VIDEO_RECORDER_FFMPEG_BIN
 export TRIGGER_SUBJECT_FILTER TRIGGER_CONSUMER_DURABLE TRIGGER_STATE_BUCKET CLIP_PRE_SEC CLIP_POST_SEC CLIP_PROCESS_LAG_SEC CLIP_COMPACTION_INTERVAL_SEC CLIP_WORKER_POLL_INTERVAL_SEC CLIP_OUTPUT_PREFIX CLIP_CAMERA_IDS RAW_RETENTION_SEC
 export EXPORTER_HTTP_URL ROLE
 
-if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
-  eval "${_RUN_SH_SAVED_OPTS}"
-  unset _RUN_SH_SAVED_OPTS
+# Ensure macOS can locate LabJack shared library for streamer/examples.
+if [[ "${_ENV_SETUP_OS}" == "Darwin" && -f "${LJM_LIB_FILE}" ]]; then
+  LJM_LIB_DIR="$(dirname "${LJM_LIB_FILE}")"
+  export LJM_PATH="${LJM_LIB_FILE}"
+  if [[ -n "${DYLD_FALLBACK_LIBRARY_PATH:-}" ]]; then
+    case ":${DYLD_FALLBACK_LIBRARY_PATH}:" in
+      *":${LJM_LIB_DIR}:"*) ;;
+      *) export DYLD_FALLBACK_LIBRARY_PATH="${LJM_LIB_DIR}:${DYLD_FALLBACK_LIBRARY_PATH}" ;;
+    esac
+  else
+    export DYLD_FALLBACK_LIBRARY_PATH="${LJM_LIB_DIR}"
+  fi
 fi
 
+unset _ENV_SETUP_SOURCED
 unset _ENV_SETUP_DIR
+unset _ENV_SETUP_OS
