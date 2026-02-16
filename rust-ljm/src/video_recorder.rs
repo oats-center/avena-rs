@@ -26,6 +26,7 @@ struct RecorderConfig {
     video_camera_id: String,
     video_tz: Tz,
     ffmpeg_bin: String,
+    ffprobe_bin: String,
     video_source_url: String,
     video_rtsp_transport: String,
     video_segment_sec: u64,
@@ -77,6 +78,9 @@ impl RecorderConfig {
         let ffmpeg_bin = std::env::var("VIDEO_RECORDER_FFMPEG_BIN")
             .or_else(|_| std::env::var("FFMPEG_BIN"))
             .unwrap_or_else(|_| "ffmpeg".to_string());
+        let ffprobe_bin = std::env::var("VIDEO_RECORDER_FFPROBE_BIN")
+            .or_else(|_| std::env::var("FFPROBE_BIN"))
+            .unwrap_or_else(|_| "ffprobe".to_string());
 
         let video_source_url = std::env::var("VIDEO_SOURCE_URL")
             .map_err(|_| anyhow!("VIDEO_SOURCE_URL must be set"))?;
@@ -99,6 +103,7 @@ impl RecorderConfig {
             video_camera_id,
             video_tz,
             ffmpeg_bin,
+            ffprobe_bin,
             video_source_url,
             video_rtsp_transport,
             video_segment_sec,
@@ -242,6 +247,8 @@ async fn list_ready_segments(cfg: &RecorderConfig) -> Result<Vec<PathBuf>> {
 
     let now = SystemTime::now();
     let mut paths: Vec<PathBuf> = Vec::new();
+    let min_settle_sec = cfg.video_segment_sec.saturating_add(1);
+    let settle_sec = cfg.video_upload_settle_sec.max(min_settle_sec);
     while let Some(entry) = entries.next_entry().await? {
         let path = entry.path();
         if path.extension().and_then(|v| v.to_str()) != Some("mp4") {
@@ -257,7 +264,7 @@ async fn list_ready_segments(cfg: &RecorderConfig) -> Result<Vec<PathBuf>> {
         let metadata = entry.metadata().await?;
         let modified = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
         let age_sec = now.duration_since(modified).unwrap_or_default().as_secs();
-        if age_sec < cfg.video_upload_settle_sec {
+        if age_sec < settle_sec {
             continue;
         }
 
@@ -268,9 +275,66 @@ async fn list_ready_segments(cfg: &RecorderConfig) -> Result<Vec<PathBuf>> {
     Ok(paths)
 }
 
+async fn validate_segment_file(ffprobe_bin: &str, path: &Path) -> bool {
+    let output = match Command::new(ffprobe_bin)
+        .arg("-v")
+        .arg("error")
+        .arg("-show_entries")
+        .arg("format=duration")
+        .arg("-of")
+        .arg("default=noprint_wrappers=1:nokey=1")
+        .arg(path)
+        .output()
+        .await
+    {
+        Ok(out) => out,
+        Err(err) => {
+            eprintln!(
+                "[video-recorder] ffprobe launch failed for {}: {}",
+                path.display(),
+                err
+            );
+            return false;
+        }
+    };
+
+    if !output.status.success() {
+        return false;
+    }
+
+    let duration_raw = String::from_utf8_lossy(&output.stdout);
+    let duration_sec = duration_raw.trim().parse::<f64>().ok();
+    matches!(duration_sec, Some(v) if v.is_finite() && v > 0.0)
+}
+
 async fn upload_ready_segments(store: &ObjectStore, cfg: &RecorderConfig) -> Result<()> {
     let ready_paths = list_ready_segments(cfg).await?;
     for path in ready_paths {
+        let metadata = fs::metadata(&path).await.ok();
+        let now = SystemTime::now();
+        let age_sec = metadata
+            .and_then(|m| m.modified().ok())
+            .and_then(|modified| now.duration_since(modified).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+
+        let valid = validate_segment_file(&cfg.ffprobe_bin, &path).await;
+        if !valid {
+            if age_sec > cfg.video_segment_sec.saturating_mul(6) {
+                let _ = fs::remove_file(&path).await;
+                eprintln!(
+                    "[video-recorder] dropped invalid stale segment {}",
+                    path.display()
+                );
+            } else {
+                eprintln!(
+                    "[video-recorder] segment not finalized/invalid yet, will retry: {}",
+                    path.display()
+                );
+            }
+            continue;
+        }
+
         let Some(start_local) = parse_segment_start_from_path(&path, cfg.video_tz) else {
             eprintln!(
                 "[video-recorder] skipping unrecognized segment filename {}",
@@ -321,13 +385,14 @@ async fn main() -> Result<()> {
     let mut shutdown = Box::pin(tokio::signal::ctrl_c());
 
     println!(
-        "[video-recorder] running asset={} camera_id={} bucket='{}' tz='{}' spool='{}' source={}",
+        "[video-recorder] running asset={} camera_id={} bucket='{}' tz='{}' spool='{}' source={} ffprobe='{}'",
         cfg.video_asset_number,
         cfg.video_camera_id,
         cfg.video_bucket,
         cfg.video_tz,
         cfg.video_spool_dir.display(),
-        cfg.video_source_url
+        cfg.video_source_url,
+        cfg.ffprobe_bin
     );
 
     loop {

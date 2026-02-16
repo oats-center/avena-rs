@@ -423,8 +423,7 @@ async fn process_video_clip(
         ));
     }
 
-    let plan = resolve_clip_sources(&filtered_objects, clip_start, clip_end)
-        .map_err(|(code, msg)| (code, msg.to_string()))?;
+    let plan = resolve_clip_sources(&filtered_objects, clip_start, clip_end)?;
 
     let request_dir = video.video_tmp_dir.join(format!("clip-{}", Uuid::new_v4()));
     tokio::fs::create_dir_all(&request_dir).await.map_err(|e| {
@@ -652,12 +651,12 @@ fn resolve_clip_sources(
     objects: &[VideoObject],
     clip_start: DateTime<Utc>,
     clip_end: DateTime<Utc>,
-) -> std::result::Result<ClipSourcePlan, (StatusCode, &'static str)> {
+) -> std::result::Result<ClipSourcePlan, (StatusCode, String)> {
     if objects.is_empty() {
-        return Err((StatusCode::NOT_FOUND, "no video objects available"));
+        return Err((StatusCode::NOT_FOUND, "no video objects available".to_string()));
     }
 
-    let grace = ChronoDuration::seconds(1);
+    let grace = ChronoDuration::seconds(2);
 
     for object in objects {
         if object.start - grace <= clip_start && object.end + grace >= clip_end {
@@ -678,7 +677,7 @@ fn resolve_clip_sources(
     let (Some(left), Some(right)) = (left, right) else {
         return Err((
             StatusCode::NOT_FOUND,
-            "no source object covers requested interval",
+            "no source object covers requested interval".to_string(),
         ));
     };
 
@@ -687,9 +686,15 @@ fn resolve_clip_sources(
     }
 
     if right.start > left.end + grace {
+        let gap_ms = (right.start - left.end).num_milliseconds().max(0);
+        let gap_sec = gap_ms as f64 / 1000.0;
         return Err((
             StatusCode::UNPROCESSABLE_ENTITY,
-            "requested interval spans a gap between video objects",
+            format!(
+                "requested interval spans a gap between video objects ({gap_sec:.3}s between {} and {})",
+                left.end.to_rfc3339(),
+                right.start.to_rfc3339()
+            ),
         ));
     }
 
@@ -699,7 +704,7 @@ fn resolve_clip_sources(
 
     Err((
         StatusCode::NOT_FOUND,
-        "requested interval is not fully covered by available objects",
+        "requested interval is not fully covered by available objects".to_string(),
     ))
 }
 

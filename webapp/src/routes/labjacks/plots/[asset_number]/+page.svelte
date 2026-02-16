@@ -1179,7 +1179,9 @@
         triggerRangeResults = [];
 
         try {
-            const keys = await getKeys(natsService, "video_trigger_events", "event.*");
+            const keys = (await getKeys(natsService, "video_trigger_events")).filter((key) =>
+                key.startsWith("event.")
+            );
             const matching: BackendTriggerEvent[] = [];
             const maxEntriesToScan = 1000;
             let scanned = 0;
