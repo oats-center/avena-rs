@@ -6,6 +6,7 @@
     import {
         fetchVideoCameras,
         requestVideoClip,
+        requestVideoObject,
         type VideoClipRequestPayload,
         type VideoCameraCoverage
     } from "$lib/video";
@@ -106,12 +107,22 @@
         trigger_type: "rising" | "falling";
         holdoff_ms: number;
         calibration_id: string;
+        record_id?: string;
+        record_status?: TriggerRecordStatus;
+        record_clip_keys?: string[];
+        record_last_error?: string;
+        record_updated_at?: string;
     }
+
+    type TriggerRecordStatus = "pending" | "processed";
 
     interface TriggerRecordEntry {
         id?: string;
         event?: unknown;
         status?: string;
+        clip_keys?: unknown;
+        last_error?: unknown;
+        updated_at?: unknown;
     }
 
     interface ChannelVideoRoute {
@@ -191,6 +202,7 @@
     let backendTriggerEvents = $state<BackendTriggerEvent[]>([]);
     const MAX_BACKEND_TRIGGER_EVENTS = 10;
     const seenBackendTriggerKeys = new Set<string>();
+    let triggerRecordRefreshTimer: ReturnType<typeof setInterval> | null = null;
     let manualVideoChannel = $state<number>(0);
     let channelVideoRoutes = $state<Map<number, ChannelVideoRoute>>(new Map());
     let triggerSettingsDirty = $state<boolean>(false);
@@ -501,15 +513,32 @@
         return "";
     }
 
+    function normalizeTriggerRecordStatus(value: unknown): TriggerRecordStatus | undefined {
+        if (value === "pending" || value === "processed") {
+            return value;
+        }
+        return undefined;
+    }
+
+    function normalizeTriggerRecordClipKeys(value: unknown): string[] {
+        if (!Array.isArray(value)) return [];
+        return value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
+    }
+
     function parseBackendTriggerEventObject(parsed: any): BackendTriggerEvent | null {
         if (!parsed || typeof parsed !== "object") return null;
         if (!Number.isInteger(parsed.asset) || !Number.isInteger(parsed.channel)) return null;
         if (typeof parsed.trigger_time !== "string") return null;
+        const triggerTimeMs = Number(parsed.trigger_time_unix_ms);
+        const resolvedTriggerTimeMs =
+            Number.isFinite(triggerTimeMs) && triggerTimeMs > 0
+                ? Math.trunc(triggerTimeMs)
+                : Math.trunc(parseIsoMs(parsed.trigger_time));
         return {
             asset: parsed.asset,
             channel: parsed.channel,
             trigger_time: parsed.trigger_time,
-            trigger_time_unix_ms: Number(parsed.trigger_time_unix_ms ?? 0),
+            trigger_time_unix_ms: Number.isFinite(resolvedTriggerTimeMs) ? resolvedTriggerTimeMs : 0,
             raw_value: Number(parsed.raw_value ?? 0),
             calibrated_value: Number(parsed.calibrated_value ?? 0),
             threshold: Number(parsed.threshold ?? 0),
@@ -518,6 +547,26 @@
             calibration_id:
                 typeof parsed.calibration_id === "string" ? parsed.calibration_id : "identity"
         };
+    }
+
+    function parseTriggerRecordEntryObject(parsed: unknown): BackendTriggerEvent | null {
+        if (!parsed || typeof parsed !== "object") return null;
+        const record = parsed as TriggerRecordEntry;
+        const eventPayload =
+            record.event && typeof record.event === "object" ? record.event : parsed;
+        const event = parseBackendTriggerEventObject(eventPayload);
+        if (!event) return null;
+
+        event.record_id = typeof record.id === "string" ? record.id : backendTriggerRecordId(event);
+        event.record_status = normalizeTriggerRecordStatus(record.status);
+        event.record_clip_keys = normalizeTriggerRecordClipKeys(record.clip_keys);
+        if (typeof record.last_error === "string" && record.last_error.trim().length > 0) {
+            event.record_last_error = record.last_error.trim();
+        }
+        if (typeof record.updated_at === "string" && record.updated_at.trim().length > 0) {
+            event.record_updated_at = record.updated_at.trim();
+        }
+        return event;
     }
 
     function parseBackendTriggerEvent(data: any): BackendTriggerEvent | null {
@@ -530,6 +579,61 @@
 
     function backendTriggerEventKey(event: BackendTriggerEvent): string {
         return `${event.asset}:${event.channel}:${event.trigger_time_unix_ms}:${event.trigger_type}`;
+    }
+
+    function backendTriggerRecordId(event: BackendTriggerEvent): string {
+        const triggerKind = event.trigger_type === "falling" ? "f" : "r";
+        const triggerMs = Number.isFinite(event.trigger_time_unix_ms) && event.trigger_time_unix_ms > 0
+            ? Math.trunc(event.trigger_time_unix_ms)
+            : Math.trunc(parseIsoMs(event.trigger_time));
+        return `${event.asset}_${event.channel}_${Number.isFinite(triggerMs) ? triggerMs : 0}_${triggerKind}`;
+    }
+
+    function backendTriggerRecordKey(event: BackendTriggerEvent): string {
+        return `event.${backendTriggerRecordId(event)}`;
+    }
+
+    function prependBackendTriggerEvent(event: BackendTriggerEvent) {
+        const key = backendTriggerEventKey(event);
+        const deduped = backendTriggerEvents.filter((existing) => backendTriggerEventKey(existing) !== key);
+        backendTriggerEvents = [event, ...deduped].slice(0, MAX_BACKEND_TRIGGER_EVENTS);
+    }
+
+    function mergeBackendTriggerEventFromRecord(event: BackendTriggerEvent) {
+        const key = backendTriggerEventKey(event);
+        let found = false;
+        const merged = backendTriggerEvents.map((existing) => {
+            if (backendTriggerEventKey(existing) !== key) return existing;
+            found = true;
+            return { ...existing, ...event };
+        });
+        backendTriggerEvents = found
+            ? merged
+            : [event, ...merged].slice(0, MAX_BACKEND_TRIGGER_EVENTS);
+    }
+
+    async function refreshTriggerRecordForEvent(event: BackendTriggerEvent) {
+        if (!natsService) return;
+        try {
+            const raw = await getKeyValue(natsService, "video_trigger_events", backendTriggerRecordKey(event));
+            if (!raw || raw === "Key value does not exist") return;
+            const parsed = parseTriggerRecordEntryObject(JSON.parse(raw));
+            if (!parsed) return;
+            if (backendTriggerEventKey(parsed) !== backendTriggerEventKey(event)) return;
+            mergeBackendTriggerEventFromRecord(parsed);
+        } catch {
+            // Ignore transient KV/read errors for background status refresh.
+        }
+    }
+
+    async function refreshRecentTriggerRecordStates() {
+        if (!natsService || backendTriggerEvents.length === 0) return;
+        const candidates = backendTriggerEvents
+            .filter((event) => !event.record_clip_keys || event.record_clip_keys.length === 0)
+            .slice(0, MAX_BACKEND_TRIGGER_EVENTS);
+        for (const event of candidates) {
+            await refreshTriggerRecordForEvent(event);
+        }
     }
 
     function rememberSeenTriggerKey(key: string) {
@@ -554,7 +658,8 @@
                 const key = backendTriggerEventKey(event);
                 if (seenBackendTriggerKeys.has(key)) continue;
                 rememberSeenTriggerKey(key);
-                backendTriggerEvents = [event, ...backendTriggerEvents].slice(0, MAX_BACKEND_TRIGGER_EVENTS);
+                prependBackendTriggerEvent(event);
+                void refreshTriggerRecordForEvent(event);
             }
         })();
     }
@@ -952,10 +1057,6 @@
         return trimmed.length > 0 ? trimmed : undefined;
     }
 
-    function hasEnabledCameraForChannel(channel: number): boolean {
-        return !!resolveCameraIdForChannel(channel, true);
-    }
-
     function parseIsoMs(value: string): number {
         const ms = new Date(value).getTime();
         return Number.isFinite(ms) ? ms : Number.NaN;
@@ -972,7 +1073,25 @@
         return new Date(ms).toLocaleString();
     }
 
-    function getTriggerFetchReadiness(event: BackendTriggerEvent): TriggerFetchReadiness {
+    function parseCameraIdFromObjectKey(objectKey: string): string | undefined {
+        const parts = objectKey.split("/");
+        const cameraPart = parts.find((part) => part.startsWith("camera_"));
+        if (!cameraPart) return undefined;
+        const cameraId = cameraPart.slice("camera_".length).trim();
+        return cameraId.length > 0 ? cameraId : undefined;
+    }
+
+    function selectClipObjectKey(event: BackendTriggerEvent, preferredCameraId?: string): string | undefined {
+        const clipKeys = event.record_clip_keys ?? [];
+        if (clipKeys.length === 0) return undefined;
+        if (preferredCameraId) {
+            const preferred = clipKeys.find((key) => parseCameraIdFromObjectKey(key) === preferredCameraId);
+            if (preferred) return preferred;
+        }
+        return clipKeys[0];
+    }
+
+    function getRawCoverageReadiness(event: BackendTriggerEvent): TriggerFetchReadiness {
         const cameraId = resolveCameraIdForChannel(event.channel, true);
         if (!cameraId) {
             return {
@@ -984,7 +1103,7 @@
         const coverage = getCameraCoverage(cameraId);
         if (!coverage) {
             return {
-                ready: true,
+                ready: false,
                 message: `Coverage not available yet for ${cameraId}.`
             };
         }
@@ -1015,10 +1134,40 @@
         }
         return {
             ready: true,
-            message: `${cameraId} ready (${formatCoverageTime(
+            message: `${cameraId} raw coverage ready (${formatCoverageTime(
                 coverage.recommended_center_min
             )} to ${formatCoverageTime(coverage.recommended_center_max)})`
         };
+    }
+
+    function getTriggerFetchReadiness(event: BackendTriggerEvent): TriggerFetchReadiness {
+        const preferredCameraId = resolveCameraIdForChannel(event.channel, false);
+        const compactedClipKey = selectClipObjectKey(event, preferredCameraId);
+        if (compactedClipKey) {
+            const compactedCamera = parseCameraIdFromObjectKey(compactedClipKey) ?? "camera";
+            return {
+                ready: true,
+                message: `Compacted clip ready for ${compactedCamera}`
+            };
+        }
+
+        const rawReadiness = getRawCoverageReadiness(event);
+        if (event.record_status === "pending" && !rawReadiness.ready) {
+            const reason = event.record_last_error
+                ? ` Last worker error: ${event.record_last_error}`
+                : "";
+            return {
+                ready: false,
+                message: `Clip is pending upload/compaction.${reason} ${rawReadiness.message}`.trim()
+            };
+        }
+        if (event.record_status === "processed" && !rawReadiness.ready) {
+            return {
+                ready: false,
+                message: `Clip record is processed but no clip object key is available. ${rawReadiness.message}`
+            };
+        }
+        return rawReadiness;
     }
 
     function triggerAutoSaveBackendSettings() {
@@ -1106,42 +1255,60 @@
     async function fetchClipForTriggerEvent(event: BackendTriggerEvent, sourceLabel: string) {
         manualVideoChannel = event.channel;
         const readiness = getTriggerFetchReadiness(event);
-        const primaryCameraId = resolveCameraIdForChannel(event.channel, true);
-        if (!primaryCameraId) {
-            videoError = "Camera is not configured for this channel";
-            return;
-        }
-
-        const fallbackCandidates = availableCameraIds.filter((cameraId) => cameraId !== primaryCameraId);
-        const candidateCameraIds = [primaryCameraId, ...fallbackCandidates];
-        if (!readiness.ready && candidateCameraIds.length === 1) {
-            videoError = readiness.message;
-            return;
-        }
+        const preferredCameraId = resolveCameraIdForChannel(event.channel, false);
+        const compactedClipKey = selectClipObjectKey(event, preferredCameraId);
 
         videoLoading = true;
         videoError = "";
 
         let lastError = readiness.ready ? "" : readiness.message;
-        for (const cameraId of candidateCameraIds) {
-            try {
-                const result = await requestClip(event.trigger_time, cameraId);
-                clearVideoPreview();
-                videoUrl = URL.createObjectURL(result.blob);
-                videoFileName = result.filename;
-                if (cameraId !== primaryCameraId) {
-                    backendTriggerStatus = `Fetched clip using fallback camera ${cameraId} (primary ${primaryCameraId} had no full 10s coverage).`;
+        try {
+            if (compactedClipKey) {
+                try {
+                    const result = await requestVideoObject({ object_key: compactedClipKey });
+                    clearVideoPreview();
+                    videoUrl = URL.createObjectURL(result.blob);
+                    videoFileName = result.filename;
+                    backendTriggerStatus = `Fetched compacted clip ${result.filename}`;
+                    return;
+                } catch (err) {
+                    lastError = err instanceof Error ? err.message : "Failed to fetch compacted clip";
                 }
-                videoLoading = false;
-                return;
-            } catch (err) {
-                lastError = err instanceof Error ? err.message : "Failed to fetch video clip";
             }
-        }
 
-        clearVideoPreview();
-        videoError = `${sourceLabel}: ${lastError || "Failed to fetch video clip"}`;
-        videoLoading = false;
+            const primaryCameraId = resolveCameraIdForChannel(event.channel, true);
+            if (!primaryCameraId) {
+                videoError = readiness.message || "Camera is not configured for this channel";
+                return;
+            }
+
+            const fallbackCandidates = availableCameraIds.filter((cameraId) => cameraId !== primaryCameraId);
+            const candidateCameraIds = [primaryCameraId, ...fallbackCandidates];
+            if (!readiness.ready && candidateCameraIds.length === 1) {
+                videoError = readiness.message;
+                return;
+            }
+
+            for (const cameraId of candidateCameraIds) {
+                try {
+                    const result = await requestClip(event.trigger_time, cameraId);
+                    clearVideoPreview();
+                    videoUrl = URL.createObjectURL(result.blob);
+                    videoFileName = result.filename;
+                    if (cameraId !== primaryCameraId) {
+                        backendTriggerStatus = `Fetched clip using fallback camera ${cameraId} (primary ${primaryCameraId} had no full 10s coverage).`;
+                    }
+                    return;
+                } catch (err) {
+                    lastError = err instanceof Error ? err.message : "Failed to fetch video clip";
+                }
+            }
+
+            clearVideoPreview();
+            videoError = `${sourceLabel}: ${lastError || "Failed to fetch video clip"}`;
+        } finally {
+            videoLoading = false;
+        }
     }
 
     function buildBackendTriggerSettings() {
@@ -1247,8 +1414,7 @@
                 try {
                     const raw = await getKeyValue(natsService, "video_trigger_events", key);
                     if (!raw || raw === "Key value does not exist") continue;
-                    const parsed = JSON.parse(raw) as TriggerRecordEntry;
-                    const event = parseBackendTriggerEventObject(parsed?.event ?? parsed);
+                    const event = parseTriggerRecordEntryObject(JSON.parse(raw));
                     if (!event) continue;
                     if (event.asset !== labjackConfig.asset_number) continue;
                     const eventMs = Number.isFinite(event.trigger_time_unix_ms)
@@ -1292,36 +1458,52 @@
         }
         triggerRangeFetchLoading = true;
         triggerRangeError = "";
-        try {
-            let fetched = 0;
-            const maxFetch = 10;
-            for (const event of triggerRangeResults.slice(0, maxFetch)) {
-                const readiness = getTriggerFetchReadiness(event);
-                if (!readiness.ready) {
-                    continue;
-                }
-                const cameraId = resolveCameraIdForChannel(event.channel, true);
-                if (!cameraId) {
-                    continue;
-                }
-                const payload: VideoClipRequestPayload = {
-                    asset: event.asset,
-                    camera_id: cameraId,
-                    center_time: event.trigger_time,
-                    pre_sec: 5,
-                    post_sec: 5
-                };
-                const result = await requestVideoClip(payload);
-                downloadBlob(result.blob, result.filename || `clip_${event.channel}_${event.trigger_time_unix_ms}.mp4`);
-                fetched += 1;
+        let fetched = 0;
+        let skipped = 0;
+        let failed = 0;
+        const failures: string[] = [];
+        const maxFetch = 10;
+
+        for (const event of triggerRangeResults.slice(0, maxFetch)) {
+            const readiness = getTriggerFetchReadiness(event);
+            if (!readiness.ready) {
+                skipped += 1;
+                continue;
             }
-            triggerRangeStatus = `Fetched ${fetched} clip(s) from range (max 10 per action).`;
-        } catch (err) {
-            triggerRangeError =
-                err instanceof Error ? err.message : "Failed fetching range clips";
-        } finally {
-            triggerRangeFetchLoading = false;
+
+            try {
+                const preferredCameraId = resolveCameraIdForChannel(event.channel, false);
+                const compactedClipKey = selectClipObjectKey(event, preferredCameraId);
+                const rawCameraId = resolveCameraIdForChannel(event.channel, true);
+                if (compactedClipKey) {
+                    const result = await requestVideoObject({ object_key: compactedClipKey });
+                    downloadBlob(result.blob, result.filename || `clip_${event.channel}_${event.trigger_time_unix_ms}.mp4`);
+                } else {
+                    if (!rawCameraId) {
+                        throw new Error(`Video disabled for ch${event.channel.toString().padStart(2, "0")}`);
+                    }
+                    const result = await requestVideoClip({
+                        asset: event.asset,
+                        camera_id: rawCameraId,
+                        center_time: event.trigger_time,
+                        pre_sec: 5,
+                        post_sec: 5
+                    });
+                    downloadBlob(result.blob, result.filename || `clip_${event.channel}_${event.trigger_time_unix_ms}.mp4`);
+                }
+                fetched += 1;
+            } catch (err) {
+                failed += 1;
+                failures.push(err instanceof Error ? err.message : "Failed fetching clip");
+            }
         }
+
+        triggerRangeStatus = `Fetched ${fetched} clip(s) from range (max ${maxFetch} per action).` +
+            (skipped > 0 ? ` Skipped ${skipped} not-ready trigger(s).` : "");
+        if (failed > 0) {
+            triggerRangeError = `Failed ${failed} clip(s): ${failures[0]}`;
+        }
+        triggerRangeFetchLoading = false;
     }
 
     function openExportModal() {
@@ -1458,6 +1640,9 @@
         uiNowTimer = setInterval(() => {
             uiNow = Date.now();
         }, 100);
+        triggerRecordRefreshTimer = setInterval(() => {
+            void refreshRecentTriggerRecordStates();
+        }, 3000);
         if (!triggerRangeEnd) {
             triggerRangeEnd = toLocalInputValue(new Date(), true);
         }
@@ -1477,6 +1662,10 @@
         if (uiNowTimer) {
             clearInterval(uiNowTimer);
             uiNowTimer = null;
+        }
+        if (triggerRecordRefreshTimer) {
+            clearInterval(triggerRecordRefreshTimer);
+            triggerRecordRefreshTimer = null;
         }
 
         // Clean up subscriptions
@@ -1775,7 +1964,7 @@
                                                 <button
                                                     class="btn btn-primary btn-xs"
                                                     onclick={() => fetchClipForTriggerEvent(event, "Recent trigger")}
-                                                    disabled={videoLoading || !hasEnabledCameraForChannel(event.channel)}
+                                                    disabled={videoLoading || !readiness.ready}
                                                     title={readiness.message}
                                                 >
                                                     Fetch
@@ -1891,7 +2080,7 @@
                                                 <button
                                                     class="btn btn-primary btn-xs"
                                                     onclick={() => fetchClipForTriggerEvent(event, "Range trigger")}
-                                                    disabled={videoLoading || !hasEnabledCameraForChannel(event.channel)}
+                                                    disabled={videoLoading || !readiness.ready}
                                                     title={readiness.message}
                                                 >
                                                     Fetch

@@ -47,6 +47,23 @@ async function fetchCameras(baseUrl, asset) {
   return await cameraResponse.json();
 }
 
+async function fetchObjectByKey(baseUrl, objectKey) {
+  const response = await fetch(`${baseUrl}/api/video/object`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ object_key: objectKey })
+  });
+  if (!response.ok) {
+    const detail = await parseErrorBody(response);
+    throw new Error(`object endpoint failed (${response.status}): ${detail}`);
+  }
+  const bytes = await response.arrayBuffer();
+  return {
+    bytes,
+    contentType: response.headers.get('Content-Type') ?? 'unknown'
+  };
+}
+
 function getCoverageForCamera(cameraBody, cameraId) {
   const coverage = Array.isArray(cameraBody?.coverage) ? cameraBody.coverage : [];
   return coverage.find((entry) => entry?.camera_id === cameraId);
@@ -70,6 +87,16 @@ async function main() {
   const waitCoverageSec = Number(args.wait_coverage_sec ?? process.env.WAIT_COVERAGE_SEC ?? '60');
   const pollSec = Number(args.poll_sec ?? process.env.POLL_SEC ?? '2');
   const useSafeCenter = (args.use_safe_center ?? process.env.USE_SAFE_CENTER ?? '1') !== '0';
+  const objectKey = args.object_key ?? process.env.OBJECT_KEY ?? '';
+
+  if (objectKey) {
+    console.log(`[smoke] checking object fetch via ${baseUrl}/api/video/object key=${objectKey}`);
+    const result = await fetchObjectByKey(baseUrl, objectKey);
+    console.log(
+      `[smoke] object fetch OK: ${result.bytes.byteLength} bytes, content-type=${result.contentType}`
+    );
+    return;
+  }
 
   if (!cameraId) {
     console.log('[smoke] skipping clip fetch: no cameras available yet');

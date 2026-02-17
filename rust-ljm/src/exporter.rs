@@ -33,6 +33,7 @@ use parquet::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use uuid::Uuid;
 
@@ -80,6 +81,11 @@ struct VideoClipRequest {
     center_time: String,
     pre_sec: Option<f64>,
     post_sec: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct VideoObjectRequest {
+    object_key: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -156,10 +162,13 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/export", get(handle_ws))
         .route("/video/clip", post(handle_video_clip))
+        .route("/video/object", post(handle_video_object))
         .route("/video/cameras", get(handle_video_cameras))
         .with_state(state);
 
-    println!("[exporter] Listening on http://{listen_addr} (ws /export, post /video/clip)");
+    println!(
+        "[exporter] Listening on http://{listen_addr} (ws /export, post /video/clip, post /video/object)"
+    );
     let listener = tokio::net::TcpListener::bind(&listen_addr).await?;
     axum::serve(listener, app).await?;
     Ok(())
@@ -329,6 +338,88 @@ async fn handle_video_cameras(
         coverage,
     })
     .into_response()
+}
+
+async fn handle_video_object(
+    State(state): State<AppState>,
+    Json(req): Json<VideoObjectRequest>,
+) -> Response {
+    match process_video_object(state, req).await {
+        Ok(response) => response,
+        Err((status, msg)) => error_response(status, msg),
+    }
+}
+
+async fn process_video_object(
+    state: AppState,
+    req: VideoObjectRequest,
+) -> std::result::Result<Response, (StatusCode, String)> {
+    let video = state.video;
+    let object_key = req.object_key.trim();
+    if object_key.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "object_key is required".to_string(),
+        ));
+    }
+
+    let store = video
+        .jetstream
+        .get_object_store(&video.video_bucket)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to open object store '{}': {e}", video.video_bucket),
+            )
+        })?;
+
+    let mut object = store.get(object_key).await.map_err(|e| {
+        let message = e.to_string();
+        if message.to_ascii_lowercase().contains("not found") {
+            (
+                StatusCode::NOT_FOUND,
+                format!("video object '{}' was not found", object_key),
+            )
+        } else {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to get object '{}': {message}", object_key),
+            )
+        }
+    })?;
+
+    let mut bytes = Vec::new();
+    object.read_to_end(&mut bytes).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("failed to read object '{}': {e}", object_key),
+        )
+    })?;
+
+    let filename = object_key
+        .rsplit('/')
+        .next()
+        .filter(|name| !name.is_empty())
+        .unwrap_or("video.mp4");
+
+    let mut response = Response::new(Body::from(bytes));
+    *response.status_mut() = StatusCode::OK;
+    response
+        .headers_mut()
+        .insert(header::CONTENT_TYPE, HeaderValue::from_static("video/mp4"));
+    let content_disposition = format!("inline; filename=\"{}\"", filename);
+    let content_disposition_value = HeaderValue::from_str(&content_disposition).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("invalid response header: {e}"),
+        )
+    })?;
+    response
+        .headers_mut()
+        .insert(header::CONTENT_DISPOSITION, content_disposition_value);
+
+    Ok(response)
 }
 
 async fn process_video_clip(

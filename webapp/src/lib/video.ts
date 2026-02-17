@@ -11,6 +11,10 @@ export interface VideoClipResult {
   filename: string;
 }
 
+export interface VideoObjectRequestPayload {
+  object_key: string;
+}
+
 export interface VideoCameraCoverage {
   camera_id: string;
   latest_start: string;
@@ -135,6 +139,42 @@ export async function requestVideoClip(
   const filename =
     parseFilenameFromDisposition(response.headers.get('Content-Disposition')) ??
     `clip_asset${payload.asset}.mp4`;
+
+  return {
+    blob,
+    filename,
+  };
+}
+
+export async function requestVideoObject(
+  payload: VideoObjectRequestPayload
+): Promise<VideoClipResult> {
+  const response = await fetch('/api/video/object', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    let message = `Video object request failed (${response.status})`;
+    try {
+      const body = await response.json();
+      if (body?.error && typeof body.error === 'string') {
+        message = body.error;
+      }
+    } catch {
+      const text = await response.text();
+      if (text) message = text;
+    }
+    throw new Error(message);
+  }
+
+  const blob = await response.blob();
+  const filename =
+    parseFilenameFromDisposition(response.headers.get('Content-Disposition')) ??
+    'video.mp4';
 
   return {
     blob,
