@@ -1100,11 +1100,37 @@
             };
         }
 
-        const minCenterMs = parseIsoMs(coverage.recommended_center_min);
-        const maxCenterMs = parseIsoMs(coverage.recommended_center_max);
         const eventMs = Number.isFinite(event.trigger_time_unix_ms)
             ? event.trigger_time_unix_ms
             : parseIsoMs(event.trigger_time);
+        const contiguousStartMs = parseIsoMs(coverage.contiguous_start);
+        const contiguousEndMs = parseIsoMs(coverage.contiguous_end);
+        if (Number.isFinite(eventMs) && Number.isFinite(contiguousStartMs) && eventMs < contiguousStartMs) {
+            return {
+                ready: true,
+                message: `${cameraId} historical trigger (before latest contiguous window); fetch will try archived objects`
+            };
+        }
+        if (
+            Number.isFinite(eventMs) &&
+            Number.isFinite(contiguousStartMs) &&
+            Number.isFinite(contiguousEndMs) &&
+            eventMs > contiguousEndMs
+        ) {
+            return {
+                ready: false,
+                message: `${cameraId} not caught up yet. Latest video ends at ${formatCoverageTime(coverage.contiguous_end)}`
+            };
+        }
+
+        const minCenterMs = parseIsoMs(coverage.recommended_center_min);
+        const maxCenterMs = parseIsoMs(coverage.recommended_center_max);
+        if (Number.isFinite(minCenterMs) && Number.isFinite(maxCenterMs) && minCenterMs > maxCenterMs) {
+            return {
+                ready: false,
+                message: `${cameraId} latest contiguous window is shorter than 10s; waiting for more post-roll`
+            };
+        }
         if ((!Number.isFinite(minCenterMs) && !Number.isFinite(maxCenterMs)) || !Number.isFinite(eventMs)) {
             return { ready: true, message: `${cameraId} coverage is available` };
         }
