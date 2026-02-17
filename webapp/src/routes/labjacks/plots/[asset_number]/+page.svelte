@@ -1912,7 +1912,9 @@
 
                     {#if videoUrl}
                         <div class="space-y-3">
-                            <video class="w-full rounded-lg bg-black max-h-96" controls src={videoUrl}></video>
+                            <video class="w-full rounded-lg bg-black max-h-96" controls src={videoUrl}>
+                                <track kind="captions" srclang="en" label="English captions" src="/empty-captions.vtt" />
+                            </video>
                             <a class="btn btn-outline btn-sm" href={videoUrl} download={videoFileName || `clip_asset${assetNumber}.mp4`}>
                                 Download {videoFileName || "clip"}
                             </a>

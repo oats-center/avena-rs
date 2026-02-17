@@ -32,6 +32,8 @@ struct RecorderConfig {
     video_segment_sec: u64,
     video_upload_settle_sec: u64,
     video_scan_interval_sec: u64,
+    video_js_timeout_sec: u64,
+    video_object_chunk_size_bytes: usize,
     video_spool_dir: PathBuf,
 }
 
@@ -90,6 +92,9 @@ impl RecorderConfig {
         let video_segment_sec = parse_u64_env("VIDEO_SEGMENT_SEC", "5")?;
         let video_upload_settle_sec = parse_u64_env("VIDEO_UPLOAD_SETTLE_SEC", "2")?;
         let video_scan_interval_sec = parse_u64_env("VIDEO_SCAN_INTERVAL_SEC", "2")?;
+        let video_js_timeout_sec = parse_u64_env("VIDEO_JS_TIMEOUT_SEC", "20")?;
+        let video_object_chunk_size_bytes =
+            parse_usize_env("VIDEO_OBJECT_CHUNK_SIZE_BYTES", "262144")?;
         let video_spool_dir = PathBuf::from(
             std::env::var("VIDEO_SPOOL_DIR")
                 .unwrap_or_else(|_| "/tmp/avena-video-recorder".to_string()),
@@ -109,6 +114,8 @@ impl RecorderConfig {
             video_segment_sec,
             video_upload_settle_sec,
             video_scan_interval_sec,
+            video_js_timeout_sec,
+            video_object_chunk_size_bytes,
             video_spool_dir,
         })
     }
@@ -127,6 +134,12 @@ fn parse_u64_env(name: &str, default: &str) -> Result<u64> {
 fn parse_u32_env(name: &str, default: &str) -> Result<u32> {
     let raw = std::env::var(name).unwrap_or_else(|_| default.to_string());
     raw.parse::<u32>()
+        .map_err(|e| anyhow!("invalid {} '{}': {}", name, raw, e))
+}
+
+fn parse_usize_env(name: &str, default: &str) -> Result<usize> {
+    let raw = std::env::var(name).unwrap_or_else(|_| default.to_string());
+    raw.parse::<usize>()
         .map_err(|e| anyhow!("invalid {} '{}': {}", name, raw, e))
 }
 
@@ -153,7 +166,9 @@ async fn connect_jetstream(cfg: &RecorderConfig) -> Result<jetstream::Context> {
         .await
         .context("failed to connect to NATS")?;
 
-    Ok(jetstream::new(client))
+    let mut js = jetstream::new(client);
+    js.set_timeout(Duration::from_secs(cfg.video_js_timeout_sec.max(1)));
+    Ok(js)
 }
 
 async fn get_or_create_object_store(js: &jetstream::Context, bucket: &str) -> Result<ObjectStore> {
@@ -355,10 +370,18 @@ async fn upload_ready_segments(store: &ObjectStore, cfg: &RecorderConfig) -> Res
             .await
             .with_context(|| format!("failed to open segment {}", path.display()))?;
 
-        store
-            .put(object_key.as_str(), &mut file)
-            .await
-            .with_context(|| format!("failed to upload segment as key {}", object_key))?;
+        let upload_meta = object_store::ObjectMetadata {
+            name: object_key.clone(),
+            chunk_size: Some(cfg.video_object_chunk_size_bytes),
+            ..Default::default()
+        };
+        if let Err(err) = store.put(upload_meta, &mut file).await {
+            eprintln!(
+                "[video-recorder] upload failed (will retry): key={} error={}",
+                object_key, err
+            );
+            continue;
+        }
 
         fs::remove_file(&path)
             .await

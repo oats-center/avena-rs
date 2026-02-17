@@ -45,7 +45,12 @@
                 natsService.connection.close();
                 sessionStorage.setItem("serverName", serverName);
                 sessionStorage.setItem("credentialsContent", credentialsContent);
-                goto("/labjacks");
+                try {
+                    await goto("/labjacks");
+                } catch (err) {
+                    console.warn("router navigation failed, using hard redirect", err);
+                    window.location.assign("/labjacks");
+                }
             } else {
                 alert = "Connection failed. Please check your server URL and credentials file.";
             }

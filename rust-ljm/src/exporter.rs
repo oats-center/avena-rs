@@ -3,6 +3,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration as StdDuration,
 };
 
 use anyhow::{Context, Result, anyhow};
@@ -559,13 +560,54 @@ async fn list_asset_video_objects(
     asset: u32,
     tz: Tz,
 ) -> Result<Vec<VideoObject>> {
+    // Some async-nats object store list streams can stay pending indefinitely after
+    // delivering entries. Bound the total listing time to avoid hanging HTTP handlers.
+    let list_timeout = StdDuration::from_secs(20);
+    let deadline = tokio::time::Instant::now() + list_timeout;
     let mut list = store
         .list()
         .await
         .map_err(|e| anyhow!("failed to start object listing: {e}"))?;
 
     let mut out = Vec::new();
-    while let Some(item) = list.next().await {
+    loop {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            if out.is_empty() {
+                return Err(anyhow!(
+                    "timed out ({:?}) waiting for object metadata from bucket",
+                    list_timeout
+                ));
+            }
+            eprintln!(
+                "[exporter] object list reached timeout {:?}; returning {} collected entries",
+                list_timeout,
+                out.len()
+            );
+            break;
+        }
+
+        let next_item = match tokio::time::timeout(remaining, list.next()).await {
+            Ok(item) => item,
+            Err(_) => {
+                if out.is_empty() {
+                    return Err(anyhow!(
+                        "timed out ({:?}) waiting for object metadata from bucket",
+                        list_timeout
+                    ));
+                }
+                eprintln!(
+                    "[exporter] object list reached timeout {:?}; returning {} collected entries",
+                    list_timeout,
+                    out.len()
+                );
+                break;
+            }
+        };
+
+        let Some(item) = next_item else {
+            break;
+        };
         let info = item.map_err(|e| anyhow!("failed reading object metadata: {e}"))?;
         if let Some((key_asset, camera_id, start, end)) = parse_video_key_interval(&info.name, tz) {
             if key_asset == asset {
