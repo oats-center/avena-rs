@@ -190,6 +190,7 @@
     let exportTotal = $state<number | null>(null);
     let availableCameraIds = $state<string[]>([]);
     let cameraCoverageById = $state<Map<string, VideoCameraCoverage>>(new Map());
+    let cameraCoverageFetchedAt = $state<number>(0);
     let cameraListLoading = $state<boolean>(false);
     let cameraListError = $state<string>("");
     let videoLoading = $state<boolean>(false);
@@ -675,6 +676,7 @@
             cameraCoverageById = new Map(
                 result.coverage.map((entry) => [entry.camera_id, entry] as const)
             );
+            cameraCoverageFetchedAt = Date.now();
             const preferred =
                 [...cameraCoverageById.values()]
                     .sort((a, b) => {
@@ -707,6 +709,13 @@
                 err instanceof Error ? err.message : "Failed to load available cameras";
         } finally {
             cameraListLoading = false;
+        }
+    }
+
+    async function ensureFreshCameraCoverage(maxAgeMs: number = 10_000) {
+        const stale = Date.now() - cameraCoverageFetchedAt > maxAgeMs;
+        if (stale || cameraCoverageFetchedAt === 0) {
+            await refreshAvailableCameras();
         }
     }
     
@@ -1300,6 +1309,7 @@
 
     async function fetchClipForTriggerEvent(event: BackendTriggerEvent, sourceLabel: string) {
         manualVideoChannel = event.channel;
+        await ensureFreshCameraCoverage();
         const readiness = getTriggerFetchReadiness(event);
         const preferredCameraId = resolveCameraIdForChannel(event.channel, false);
         const compactedClipKey = selectClipObjectKey(event, preferredCameraId);
@@ -1424,6 +1434,8 @@
             return;
         }
 
+        await ensureFreshCameraCoverage();
+
         const hasStart = triggerRangeStart.trim().length > 0;
         const hasEnd = triggerRangeEnd.trim().length > 0;
         if (!hasStart || !hasEnd) {
@@ -1502,6 +1514,7 @@
             triggerRangeError = "No triggers in range to fetch";
             return;
         }
+        await ensureFreshCameraCoverage();
         triggerRangeFetchLoading = true;
         triggerRangeError = "";
         let fetched = 0;
