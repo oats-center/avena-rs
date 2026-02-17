@@ -415,7 +415,7 @@
 
             const existingRoute = nextVideoRoutes.get(channel);
             nextVideoRoutes.set(channel, {
-                enabled: existingRoute?.enabled ?? false,
+                enabled: existingRoute?.enabled ?? true,
                 cameraId: existingRoute?.cameraId ?? ""
             });
         });
@@ -697,7 +697,7 @@
                     ? (cameras.includes(currentCamera) ? currentCamera : preferred)
                     : currentCamera;
                 nextRoutes.set(channel, {
-                    enabled: existing?.enabled ?? false,
+                    enabled: existing?.enabled ?? true,
                     cameraId
                 });
             }
@@ -1036,7 +1036,7 @@
         const current = channelVideoRoutes.get(channel);
         if (current) return current;
         return {
-            enabled: false,
+            enabled: true,
             cameraId: availableCameraIds.find((camera) => camera !== "default") ?? availableCameraIds[0] ?? ""
         };
     }
@@ -1091,15 +1091,7 @@
         return clipKeys[0];
     }
 
-    function getRawCoverageReadiness(event: BackendTriggerEvent): TriggerFetchReadiness {
-        const cameraId = resolveCameraIdForChannel(event.channel, true);
-        if (!cameraId) {
-            return {
-                ready: false,
-                message: `Video disabled for ch${event.channel.toString().padStart(2, "0")}`
-            };
-        }
-
+    function getCoverageReadinessForCamera(event: BackendTriggerEvent, cameraId: string): TriggerFetchReadiness {
         const coverage = getCameraCoverage(cameraId);
         if (!coverage) {
             return {
@@ -1138,6 +1130,34 @@
                 coverage.recommended_center_min
             )} to ${formatCoverageTime(coverage.recommended_center_max)})`
         };
+    }
+
+    function getRawCoverageReadiness(event: BackendTriggerEvent): TriggerFetchReadiness {
+        const primaryCameraId = resolveCameraIdForChannel(event.channel, false);
+        if (!primaryCameraId) {
+            return {
+                ready: false,
+                message: `Video disabled for ch${event.channel.toString().padStart(2, "0")}`
+            };
+        }
+
+        const primaryReadiness = getCoverageReadinessForCamera(event, primaryCameraId);
+        if (primaryReadiness.ready) {
+            return primaryReadiness;
+        }
+
+        for (const fallbackCameraId of availableCameraIds) {
+            if (fallbackCameraId === primaryCameraId) continue;
+            const fallbackReadiness = getCoverageReadinessForCamera(event, fallbackCameraId);
+            if (fallbackReadiness.ready) {
+                return {
+                    ready: true,
+                    message: `${primaryCameraId} not ready, using fallback ${fallbackCameraId}`
+                };
+            }
+        }
+
+        return primaryReadiness;
     }
 
     function getTriggerFetchReadiness(event: BackendTriggerEvent): TriggerFetchReadiness {
@@ -1276,7 +1296,7 @@
                 }
             }
 
-            const primaryCameraId = resolveCameraIdForChannel(event.channel, true);
+            const primaryCameraId = resolveCameraIdForChannel(event.channel, false);
             if (!primaryCameraId) {
                 videoError = readiness.message || "Camera is not configured for this channel";
                 return;
@@ -1474,7 +1494,7 @@
             try {
                 const preferredCameraId = resolveCameraIdForChannel(event.channel, false);
                 const compactedClipKey = selectClipObjectKey(event, preferredCameraId);
-                const rawCameraId = resolveCameraIdForChannel(event.channel, true);
+                const rawCameraId = resolveCameraIdForChannel(event.channel, false);
                 if (compactedClipKey) {
                     const result = await requestVideoObject({ object_key: compactedClipKey });
                     downloadBlob(result.blob, result.filename || `clip_${event.channel}_${event.trigger_time_unix_ms}.mp4`);

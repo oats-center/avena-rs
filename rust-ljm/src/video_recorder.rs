@@ -207,12 +207,16 @@ async fn spawn_ffmpeg_segmenter(cfg: &RecorderConfig) -> Result<Child> {
         .arg("-hide_banner")
         .arg("-loglevel")
         .arg("warning")
+        .arg("-fflags")
+        .arg("+genpts")
+        .arg("-use_wallclock_as_timestamps")
+        .arg("1")
         .arg("-rtsp_transport")
         .arg(&cfg.video_rtsp_transport)
         .arg("-i")
         .arg(&cfg.video_source_url)
         .arg("-map")
-        .arg("0")
+        .arg("0:v:0")
         .arg("-c")
         .arg("copy")
         .arg("-f")
@@ -290,18 +294,16 @@ async fn list_ready_segments(cfg: &RecorderConfig) -> Result<Vec<PathBuf>> {
     Ok(paths)
 }
 
-async fn validate_segment_file(ffprobe_bin: &str, path: &Path) -> bool {
-    let output = match Command::new(ffprobe_bin)
+async fn probe_duration(ffprobe_bin: &str, path: &Path, args: &[&str]) -> Option<f64> {
+    let mut command = Command::new(ffprobe_bin);
+    command
         .arg("-v")
         .arg("error")
-        .arg("-show_entries")
-        .arg("format=duration")
+        .args(args)
         .arg("-of")
         .arg("default=noprint_wrappers=1:nokey=1")
-        .arg(path)
-        .output()
-        .await
-    {
+        .arg(path);
+    let output = match command.output().await {
         Ok(out) => out,
         Err(err) => {
             eprintln!(
@@ -309,17 +311,53 @@ async fn validate_segment_file(ffprobe_bin: &str, path: &Path) -> bool {
                 path.display(),
                 err
             );
-            return false;
+            return None;
         }
     };
 
     if !output.status.success() {
-        return false;
+        return None;
     }
 
-    let duration_raw = String::from_utf8_lossy(&output.stdout);
-    let duration_sec = duration_raw.trim().parse::<f64>().ok();
-    matches!(duration_sec, Some(v) if v.is_finite() && v > 0.0)
+    String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .lines()
+        .next()
+        .and_then(|raw| raw.trim().parse::<f64>().ok())
+        .filter(|v| v.is_finite() && *v > 0.0)
+}
+
+async fn validate_segment_file(ffprobe_bin: &str, path: &Path, expected_segment_sec: u64) -> bool {
+    let video_duration = probe_duration(
+        ffprobe_bin,
+        path,
+        &["-select_streams", "v:0", "-show_entries", "stream=duration"],
+    )
+    .await;
+    let format_duration =
+        probe_duration(ffprobe_bin, path, &["-show_entries", "format=duration"]).await;
+
+    let Some(video_sec) = video_duration else {
+        return false;
+    };
+    let Some(format_sec) = format_duration else {
+        return false;
+    };
+
+    let min_video_sec = (expected_segment_sec as f64 * 0.8).max(1.0);
+    let max_mismatch_sec = 2.0;
+    let video_ok = video_sec >= min_video_sec;
+    let mismatch_ok = (format_sec - video_sec).abs() <= max_mismatch_sec;
+    if !video_ok || !mismatch_ok {
+        eprintln!(
+            "[video-recorder] reject segment {} (video={:.3}s format={:.3}s expected~{}s)",
+            path.display(),
+            video_sec,
+            format_sec,
+            expected_segment_sec
+        );
+    }
+    video_ok && mismatch_ok
 }
 
 async fn upload_ready_segments(store: &ObjectStore, cfg: &RecorderConfig) -> Result<()> {
@@ -333,7 +371,7 @@ async fn upload_ready_segments(store: &ObjectStore, cfg: &RecorderConfig) -> Res
             .map(|d| d.as_secs())
             .unwrap_or(0);
 
-        let valid = validate_segment_file(&cfg.ffprobe_bin, &path).await;
+        let valid = validate_segment_file(&cfg.ffprobe_bin, &path, cfg.video_segment_sec).await;
         if !valid {
             if age_sec > cfg.video_segment_sec.saturating_mul(6) {
                 let _ = fs::remove_file(&path).await;

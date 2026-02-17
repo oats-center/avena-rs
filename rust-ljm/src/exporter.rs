@@ -53,6 +53,7 @@ struct VideoState {
     video_bucket: String,
     video_tz: Tz,
     ffmpeg_bin: String,
+    ffprobe_bin: String,
     video_tmp_dir: PathBuf,
 }
 
@@ -185,6 +186,7 @@ async fn build_video_state() -> Result<VideoState> {
     })?;
 
     let ffmpeg_bin = std::env::var("FFMPEG_BIN").unwrap_or_else(|_| "ffmpeg".into());
+    let ffprobe_bin = std::env::var("FFPROBE_BIN").unwrap_or_else(|_| "ffprobe".into());
     let video_tmp_dir =
         PathBuf::from(std::env::var("VIDEO_TMP_DIR").unwrap_or_else(|_| "/tmp/avena-video".into()));
 
@@ -222,6 +224,7 @@ async fn build_video_state() -> Result<VideoState> {
         video_bucket,
         video_tz,
         ffmpeg_bin,
+        ffprobe_bin,
         video_tmp_dir,
     })
 }
@@ -605,6 +608,14 @@ async fn process_video_clip(
         let file_bytes = tokio::fs::read(&output_path)
             .await
             .with_context(|| format!("failed to read generated clip {}", output_path.display()))?;
+        let generated_duration = probe_video_duration_sec(&video.ffprobe_bin, &output_path).await?;
+        if generated_duration + 0.25 < clip_duration {
+            return Err(anyhow!(
+                "generated clip shorter than requested (requested {:.3}s, got {:.3}s). source objects are likely incomplete/corrupt",
+                clip_duration,
+                generated_duration
+            ));
+        }
 
         let filename = format!(
             "clip_asset{}_camera{}_{}_{}.mp4",
@@ -924,16 +935,13 @@ async fn run_ffmpeg_trim(
         .arg(format!("{duration_sec:.3}"))
         .arg("-map")
         .arg("0:v:0")
-        .arg("-map")
-        .arg("0:a?")
+        .arg("-an")
         .arg("-c:v")
         .arg("libx264")
         .arg("-preset")
         .arg("veryfast")
         .arg("-crf")
         .arg("23")
-        .arg("-c:a")
-        .arg("aac")
         .arg("-movflags")
         .arg("+faststart")
         .arg(output_path)
@@ -950,6 +958,46 @@ async fn run_ffmpeg_trim(
     }
 
     Ok(())
+}
+
+async fn probe_video_duration_sec(ffprobe_bin: &str, path: &Path) -> Result<f64> {
+    let output = Command::new(ffprobe_bin)
+        .arg("-v")
+        .arg("error")
+        .arg("-select_streams")
+        .arg("v:0")
+        .arg("-show_entries")
+        .arg("stream=duration")
+        .arg("-of")
+        .arg("default=noprint_wrappers=1:nokey=1")
+        .arg(path)
+        .output()
+        .await
+        .with_context(|| format!("failed to invoke ffprobe '{}'", ffprobe_bin))?;
+
+    if !output.status.success() {
+        return Err(anyhow!(
+            "ffprobe failed (status {}): {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    let duration_raw = String::from_utf8_lossy(&output.stdout);
+    let duration_sec = duration_raw
+        .trim()
+        .lines()
+        .next()
+        .and_then(|line| line.trim().parse::<f64>().ok())
+        .filter(|v| v.is_finite() && *v > 0.0)
+        .ok_or_else(|| {
+            anyhow!(
+                "unable to parse positive video duration from ffprobe output '{}'",
+                duration_raw.trim()
+            )
+        })?;
+
+    Ok(duration_sec)
 }
 
 async fn run_ffmpeg_concat_and_trim(

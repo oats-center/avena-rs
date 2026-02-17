@@ -537,16 +537,13 @@ async fn run_ffmpeg_trim(
         .arg(format!("{duration_sec:.3}"))
         .arg("-map")
         .arg("0:v:0")
-        .arg("-map")
-        .arg("0:a?")
+        .arg("-an")
         .arg("-c:v")
         .arg("libx264")
         .arg("-preset")
         .arg("veryfast")
         .arg("-crf")
         .arg("23")
-        .arg("-c:a")
-        .arg("aac")
         .arg("-movflags")
         .arg("+faststart")
         .arg(output_path)
@@ -838,7 +835,7 @@ async fn run_compaction_cycle(
         }
 
         let mut clip_keys = Vec::new();
-        let mut failure: Option<String> = None;
+        let mut failures: Vec<String> = Vec::new();
         for camera_id in camera_set {
             let camera_objects: Vec<VideoObject> = asset_objects
                 .iter()
@@ -852,20 +849,28 @@ async fn run_compaction_cycle(
             {
                 Ok(key) => clip_keys.push(key),
                 Err(err) => {
-                    failure = Some(format!("camera {}: {}", camera_id, err));
-                    break;
+                    failures.push(format!("camera {}: {}", camera_id, err));
                 }
             }
         }
 
         record.attempts += 1;
         record.updated_at = Utc::now().to_rfc3339();
-        if let Some(err) = failure {
-            record.last_error = Some(err);
+        if clip_keys.is_empty() {
+            let joined = if failures.is_empty() {
+                "no clips generated".to_string()
+            } else {
+                failures.join("; ")
+            };
+            record.last_error = Some(joined);
             record.status = TriggerRecordStatus::Pending;
         } else {
             record.clip_keys = clip_keys;
-            record.last_error = None;
+            record.last_error = if failures.is_empty() {
+                None
+            } else {
+                Some(format!("partial success: {}", failures.join("; ")))
+            };
             record.status = TriggerRecordStatus::Processed;
         }
         save_trigger_record(state_store, record).await?;
