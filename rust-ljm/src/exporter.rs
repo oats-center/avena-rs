@@ -560,13 +560,13 @@ async fn process_video_clip(
                 .await?;
             }
             ClipSourcePlan::Multi(sources) => {
-                let grace = ChronoDuration::seconds(2);
-                let parts = build_clip_parts(&sources, clip_start, clip_end, grace)?;
+                let parts = build_clip_parts(&sources, clip_start, clip_end)?;
                 if parts.is_empty() {
                     return Err(anyhow!("resolved clip parts are empty"));
                 }
 
                 let mut part_paths = Vec::with_capacity(parts.len());
+                let mut total_part_duration = 0.0_f64;
                 for (idx, (source, part_start, part_end)) in parts.iter().enumerate() {
                     let source_path = request_dir.join(format!("source_{idx}.mp4"));
                     download_object_to_file(&store, &source.name, &source_path).await?;
@@ -588,17 +588,19 @@ async fn process_video_clip(
                     )
                     .await?;
                     part_paths.push(part_path);
+                    total_part_duration += duration_sec;
                 }
 
                 if part_paths.is_empty() {
                     return Err(anyhow!("no valid clip parts after trimming"));
                 }
 
+                let concat_duration_sec = total_part_duration.min(clip_duration);
                 run_ffmpeg_concat_and_trim(
                     &video.ffmpeg_bin,
                     &part_paths,
                     &output_path,
-                    clip_duration,
+                    concat_duration_sec,
                     &request_dir,
                 )
                 .await?;
@@ -609,10 +611,9 @@ async fn process_video_clip(
             .await
             .with_context(|| format!("failed to read generated clip {}", output_path.display()))?;
         let generated_duration = probe_video_duration_sec(&video.ffprobe_bin, &output_path).await?;
-        if generated_duration + 0.25 < clip_duration {
+        if generated_duration <= 0.1 {
             return Err(anyhow!(
-                "generated clip shorter than requested (requested {:.3}s, got {:.3}s). source objects are likely incomplete/corrupt",
-                clip_duration,
+                "generated clip has invalid duration {:.3}s",
                 generated_duration
             ));
         }
@@ -798,96 +799,40 @@ fn resolve_clip_sources(
         }
     }
 
-    let mut candidates: Vec<VideoObject> = objects
+    let mut sorted = objects.to_vec();
+    sorted.sort_by_key(|entry| entry.start);
+    let start_idx = sorted
         .iter()
-        .filter(|entry| entry.end + grace >= clip_start && entry.start - grace <= clip_end)
-        .cloned()
-        .collect();
-    candidates.sort_by_key(|entry| entry.start);
-    if candidates.is_empty() {
+        .position(|entry| entry.start - grace <= clip_start && entry.end + grace >= clip_start);
+    let end_idx = sorted
+        .iter()
+        .rposition(|entry| entry.start - grace <= clip_end && entry.end + grace >= clip_end);
+    let (Some(start_idx), Some(end_idx)) = (start_idx, end_idx) else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            "no source object covers requested interval".to_string(),
+        ));
+    };
+    if end_idx < start_idx {
         return Err((
             StatusCode::NOT_FOUND,
             "no source object covers requested interval".to_string(),
         ));
     }
 
-    let mut best_chain: Option<Vec<VideoObject>> = None;
-    for start in &candidates {
-        if !(start.start - grace <= clip_start && start.end + grace >= clip_start) {
-            continue;
-        }
-        let mut chain = vec![start.clone()];
-        let mut reach = start.end;
-
-        while reach + grace < clip_end {
-            let next = candidates
-                .iter()
-                .filter(|entry| entry.start - grace <= reach && entry.end > reach)
-                .max_by(|a, b| {
-                    a.end
-                        .cmp(&b.end)
-                        .then_with(|| b.start.cmp(&a.start))
-                        .then_with(|| a.name.cmp(&b.name))
-                })
-                .cloned();
-
-            let Some(next) = next else { break };
-            if chain
-                .last()
-                .map(|entry| entry.name == next.name)
-                .unwrap_or(false)
-            {
-                break;
-            }
-            reach = next.end;
-            chain.push(next);
-            if chain.len() > candidates.len() + 1 {
-                break;
-            }
-        }
-
-        if reach + grace >= clip_end {
-            let better = match best_chain.as_ref() {
-                None => true,
-                Some(current) => chain.len() < current.len(),
-            };
-            if better {
-                best_chain = Some(chain);
-            }
-        }
+    let mut span = sorted[start_idx..=end_idx].to_vec();
+    span.dedup_by(|a, b| a.name == b.name);
+    if span.is_empty() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            "no source object covers requested interval".to_string(),
+        ));
+    }
+    if span.len() == 1 {
+        return Ok(ClipSourcePlan::Single(span.remove(0)));
     }
 
-    if let Some(mut chain) = best_chain {
-        chain.dedup_by(|a, b| a.name == b.name);
-        if chain.len() == 1 {
-            return Ok(ClipSourcePlan::Single(chain.remove(0)));
-        }
-        return Ok(ClipSourcePlan::Multi(chain));
-    }
-
-    if let Some(max_reach) = candidates
-        .iter()
-        .filter(|entry| entry.start - grace <= clip_start && entry.end + grace >= clip_start)
-        .map(|entry| entry.end)
-        .max()
-    {
-        if max_reach < clip_end {
-            let gap_ms = (clip_end - max_reach).num_milliseconds().max(0);
-            let gap_sec = gap_ms as f64 / 1000.0;
-            return Err((
-                StatusCode::UNPROCESSABLE_ENTITY,
-                format!(
-                    "requested interval spans a gap between video objects ({gap_sec:.3}s missing after {})",
-                    max_reach.to_rfc3339()
-                ),
-            ));
-        }
-    }
-
-    Err((
-        StatusCode::NOT_FOUND,
-        "requested interval is not fully covered by available objects".to_string(),
-    ))
+    Ok(ClipSourcePlan::Multi(span))
 }
 
 async fn download_object_to_file(
@@ -1094,28 +1039,23 @@ fn build_clip_parts(
     sources: &[VideoObject],
     clip_start: DateTime<Utc>,
     clip_end: DateTime<Utc>,
-    grace: ChronoDuration,
 ) -> Result<Vec<(VideoObject, DateTime<Utc>, DateTime<Utc>)>> {
     let mut sorted = sources.to_vec();
     sorted.sort_by_key(|entry| entry.start);
 
-    let mut cursor = clip_start;
     let mut parts = Vec::new();
     for source in sorted {
-        if cursor >= clip_end {
-            break;
-        }
-        if source.end + grace < cursor {
+        if source.end <= clip_start {
             continue;
         }
-        if source.start - grace > cursor {
-            break;
+        if source.start >= clip_end {
+            continue;
         }
 
-        let part_start = if source.start > cursor {
+        let part_start = if source.start > clip_start {
             source.start
         } else {
-            cursor
+            clip_start
         };
         let part_end = if source.end < clip_end {
             source.end
@@ -1125,14 +1065,7 @@ fn build_clip_parts(
         if part_end <= part_start {
             continue;
         }
-        cursor = part_end;
         parts.push((source, part_start, part_end));
-    }
-
-    if cursor + grace < clip_end {
-        return Err(anyhow!(
-            "resolved sources do not fully cover requested clip window"
-        ));
     }
 
     Ok(parts)
@@ -1538,6 +1471,42 @@ mod tests {
         match plan {
             ClipSourcePlan::Single(_) => panic!("expected stitched source"),
             ClipSourcePlan::Multi(parts) => assert_eq!(parts.len(), 2),
+        }
+    }
+
+    #[test]
+    fn resolve_clip_multi_keeps_all_sources_between_edges() {
+        let objects = vec![
+            VideoObject {
+                name: "asset1456/V_2026_02_13_090000_2026_02_13_090005.mp4".to_string(),
+                camera_id: "default".to_string(),
+                start: dt_utc("2026-02-13T14:00:00Z"),
+                end: dt_utc("2026-02-13T14:00:05Z"),
+            },
+            VideoObject {
+                name: "asset1456/V_2026_02_13_090007_2026_02_13_090012.mp4".to_string(),
+                camera_id: "default".to_string(),
+                start: dt_utc("2026-02-13T14:00:07Z"),
+                end: dt_utc("2026-02-13T14:00:12Z"),
+            },
+            VideoObject {
+                name: "asset1456/V_2026_02_13_090012_2026_02_13_090017.mp4".to_string(),
+                camera_id: "default".to_string(),
+                start: dt_utc("2026-02-13T14:00:12Z"),
+                end: dt_utc("2026-02-13T14:00:17Z"),
+            },
+        ];
+
+        let plan = resolve_clip_sources(
+            &objects,
+            dt_utc("2026-02-13T14:00:03.500Z"),
+            dt_utc("2026-02-13T14:00:13.500Z"),
+        )
+        .expect("multi source should resolve");
+
+        match plan {
+            ClipSourcePlan::Single(_) => panic!("expected multi source"),
+            ClipSourcePlan::Multi(parts) => assert_eq!(parts.len(), 3),
         }
     }
 }

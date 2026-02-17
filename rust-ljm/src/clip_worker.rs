@@ -69,12 +69,12 @@ impl WorkerConfig {
             std::env::var("TRIGGER_CONSUMER_DURABLE").unwrap_or_else(|_| "clip_worker".to_string());
         let trigger_state_bucket = std::env::var("TRIGGER_STATE_BUCKET")
             .unwrap_or_else(|_| "video_trigger_events".to_string());
-        let process_interval_sec = parse_u64_env("CLIP_PROCESS_INTERVAL_SEC", 15)?;
+        let process_interval_sec = parse_u64_env("CLIP_PROCESS_INTERVAL_SEC", 2)?;
         let compaction_interval_sec = parse_u64_env("CLIP_COMPACTION_INTERVAL_SEC", 3600)?;
         let poll_interval_sec = parse_u64_env("CLIP_WORKER_POLL_INTERVAL_SEC", 2)?;
         let clip_pre_sec = parse_f64_env("CLIP_PRE_SEC", 5.0)?;
         let clip_post_sec = parse_f64_env("CLIP_POST_SEC", 5.0)?;
-        let clip_process_lag_sec = parse_u64_env("CLIP_PROCESS_LAG_SEC", 15)?;
+        let clip_process_lag_sec = parse_u64_env("CLIP_PROCESS_LAG_SEC", 10)?;
         let clip_camera_ids = parse_csv_env("CLIP_CAMERA_IDS");
         let clip_output_prefix =
             std::env::var("CLIP_OUTPUT_PREFIX").unwrap_or_else(|_| "clips".to_string());
@@ -153,7 +153,7 @@ struct VideoObject {
 
 enum ClipSourcePlan {
     Single(VideoObject),
-    Stitch(VideoObject, VideoObject),
+    Multi(Vec<VideoObject>),
 }
 
 fn parse_u64_env(name: &str, default: u64) -> Result<u64> {
@@ -464,42 +464,45 @@ fn resolve_clip_sources(
     clip_start: DateTime<Utc>,
     clip_end: DateTime<Utc>,
 ) -> std::result::Result<ClipSourcePlan, &'static str> {
+    if objects.is_empty() {
+        return Err("no video objects available");
+    }
+
     // Keep this aligned with exporter resolve_clip_sources and coverage windows
     // to tolerate small inter-segment gaps from ffmpeg segmenter.
     let grace = ChronoDuration::seconds(2);
-    for object in objects {
+    let mut sorted = objects.to_vec();
+    sorted.sort_by_key(|entry| entry.start);
+
+    for object in &sorted {
         if object.start - grace <= clip_start && object.end + grace >= clip_end {
             return Ok(ClipSourcePlan::Single(object.clone()));
         }
     }
 
-    let left = objects
+    let start_idx = sorted
         .iter()
-        .rev()
-        .find(|entry| entry.start - grace <= clip_start && entry.end + grace >= clip_start)
-        .cloned();
-    let right = objects
+        .position(|entry| entry.start - grace <= clip_start && entry.end + grace >= clip_start);
+    let end_idx = sorted
         .iter()
-        .find(|entry| entry.start - grace <= clip_end && entry.end + grace >= clip_end)
-        .cloned();
+        .rposition(|entry| entry.start - grace <= clip_end && entry.end + grace >= clip_end);
 
-    let (Some(left), Some(right)) = (left, right) else {
+    let (Some(start_idx), Some(end_idx)) = (start_idx, end_idx) else {
         return Err("no source object covers requested interval");
     };
-
-    if left.name == right.name {
-        return Ok(ClipSourcePlan::Single(left));
+    if end_idx < start_idx {
+        return Err("no source object covers requested interval");
     }
 
-    if right.start > left.end + grace {
-        return Err("requested interval spans a gap between video objects");
+    let mut span = sorted[start_idx..=end_idx].to_vec();
+    span.dedup_by(|a, b| a.name == b.name);
+    if span.is_empty() {
+        return Err("no source object covers requested interval");
     }
-
-    if left.start - grace <= clip_start && right.end + grace >= clip_end {
-        return Ok(ClipSourcePlan::Stitch(left, right));
+    if span.len() == 1 {
+        return Ok(ClipSourcePlan::Single(span.remove(0)));
     }
-
-    Err("requested interval is not fully covered by available objects")
+    Ok(ClipSourcePlan::Multi(span))
 }
 
 async fn download_object_to_file(
@@ -568,18 +571,24 @@ async fn run_ffmpeg_trim(
 
 async fn run_ffmpeg_concat_and_trim(
     ffmpeg_bin: &str,
-    left_part: &Path,
-    right_part: &Path,
+    part_paths: &[PathBuf],
     output_path: &Path,
     total_duration_sec: f64,
     temp_dir: &Path,
 ) -> Result<()> {
+    if part_paths.is_empty() {
+        return Err(anyhow!("concat requires at least one part"));
+    }
+    if total_duration_sec <= 0.0 {
+        return Err(anyhow!("concat duration must be positive"));
+    }
+
     let list_path = temp_dir.join("concat-list.txt");
-    let list_content = format!(
-        "file '{}'\nfile '{}'\n",
-        left_part.to_string_lossy().replace('\'', "'\\''"),
-        right_part.to_string_lossy().replace('\'', "'\\''")
-    );
+    let mut list_content = String::new();
+    for part_path in part_paths {
+        let escaped = escape_ffmpeg_path(part_path.as_path());
+        list_content.push_str(&format!("file '{}'\n", escaped));
+    }
     tokio::fs::write(&list_path, list_content)
         .await
         .with_context(|| format!("failed to write concat list {}", list_path.display()))?;
@@ -619,6 +628,46 @@ async fn run_ffmpeg_concat_and_trim(
     )
     .await?;
     Ok(())
+}
+
+fn escape_ffmpeg_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\'', "'\\\\''")
+}
+
+fn build_clip_parts(
+    sources: &[VideoObject],
+    clip_start: DateTime<Utc>,
+    clip_end: DateTime<Utc>,
+) -> Vec<(VideoObject, DateTime<Utc>, DateTime<Utc>)> {
+    let mut sorted = sources.to_vec();
+    sorted.sort_by_key(|entry| entry.start);
+
+    let mut parts = Vec::new();
+    for source in sorted {
+        if source.end <= clip_start {
+            continue;
+        }
+        if source.start >= clip_end {
+            continue;
+        }
+
+        let part_start = if source.start > clip_start {
+            source.start
+        } else {
+            clip_start
+        };
+        let part_end = if source.end < clip_end {
+            source.end
+        } else {
+            clip_end
+        };
+        if part_end <= part_start {
+            continue;
+        }
+        parts.push((source, part_start, part_end));
+    }
+
+    parts
 }
 
 fn seconds_between(start: DateTime<Utc>, end: DateTime<Utc>) -> Result<f64> {
@@ -671,62 +720,47 @@ async fn build_and_store_clip(
                 )
                 .await?;
             }
-            ClipSourcePlan::Stitch(left, right) => {
-                let left_source = request_dir.join("left_source.mp4");
-                let right_source = request_dir.join("right_source.mp4");
-                download_object_to_file(store, &left.name, &left_source).await?;
-                download_object_to_file(store, &right.name, &right_source).await?;
+            ClipSourcePlan::Multi(sources) => {
+                let parts = build_clip_parts(&sources, clip_start, clip_end);
+                if parts.is_empty() {
+                    return Err(anyhow!("resolved clip parts are empty"));
+                }
 
-                let left_part = request_dir.join("left_part.mp4");
-                let right_part = request_dir.join("right_part.mp4");
+                let mut part_paths = Vec::with_capacity(parts.len());
+                let mut total_part_duration = 0.0_f64;
+                for (idx, (source, part_start, part_end)) in parts.iter().enumerate() {
+                    let source_path = request_dir.join(format!("source_{idx}.mp4"));
+                    download_object_to_file(store, &source.name, &source_path).await?;
 
-                let left_trim_start = if clip_start > left.start {
-                    clip_start
-                } else {
-                    left.start
-                };
-                let left_trim_end = if clip_end < left.end {
-                    clip_end
-                } else {
-                    left.end
-                };
-                let left_offset = seconds_between(left.start, left_trim_start)
-                    .unwrap_or(0.0)
-                    .max(0.0);
-                let left_duration = seconds_between(left_trim_start, left_trim_end)?;
+                    let part_path = request_dir.join(format!("part_{idx}.mp4"));
+                    let offset_sec = seconds_between(source.start, *part_start)
+                        .unwrap_or(0.0)
+                        .max(0.0);
+                    let duration_sec = seconds_between(*part_start, *part_end)?;
+                    if duration_sec <= 0.0 {
+                        continue;
+                    }
+                    run_ffmpeg_trim(
+                        &cfg.ffmpeg_bin,
+                        &source_path,
+                        &part_path,
+                        offset_sec,
+                        duration_sec,
+                    )
+                    .await?;
+                    part_paths.push(part_path);
+                    total_part_duration += duration_sec;
+                }
+                if part_paths.is_empty() {
+                    return Err(anyhow!("no valid clip parts after trimming"));
+                }
 
-                let right_trim_start = if clip_start > right.start {
-                    clip_start
-                } else {
-                    right.start
-                };
-                let right_offset = seconds_between(right.start, right_trim_start)
-                    .unwrap_or(0.0)
-                    .max(0.0);
-                let right_duration = seconds_between(right_trim_start, clip_end)?;
-
-                run_ffmpeg_trim(
-                    &cfg.ffmpeg_bin,
-                    &left_source,
-                    &left_part,
-                    left_offset,
-                    left_duration,
-                )
-                .await?;
-                run_ffmpeg_trim(
-                    &cfg.ffmpeg_bin,
-                    &right_source,
-                    &right_part,
-                    right_offset,
-                    right_duration,
-                )
-                .await?;
+                let concat_duration_sec = total_part_duration.min(clip_duration);
                 run_ffmpeg_concat_and_trim(
                     &cfg.ffmpeg_bin,
-                    &left_part,
-                    &right_part,
+                    &part_paths,
                     &output_path,
-                    clip_duration,
+                    concat_duration_sec,
                     &request_dir,
                 )
                 .await?;
@@ -1003,4 +1037,74 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dt_utc(raw: &str) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(raw)
+            .expect("valid datetime")
+            .with_timezone(&Utc)
+    }
+
+    fn video(name: &str, start: &str, end: &str) -> VideoObject {
+        VideoObject {
+            name: name.to_string(),
+            camera_id: "cam10".to_string(),
+            start: dt_utc(start),
+            end: dt_utc(end),
+        }
+    }
+
+    #[test]
+    fn resolve_clip_single_source() {
+        let objects = vec![video(
+            "asset1001/camera_cam10/V_2026_02_17_133800_2026_02_17_133900.mp4",
+            "2026-02-17T18:38:00Z",
+            "2026-02-17T18:39:00Z",
+        )];
+        let plan = resolve_clip_sources(
+            &objects,
+            dt_utc("2026-02-17T18:38:05Z"),
+            dt_utc("2026-02-17T18:38:15Z"),
+        )
+        .expect("single source plan");
+        match plan {
+            ClipSourcePlan::Single(_) => {}
+            ClipSourcePlan::Multi(_) => panic!("expected single source"),
+        }
+    }
+
+    #[test]
+    fn resolve_clip_multi_includes_all_between() {
+        let objects = vec![
+            video(
+                "asset1001/camera_cam10/V_2026_02_17_133800_2026_02_17_133805.mp4",
+                "2026-02-17T18:38:00Z",
+                "2026-02-17T18:38:05Z",
+            ),
+            video(
+                "asset1001/camera_cam10/V_2026_02_17_133807_2026_02_17_133812.mp4",
+                "2026-02-17T18:38:07Z",
+                "2026-02-17T18:38:12Z",
+            ),
+            video(
+                "asset1001/camera_cam10/V_2026_02_17_133812_2026_02_17_133817.mp4",
+                "2026-02-17T18:38:12Z",
+                "2026-02-17T18:38:17Z",
+            ),
+        ];
+        let plan = resolve_clip_sources(
+            &objects,
+            dt_utc("2026-02-17T18:38:03.500Z"),
+            dt_utc("2026-02-17T18:38:13.500Z"),
+        )
+        .expect("multi source plan");
+        match plan {
+            ClipSourcePlan::Single(_) => panic!("expected multi source"),
+            ClipSourcePlan::Multi(parts) => assert_eq!(parts.len(), 3),
+        }
+    }
 }
