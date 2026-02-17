@@ -33,6 +33,7 @@ struct WorkerConfig {
     trigger_subject_filter: String,
     trigger_consumer_durable: String,
     trigger_state_bucket: String,
+    process_interval_sec: u64,
     compaction_interval_sec: u64,
     poll_interval_sec: u64,
     clip_pre_sec: f64,
@@ -68,6 +69,7 @@ impl WorkerConfig {
             std::env::var("TRIGGER_CONSUMER_DURABLE").unwrap_or_else(|_| "clip_worker".to_string());
         let trigger_state_bucket = std::env::var("TRIGGER_STATE_BUCKET")
             .unwrap_or_else(|_| "video_trigger_events".to_string());
+        let process_interval_sec = parse_u64_env("CLIP_PROCESS_INTERVAL_SEC", 15)?;
         let compaction_interval_sec = parse_u64_env("CLIP_COMPACTION_INTERVAL_SEC", 3600)?;
         let poll_interval_sec = parse_u64_env("CLIP_WORKER_POLL_INTERVAL_SEC", 2)?;
         let clip_pre_sec = parse_f64_env("CLIP_PRE_SEC", 5.0)?;
@@ -89,6 +91,7 @@ impl WorkerConfig {
             trigger_subject_filter,
             trigger_consumer_durable,
             trigger_state_bucket,
+            process_interval_sec,
             compaction_interval_sec,
             poll_interval_sec,
             clip_pre_sec,
@@ -461,7 +464,9 @@ fn resolve_clip_sources(
     clip_start: DateTime<Utc>,
     clip_end: DateTime<Utc>,
 ) -> std::result::Result<ClipSourcePlan, &'static str> {
-    let grace = ChronoDuration::seconds(1);
+    // Keep this aligned with exporter resolve_clip_sources and coverage windows
+    // to tolerate small inter-segment gaps from ffmpeg segmenter.
+    let grace = ChronoDuration::seconds(2);
     for object in objects {
         if object.start - grace <= clip_start && object.end + grace >= clip_end {
             return Ok(ClipSourcePlan::Single(object.clone()));
@@ -761,10 +766,13 @@ async fn run_compaction_cycle(
     cfg: &WorkerConfig,
     store: &ObjectStore,
     state_store: &Store,
+    run_cleanup: bool,
 ) -> Result<()> {
     let mut records = load_trigger_records(state_store).await?;
     if records.is_empty() {
-        cleanup_raw_objects(cfg, store, &records).await?;
+        if run_cleanup {
+            cleanup_raw_objects(cfg, store, &records).await?;
+        }
         return Ok(());
     }
 
@@ -876,7 +884,9 @@ async fn run_compaction_cycle(
         save_trigger_record(state_store, record).await?;
     }
 
-    cleanup_raw_objects(cfg, store, &records).await?;
+    if run_cleanup {
+        cleanup_raw_objects(cfg, store, &records).await?;
+    }
     Ok(())
 }
 
@@ -953,6 +963,9 @@ async fn main() -> Result<()> {
     let mut last_compaction = Instant::now()
         .checked_sub(Duration::from_secs(cfg.compaction_interval_sec))
         .unwrap_or_else(Instant::now);
+    let mut last_process = Instant::now()
+        .checked_sub(Duration::from_secs(cfg.process_interval_sec))
+        .unwrap_or_else(Instant::now);
     let mut shutdown = Box::pin(tokio::signal::ctrl_c());
     let mut ticker = tokio::time::interval(Duration::from_secs(cfg.poll_interval_sec.max(1)));
 
@@ -964,10 +977,22 @@ async fn main() -> Result<()> {
                     println!("[clip-worker] ingested {} new trigger event(s)", ingested);
                 }
 
-                if last_compaction.elapsed() >= Duration::from_secs(cfg.compaction_interval_sec.max(1)) {
-                    run_compaction_cycle(&cfg, &store, &state_store).await?;
-                    last_compaction = Instant::now();
-                    println!("[clip-worker] compaction cycle complete");
+                let process_due =
+                    last_process.elapsed() >= Duration::from_secs(cfg.process_interval_sec.max(1));
+                let cleanup_due = last_compaction.elapsed()
+                    >= Duration::from_secs(cfg.compaction_interval_sec.max(1));
+
+                if process_due || cleanup_due {
+                    run_compaction_cycle(&cfg, &store, &state_store, cleanup_due).await?;
+                    let cycle_finished_at = Instant::now();
+                    if process_due {
+                        last_process = cycle_finished_at;
+                        println!("[clip-worker] processing cycle complete");
+                    }
+                    if cleanup_due {
+                        last_compaction = cycle_finished_at;
+                        println!("[clip-worker] compaction cycle complete");
+                    }
                 }
             }
             _ = &mut shutdown => {
