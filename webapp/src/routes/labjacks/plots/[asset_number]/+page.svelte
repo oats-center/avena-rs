@@ -570,7 +570,20 @@
             cameraCoverageById = new Map(
                 result.coverage.map((entry) => [entry.camera_id, entry] as const)
             );
-            const preferred = cameras.find((camera) => camera !== "default") ?? cameras[0] ?? "";
+            const preferred =
+                [...cameraCoverageById.values()]
+                    .sort((a, b) => {
+                        const aMs = parseIsoMs(a.recommended_center_max);
+                        const bMs = parseIsoMs(b.recommended_center_max);
+                        const aScore = Number.isFinite(aMs) ? aMs : Number.NEGATIVE_INFINITY;
+                        const bScore = Number.isFinite(bMs) ? bMs : Number.NEGATIVE_INFINITY;
+                        return bScore - aScore;
+                    })
+                    .map((entry) => entry.camera_id)
+                    .find((camera) => cameras.includes(camera)) ??
+                cameras.find((camera) => camera !== "default") ??
+                cameras[0] ??
+                "";
             const nextRoutes = new Map(channelVideoRoutes);
             for (const channel of labjackConfig.sensor_settings.channels_enabled) {
                 const existing = nextRoutes.get(channel);
@@ -939,6 +952,10 @@
         return trimmed.length > 0 ? trimmed : undefined;
     }
 
+    function hasEnabledCameraForChannel(channel: number): boolean {
+        return !!resolveCameraIdForChannel(channel, true);
+    }
+
     function parseIsoMs(value: string): number {
         const ms = new Date(value).getTime();
         return Number.isFinite(ms) ? ms : Number.NaN;
@@ -972,12 +989,21 @@
             };
         }
 
+        const minCenterMs = parseIsoMs(coverage.recommended_center_min);
         const maxCenterMs = parseIsoMs(coverage.recommended_center_max);
         const eventMs = Number.isFinite(event.trigger_time_unix_ms)
             ? event.trigger_time_unix_ms
             : parseIsoMs(event.trigger_time);
-        if (!Number.isFinite(maxCenterMs) || !Number.isFinite(eventMs)) {
+        if ((!Number.isFinite(minCenterMs) && !Number.isFinite(maxCenterMs)) || !Number.isFinite(eventMs)) {
             return { ready: true, message: `${cameraId} coverage is available` };
+        }
+        if (Number.isFinite(minCenterMs) && eventMs < minCenterMs) {
+            return {
+                ready: false,
+                message: `${cameraId} has no continuous pre-roll for this trigger. Earliest fetchable center is ${formatCoverageTime(
+                    coverage.recommended_center_min
+                )}`
+            };
         }
         if (eventMs > maxCenterMs) {
             return {
@@ -989,9 +1015,9 @@
         }
         return {
             ready: true,
-            message: `${cameraId} ready (fetchable until ${formatCoverageTime(
-                coverage.recommended_center_max
-            )})`
+            message: `${cameraId} ready (${formatCoverageTime(
+                coverage.recommended_center_min
+            )} to ${formatCoverageTime(coverage.recommended_center_max)})`
         };
     }
 
@@ -1035,6 +1061,20 @@
         videoFileName = "";
     }
 
+    async function requestClip(centerIso: string, cameraIdOverride?: string) {
+        if (!labjackConfig) {
+            throw new Error("Configuration not loaded");
+        }
+        const payload: VideoClipRequestPayload = {
+            asset: labjackConfig.asset_number,
+            camera_id: cameraIdOverride,
+            center_time: centerIso,
+            pre_sec: 5,
+            post_sec: 5
+        };
+        return await requestVideoClip(payload);
+    }
+
     async function fetchClipByCenterIso(
         centerIso: string,
         sourceLabel: string,
@@ -1049,14 +1089,7 @@
         videoError = "";
 
         try {
-            const payload: VideoClipRequestPayload = {
-                asset: labjackConfig.asset_number,
-                camera_id: cameraIdOverride,
-                center_time: centerIso,
-                pre_sec: 5,
-                post_sec: 5
-            };
-            const result = await requestVideoClip(payload);
+            const result = await requestClip(centerIso, cameraIdOverride);
             clearVideoPreview();
             videoUrl = URL.createObjectURL(result.blob);
             videoFileName = result.filename;
@@ -1073,16 +1106,42 @@
     async function fetchClipForTriggerEvent(event: BackendTriggerEvent, sourceLabel: string) {
         manualVideoChannel = event.channel;
         const readiness = getTriggerFetchReadiness(event);
-        if (!readiness.ready) {
-            videoError = readiness.message;
-            return;
-        }
-        const cameraId = resolveCameraIdForChannel(event.channel, true);
-        if (!cameraId) {
+        const primaryCameraId = resolveCameraIdForChannel(event.channel, true);
+        if (!primaryCameraId) {
             videoError = "Camera is not configured for this channel";
             return;
         }
-        await fetchClipByCenterIso(event.trigger_time, sourceLabel, cameraId);
+
+        const fallbackCandidates = availableCameraIds.filter((cameraId) => cameraId !== primaryCameraId);
+        const candidateCameraIds = [primaryCameraId, ...fallbackCandidates];
+        if (!readiness.ready && candidateCameraIds.length === 1) {
+            videoError = readiness.message;
+            return;
+        }
+
+        videoLoading = true;
+        videoError = "";
+
+        let lastError = readiness.ready ? "" : readiness.message;
+        for (const cameraId of candidateCameraIds) {
+            try {
+                const result = await requestClip(event.trigger_time, cameraId);
+                clearVideoPreview();
+                videoUrl = URL.createObjectURL(result.blob);
+                videoFileName = result.filename;
+                if (cameraId !== primaryCameraId) {
+                    backendTriggerStatus = `Fetched clip using fallback camera ${cameraId} (primary ${primaryCameraId} had no full 10s coverage).`;
+                }
+                videoLoading = false;
+                return;
+            } catch (err) {
+                lastError = err instanceof Error ? err.message : "Failed to fetch video clip";
+            }
+        }
+
+        clearVideoPreview();
+        videoError = `${sourceLabel}: ${lastError || "Failed to fetch video clip"}`;
+        videoLoading = false;
     }
 
     function buildBackendTriggerSettings() {
@@ -1183,12 +1242,8 @@
                 key.startsWith("event.")
             );
             const matching: BackendTriggerEvent[] = [];
-            const maxEntriesToScan = 1000;
-            let scanned = 0;
 
             for (const key of keys) {
-                if (scanned >= maxEntriesToScan) break;
-                scanned += 1;
                 try {
                     const raw = await getKeyValue(natsService, "video_trigger_events", key);
                     if (!raw || raw === "Key value does not exist") continue;
@@ -1211,6 +1266,17 @@
             matching.sort((a, b) => b.trigger_time_unix_ms - a.trigger_time_unix_ms);
             triggerRangeResults = matching.slice(0, 200);
             triggerRangeStatus = `Found ${matching.length} trigger(s) in range${matching.length > 200 ? " (showing latest 200)" : ""}.`;
+            if (matching.length === 0 && backendTriggerEvents.length > 0) {
+                const latestRecent = backendTriggerEvents[0];
+                const latestRecentMs = Number.isFinite(latestRecent.trigger_time_unix_ms)
+                    ? latestRecent.trigger_time_unix_ms
+                    : parseIsoMs(latestRecent.trigger_time);
+                if (Number.isFinite(latestRecentMs) && latestRecentMs > endMs) {
+                    triggerRangeStatus += ` Latest recent trigger is at ${formatTriggerEventTime(
+                        latestRecent.trigger_time
+                    )}, which is after the selected End time.`;
+                }
+            }
         } catch (err) {
             triggerRangeError =
                 err instanceof Error ? err.message : "Failed searching trigger history";
@@ -1672,7 +1738,7 @@
                             {#each Array.from(cameraCoverageById.entries()) as [cameraId, coverage]}
                                 <div>
                                     <span class="font-semibold">{cameraId}</span>:
-                                    fetchable center time up to {formatCoverageTime(coverage.recommended_center_max)}
+                                    fetchable center time {formatCoverageTime(coverage.recommended_center_min)} to {formatCoverageTime(coverage.recommended_center_max)}
                                 </div>
                             {/each}
                         {/if}
@@ -1709,7 +1775,7 @@
                                                 <button
                                                     class="btn btn-primary btn-xs"
                                                     onclick={() => fetchClipForTriggerEvent(event, "Recent trigger")}
-                                                    disabled={videoLoading || !readiness.ready}
+                                                    disabled={videoLoading || !hasEnabledCameraForChannel(event.channel)}
                                                     title={readiness.message}
                                                 >
                                                     Fetch
@@ -1825,7 +1891,7 @@
                                                 <button
                                                     class="btn btn-primary btn-xs"
                                                     onclick={() => fetchClipForTriggerEvent(event, "Range trigger")}
-                                                    disabled={videoLoading || !readiness.ready}
+                                                    disabled={videoLoading || !hasEnabledCameraForChannel(event.channel)}
                                                     title={readiness.message}
                                                 >
                                                     Fetch

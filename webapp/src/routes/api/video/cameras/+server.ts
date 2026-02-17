@@ -50,8 +50,12 @@ export const GET: RequestHandler = async ({ url, fetch }) => {
           camera_id: typeof entry.camera_id === 'string' ? entry.camera_id : '',
           latest_start: typeof entry.latest_start === 'string' ? entry.latest_start : '',
           latest_end: typeof entry.latest_end === 'string' ? entry.latest_end : '',
+          recommended_center_min:
+            typeof entry.recommended_center_min === 'string' ? entry.recommended_center_min : '',
           recommended_center_max:
             typeof entry.recommended_center_max === 'string' ? entry.recommended_center_max : '',
+          contiguous_start: typeof entry.contiguous_start === 'string' ? entry.contiguous_start : '',
+          contiguous_end: typeof entry.contiguous_end === 'string' ? entry.contiguous_end : '',
         }))
         .filter((entry) => entry.camera_id.length > 0)
     : [];

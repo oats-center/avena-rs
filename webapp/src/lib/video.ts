@@ -15,7 +15,10 @@ export interface VideoCameraCoverage {
   camera_id: string;
   latest_start: string;
   latest_end: string;
+  recommended_center_min: string;
   recommended_center_max: string;
+  contiguous_start: string;
+  contiguous_end: string;
 }
 
 export interface VideoCameraListResult {
@@ -53,10 +56,23 @@ export async function fetchVideoCameras(asset: number): Promise<VideoCameraListR
           const camera_id = typeof entry.camera_id === 'string' ? entry.camera_id : '';
           const latest_start = typeof entry.latest_start === 'string' ? entry.latest_start : '';
           const latest_end = typeof entry.latest_end === 'string' ? entry.latest_end : '';
+          const recommended_center_min =
+            typeof entry.recommended_center_min === 'string' ? entry.recommended_center_min : '';
           const recommended_center_max =
             typeof entry.recommended_center_max === 'string' ? entry.recommended_center_max : '';
+          const contiguous_start =
+            typeof entry.contiguous_start === 'string' ? entry.contiguous_start : '';
+          const contiguous_end = typeof entry.contiguous_end === 'string' ? entry.contiguous_end : '';
           if (!camera_id) return null;
-          return { camera_id, latest_start, latest_end, recommended_center_max };
+          return {
+            camera_id,
+            latest_start,
+            latest_end,
+            recommended_center_min,
+            recommended_center_max,
+            contiguous_start,
+            contiguous_end,
+          };
         })
         .filter((entry: VideoCameraCoverage | null): entry is VideoCameraCoverage => entry !== null)
     : [];
