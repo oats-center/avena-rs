@@ -2,7 +2,7 @@
     import { goto } from "$app/navigation";
     import { connect } from "$lib/nats.svelte";
     
-    let serverName = $state<string>("");
+    let serverName = $state<string>("ws://nats1.oats:8080");
     let credentialsFile = $state<File | null>(null);
     let credentialsContent = $state<string>("");
     let loading = $state<boolean>(false);
@@ -132,15 +132,12 @@
                             <input
                                 id="server"
                                 type="text"
-                                placeholder="nats1.oats:8080 or wss://nats1.oats:8443"
+                                placeholder="ws://nats1.oats:8080"
                                 bind:value={serverName}
                                 onkeypress={handleKeyPress}
                                 class="input input-bordered w-full pl-10"
                                 required
                             />
-                        </div>
-                        <div class="label">
-                            <span class="label-text-alt">Examples: `ws://nats1.oats:8080` (insecure LAN), `wss://nats1.oats:8443` (HTTPS-only/TLS)</span>
                         </div>
                     </div>
 
