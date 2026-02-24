@@ -24,11 +24,22 @@
 		<!-- Service Worker Registration -->
 		<script>
 			if ('serviceWorker' in navigator) {
-				window.addEventListener('load', () => {
-					navigator.serviceWorker.register('/sw.js')
-						.catch(() => {
-							// Service worker registration failed - app will still work
-						});
+				const localhostHosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+				const isLocalhost = localhostHosts.has(window.location.hostname);
+				window.addEventListener('load', async () => {
+					if (isLocalhost) {
+						// Avoid stale cached app shells during local development.
+						const regs = await navigator.serviceWorker.getRegistrations();
+						await Promise.all(regs.map((reg) => reg.unregister()));
+						if ('caches' in window) {
+							const cacheNames = await caches.keys();
+							await Promise.all(cacheNames.map((name) => caches.delete(name)));
+						}
+						return;
+					}
+					navigator.serviceWorker.register('/sw.js').catch(() => {
+						// Service worker registration failed - app will still work
+					});
 				});
 			}
 		</script>

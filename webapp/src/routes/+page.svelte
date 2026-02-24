@@ -45,7 +45,9 @@
                 natsService.connection.close();
                 sessionStorage.setItem("serverName", serverName);
                 sessionStorage.setItem("credentialsContent", credentialsContent);
-                goto("/labjacks");
+                await goto("/labjacks").catch(() => {
+                    window.location.assign("/labjacks");
+                });
             } else {
                 alert = "Connection failed. Please check your server URL and credentials file.";
             }
@@ -130,7 +132,7 @@
                             <input
                                 id="server"
                                 type="text"
-                                placeholder="ws://nats1.oats:8080"
+                                placeholder="nats1.oats:8080 or wss://nats1.oats:8443"
                                 bind:value={serverName}
                                 onkeypress={handleKeyPress}
                                 class="input input-bordered w-full pl-10"
@@ -138,7 +140,7 @@
                             />
                         </div>
                         <div class="label">
-                            <span class="label-text-alt">Example: ws://nats1.oats:8080</span>
+                            <span class="label-text-alt">Examples: `ws://nats1.oats:8080` (insecure LAN), `wss://nats1.oats:8443` (HTTPS-only/TLS)</span>
                         </div>
                     </div>
 
