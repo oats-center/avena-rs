@@ -1,23 +1,7 @@
 #!/usr/bin/env python3
 """
-system_monitor_abs.py
-
-Monitors system + (optionally) a specific process every N seconds.
-Outputs BOTH:
-  1) Absolute (cumulative since boot) CPU time counters (system)
-  2) Per-interval deltas (CPU seconds used over the last interval)
-Also outputs:
-  - CPU percent (system + process)
-  - RAM (percent + absolute MB)
-  - Optional per-core absolute counters (can be heavy)
-
 Requires: psutil
   pip install psutil
-
-Examples:
-  python system_monitor_abs.py
-  python system_monitor_abs.py --interval 30 --csv cpu_log.csv
-  python system_monitor_abs.py --pid 12345 --csv cpu_log.csv
 """
 
 import time
@@ -30,9 +14,7 @@ import psutil
 
 
 def _cpu_times_dict(t) -> Dict[str, float]:
-    # psutil returns a namedtuple with platform-specific fields
     d = t._asdict()
-    # ensure keys exist across platforms
     for k in ["user", "system", "idle", "iowait", "nice", "irq", "softirq", "steal", "guest", "guest_nice"]:
         d.setdefault(k, 0.0)
     return {k: float(v) for k, v in d.items()}
@@ -46,14 +28,12 @@ def _delta_times(curr: Dict[str, float], prev: Dict[str, float]) -> Dict[str, fl
 
 
 def _sum_cpu_time(d: Dict[str, float]) -> float:
-    # total CPU time across all categories (one aggregate CPU in psutil terms)
     return float(sum(d.values()))
 
 
 def _safe_process(pid: int) -> Optional[psutil.Process]:
     try:
         p = psutil.Process(pid)
-        # prime once so later cpu_percent() behaves predictably
         p.cpu_percent(interval=None)
         return p
     except Exception:
@@ -68,7 +48,6 @@ def monitor(interval: int = 30, csv_path: Optional[str] = None, pid: Optional[in
         print(f"[WARN] Could not attach to PID={pid}. Will monitor system only.")
         pid = None
 
-    # Prime cpu_percent for system
     psutil.cpu_percent(interval=None)
 
     csv_file = None
@@ -78,22 +57,12 @@ def monitor(interval: int = 30, csv_path: Optional[str] = None, pid: Optional[in
         writer = csv.writer(csv_file)
         writer.writerow([
             "timestamp",
-
-            # system CPU (absolute since boot)
             "sys_user_abs_s", "sys_system_abs_s", "sys_idle_abs_s", "sys_iowait_abs_s",
             "sys_total_abs_s",
-
-            # system CPU (delta over interval)
             "sys_user_delta_s", "sys_system_delta_s", "sys_idle_delta_s", "sys_iowait_delta_s",
             "sys_total_delta_s",
-
-            # system CPU percent (instant)
             "sys_cpu_percent",
-
-            # memory
             "mem_percent", "mem_used_mb", "mem_avail_mb",
-
-            # optional process metrics
             "proc_cpu_percent",
             "proc_user_abs_s", "proc_system_abs_s",
             "proc_user_delta_s", "proc_system_delta_s",
@@ -104,8 +73,6 @@ def monitor(interval: int = 30, csv_path: Optional[str] = None, pid: Optional[in
 
     print(f"[INFO] Interval: {interval}s | per_core={per_core} | pid={pid if pid else 'None'}")
     print("[INFO] Press Ctrl+C to stop.\n")
-
-    # Baselines (absolute)
     prev_sys = _cpu_times_dict(psutil.cpu_times())
 
     prev_proc = None
@@ -116,35 +83,23 @@ def monitor(interval: int = 30, csv_path: Optional[str] = None, pid: Optional[in
         except Exception:
             prev_proc = None
 
-    # Optional per-core baselines
     prev_cores = None
     if per_core:
         prev_cores = [_cpu_times_dict(t) for t in psutil.cpu_times(percpu=True)]
 
     try:
         while True:
-            # sleep first so "delta" corresponds to interval window
             time.sleep(interval)
-
             ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-            # System CPU absolute
             curr_sys = _cpu_times_dict(psutil.cpu_times())
             delta_sys = _delta_times(curr_sys, prev_sys)
-
             sys_abs_total = _sum_cpu_time(curr_sys)
             sys_delta_total = _sum_cpu_time(delta_sys)
-
-            # System CPU percent over ~instant (psutil keeps internal delta)
             sys_cpu_pct = psutil.cpu_percent(interval=None)
-
-            # Memory absolute
             vm = psutil.virtual_memory()
             mem_percent = float(vm.percent)
             mem_used_mb = float(vm.used) / (1024 * 1024)
             mem_avail_mb = float(vm.available) / (1024 * 1024)
-
-            # Process metrics
             proc_cpu_pct = ""
             proc_user_abs = ""
             proc_sys_abs = ""
@@ -154,7 +109,7 @@ def monitor(interval: int = 30, csv_path: Optional[str] = None, pid: Optional[in
 
             if proc is not None:
                 try:
-                    proc_cpu_pct = proc.cpu_percent(interval=None)  # percent since last call
+                    proc_cpu_pct = proc.cpu_percent(interval=None)  
                     pt = proc.cpu_times()
                     curr_proc = {"user": float(pt.user), "system": float(pt.system)}
                     if prev_proc is not None:
@@ -169,8 +124,6 @@ def monitor(interval: int = 30, csv_path: Optional[str] = None, pid: Optional[in
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     print(f"[WARN] Lost PID={pid}. Process metrics disabled.")
                     proc = None
-
-            # Optional per-core reporting (absolute + delta)
             core_lines = []
             if per_core and prev_cores is not None:
                 curr_cores = [_cpu_times_dict(t) for t in psutil.cpu_times(percpu=True)]
@@ -182,9 +135,6 @@ def monitor(interval: int = 30, csv_path: Optional[str] = None, pid: Optional[in
                         f"idle {c['idle']:.1f}s (Δ{d['idle']:.2f})"
                     )
                 prev_cores = curr_cores
-
-            # Print summary
-            print("------------------------------------------------------------")
             print(f"[{ts}]")
             print(f"System CPU %: {sys_cpu_pct:.1f}%")
             print(f"System CPU abs (s since boot): user={curr_sys['user']:.2f} system={curr_sys['system']:.2f} "
