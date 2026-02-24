@@ -335,7 +335,7 @@ class CarCrossingTrackerStable:
     def _track_call(self, im0):
         kwargs = dict(persist=True, verbose=False)
 
-        # Only override if explicitly provided (Code-2 style defaults otherwise)
+        # Only override if explicitly provided
         if self.tracker_yaml is not None:
             kwargs["tracker"] = self.tracker_yaml
         if self.conf is not None:
@@ -446,7 +446,7 @@ class CarCrossingTrackerStable:
                     self.track_history.pop(tid, None)
                     self.crossed_ids.discard(tid)
 
-            # --- crossing detection using car FRONT (x2) ---
+            # --- crossing detection using car front (x2) ---
             for tid in seen_this_frame:
                 if tid in self.crossed_ids:
                     if tid in self.last_bbox_by_id:
