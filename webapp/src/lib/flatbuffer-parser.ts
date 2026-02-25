@@ -47,64 +47,57 @@ export class FlatBufferParser {
     }
 }
 
-// Helper function to parse timestamp and calculate individual sample timestamps
-export function calculateSampleTimestamps(
-    batchTimestamp: string, 
-    values: number[], 
+function getSampleIntervalMs(samplingRate: number): number {
+    if (typeof samplingRate !== 'number' || !Number.isFinite(samplingRate) || samplingRate <= 0) {
+        throw new Error('Invalid samplingRate');
+    }
+    return 1000 / samplingRate;
+}
+
+function hasNumericSamples(values: number[]): boolean {
+    return Array.isArray(values) && values.length > 0;
+}
+
+// Build plot timestamps anchored to browser receive time.
+// This keeps waveform spacing accurate while allowing transport delay.
+export function calculateReceiveSampleTimestamps(
+    values: number[],
     samplingRate: number,
-    previousLastTimestamp?: number
+    receivedAt: number = Date.now()
 ): number[] {
+    if (!hasNumericSamples(values)) return [];
+
     try {
-        // Validate inputs
-        if (!batchTimestamp || typeof batchTimestamp !== 'string') {
-            throw new Error('Invalid batchTimestamp');
-        }
-        
-        if (!Array.isArray(values) || values.length === 0) {
-            throw new Error('Invalid values array');
-        }
-        
-        if (typeof samplingRate !== 'number' || samplingRate <= 0) {
-            throw new Error('Invalid samplingRate');
-        }
-
-        // Time between individual samples (ms). Example: 7000 Hz ~= 0.143 ms/sample.
-        const sampleInterval = 1000 / samplingRate;
-
-        // Anchor the batch to producer timestamp when possible.
-        // If producer/browser clocks drift too much, fall back to local time.
-        const now = Date.now();
-        const parsedBatchTime = new Date(batchTimestamp).getTime();
-        const hasParsedBatchTime = Number.isFinite(parsedBatchTime);
-        const isReasonableSkew = hasParsedBatchTime
-            ? Math.abs(parsedBatchTime - now) <= 2000
-            : false;
-        const hasPrevious = typeof previousLastTimestamp === 'number' && Number.isFinite(previousLastTimestamp);
-        const anchorTime = isReasonableSkew ? parsedBatchTime : now;
-        const hasUsablePrevious = hasPrevious
-            ? Math.abs((previousLastTimestamp as number) - anchorTime) <= 2000
-            : false;
-
-        let firstSampleTime = isReasonableSkew
-            ? parsedBatchTime - ((values.length - 1) * sampleInterval)
-            : now - ((values.length - 1) * sampleInterval);
-
-        // Guarantee monotonic timestamps across received batches for each channel.
-        // If prior timestamps drift far from this batch's anchor, reset continuity.
-        if (hasUsablePrevious) {
-            const minNextStart = (previousLastTimestamp as number) + sampleInterval;
-            if (firstSampleTime < minNextStart) {
-                firstSampleTime = minNextStart;
-            }
-        }
-
+        const sampleInterval = getSampleIntervalMs(samplingRate);
+        const firstSampleTime = receivedAt - ((values.length - 1) * sampleInterval);
         return values.map((_, i) => firstSampleTime + (i * sampleInterval));
-    } catch (error) {
-        // Fallback: continue from prior point when available.
-        const sampleInterval = 1000 / samplingRate;
-        const start = (typeof previousLastTimestamp === 'number' && Number.isFinite(previousLastTimestamp))
-            ? previousLastTimestamp + sampleInterval
-            : Date.now() - ((values.length - 1) * sampleInterval);
-        return values.map((_, i) => start + (i * sampleInterval));
+    } catch {
+        const fallbackInterval = Number.isFinite(samplingRate) && samplingRate > 0
+            ? 1000 / samplingRate
+            : 1;
+        const start = receivedAt - ((values.length - 1) * fallbackInterval);
+        return values.map((_, i) => start + (i * fallbackInterval));
+    }
+}
+
+// Build source timestamps from producer batch timestamp for lag visibility.
+export function calculateSourceSampleTimestamps(
+    batchTimestamp: string,
+    values: number[],
+    samplingRate: number
+): Array<number | null> {
+    if (!hasNumericSamples(values)) return [];
+
+    try {
+        const sampleInterval = getSampleIntervalMs(samplingRate);
+        const parsedBatchTime = new Date(batchTimestamp).getTime();
+        if (!Number.isFinite(parsedBatchTime)) {
+            return values.map(() => null);
+        }
+
+        const firstSampleTime = parsedBatchTime - ((values.length - 1) * sampleInterval);
+        return values.map((_, i) => firstSampleTime + (i * sampleInterval));
+    } catch {
+        return values.map(() => null);
     }
 }

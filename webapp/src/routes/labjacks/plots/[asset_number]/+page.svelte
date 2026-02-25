@@ -5,7 +5,11 @@
     import { downloadExportViaWebSocket, type ExportRequestPayload } from "$lib/exporter";
     import { applyCalibration, normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
-    import { FlatBufferParser, calculateSampleTimestamps } from "$lib/flatbuffer-parser";
+    import {
+        FlatBufferParser,
+        calculateReceiveSampleTimestamps,
+        calculateSourceSampleTimestamps
+    } from "$lib/flatbuffer-parser";
 
     
     interface SensorSettings {
@@ -67,6 +71,8 @@
     interface DataPoint {
         timestamp: number;
         value: number;
+        sourceTimestamp?: number | null;
+        receivedAt?: number;
     }
 
     type ChannelPlotMode = 'free_run' | 'trigger_normal' | 'trigger_single';
@@ -98,7 +104,6 @@
     let frozenChannelData = $state<Map<number, DataPoint[]>>(new Map());
     let channelModes = $state<Map<number, ChannelPlotMode>>(new Map());
     let axisSettings = $state<Map<number, AxisSettings>>(new Map());
-    const channelLastTimestamp = new Map<number, number>();
     let isConnected = $state<boolean>(false);
     let flatBufferParser = new FlatBufferParser();
     let triggerSettings = $state<Map<number, TriggerSettings>>(new Map());
@@ -157,17 +162,9 @@
         console.log(`Max data points in rolling buffer: ${maxDataPoints}`);
     }
 
-    function downsampleForDisplay(data: DataPoint[], targetPoints: number = 2000): DataPoint[] {
-        if (data.length <= targetPoints) return data;
-        if (targetPoints < 3) return [data[0], data[data.length - 1]];
-
-        const step = (data.length - 1) / (targetPoints - 1);
-        const sampled: DataPoint[] = [];
-        for (let i = 0; i < targetPoints; i++) {
-            const index = Math.min(data.length - 1, Math.round(i * step));
-            sampled.push(data[index]);
-        }
-        return sampled;
+    function downsampleForDisplay(data: DataPoint[]): DataPoint[] {
+        // Preserve all points so the plotted shape matches what was received.
+        return data;
     }
 
     let channelDisplayData = $derived(
@@ -190,6 +187,18 @@
     async function loadLabJackConfig() {
         loading = true;
         error = "";
+        isConnected = false;
+
+        if (subscriptions.length > 0) {
+            subscriptions.forEach((sub) => {
+                try {
+                    sub.unsubscribe();
+                } catch (err) {
+                    console.error("Error unsubscribing old subscription:", err);
+                }
+            });
+            subscriptions = [];
+        }
         
         try {
             const serverName = sessionStorage.getItem("serverName");
@@ -254,8 +263,6 @@
         const newChannelTriggerTime = new Map<number, number>();
         const newChannelRearmTime = new Map<number, number>();
         const newChannelPrebufferReady = new Map<number, boolean>();
-        channelLastTimestamp.clear();
-        
         labjackConfig.sensor_settings.channels_enabled.forEach(channel => {
             newChannelData.set(channel, []);
             newFrozenChannelData.set(channel, []);
@@ -268,7 +275,6 @@
                 invertX: false,
                 invertY: false
             });
-            channelLastTimestamp.set(channel, Number.NaN);
             newTriggerSettings.set(channel, {
                 type: 'rising',
                 threshold: 0,
@@ -309,8 +315,10 @@
                             if (msg.data instanceof ArrayBuffer) {
                                 arrayBuffer = msg.data;
                             } else {
-                                const uint8Array = new Uint8Array(msg.data);
-                                arrayBuffer = uint8Array.buffer;
+                                const uint8Array = msg.data as Uint8Array;
+                                const start = uint8Array.byteOffset;
+                                const end = uint8Array.byteOffset + uint8Array.byteLength;
+                                arrayBuffer = uint8Array.buffer.slice(start, end);
                             }
                             
                             const scanData = flatBufferParser.parse(arrayBuffer);
@@ -319,12 +327,16 @@
                                 continue;
                             }
                             
-                            const previousLastTimestamp = channelLastTimestamp.get(channel);
-                            const sampleTimestamps = calculateSampleTimestamps(
-                                scanData.timestamp, 
-                                scanData.values, 
+                            const receivedAt = Date.now();
+                            const receiveTimestamps = calculateReceiveSampleTimestamps(
+                                scanData.values,
                                 labjackConfig.sensor_settings.sampling_rate,
-                                previousLastTimestamp
+                                receivedAt
+                            );
+                            const sourceTimestamps = calculateSourceSampleTimestamps(
+                                scanData.timestamp,
+                                scanData.values,
+                                labjackConfig.sensor_settings.sampling_rate
                             );
                             const calibrationSpec = normalizeCalibration(
                                 labjackConfig?.sensor_settings.calibrations?.[String(channel)]
@@ -334,17 +346,22 @@
                             const newPoints: DataPoint[] = [];
                             for (let i = 0; i < scanData.values.length; i++) {
                                 const rawValue = scanData.values[i];
-                                const timestamp = sampleTimestamps[i];
+                                const timestamp = receiveTimestamps[i];
+                                const sourceTimestamp = sourceTimestamps[i] ?? null;
                                 
                                 if (typeof rawValue === 'number' && typeof timestamp === 'number' && !isNaN(rawValue) && isFinite(rawValue) && Math.abs(rawValue) < 100) {
                                     const calibrated = applyCalibration(calibrationSpec, rawValue);
-                                    newPoints.push({ timestamp, value: calibrated });
+                                    newPoints.push({
+                                        timestamp,
+                                        value: calibrated,
+                                        sourceTimestamp,
+                                        receivedAt
+                                    });
                                 }
                             }
 
                             // **CHANGE: Process the entire chunk at once**
                             if (newPoints.length > 0) {
-                                channelLastTimestamp.set(channel, newPoints[newPoints.length - 1].timestamp);
                                 addDataChunk(channel, newPoints);
                             }
                             
@@ -921,7 +938,7 @@
                         </div>
                         <div class="flex justify-between">
                             <span>Data Parser:</span>
-                            <span class="badge badge-info badge-sm">FlatBuffer with RFC3339 timestamps</span>
+                            <span class="badge badge-info badge-sm">Receive-time plot + source-time lag</span>
                         </div>
                     </div>
                 </div>
