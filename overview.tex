@@ -38,8 +38,8 @@
 \node[lbl] at (2.35,4.70) {sensor reads};
 \draw[data] (streamer) -- (nats);
 \node[lbl] at (7.05,3.34) {publish \texttt{Scan}};
-\draw[cfg] (nats.north west) to[bend left=6] (streamer.north east);
-\node[lbl] at (7.9,4.76) {KV config updates};
+\draw[cfg] ([yshift=1pt]nats.west) to[bend left=8] ([yshift=2pt]streamer.east);
+\node[lbl, fill=white] at (7.15,4.28) {KV config updates};
 
 \draw[data] (nats) -- node[lbl, right] {subscribe \texttt{...data.*}} (archiver);
 \draw[cfg, <->] (webapp.north east) to[out=25,in=225] node[lbl, below, pos=0.55] {WS + KV config} (nats.south west);
