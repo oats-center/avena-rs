@@ -17,7 +17,7 @@
     inner sep=5pt,
     line width=0.8pt
   },
-  lbl/.style={font=\footnotesize, align=center, fill=white, inner sep=1.5pt, text=black!90},
+  lbl/.style={font=\footnotesize, align=center, inner sep=1.3pt, text=black!90},
   data/.style={->, line width=1.0pt, draw=blue!70!black},
   cfg/.style={->, line width=1.0pt, draw=teal!70!black},
   storage/.style={->, line width=1.0pt, draw=orange!80!black},
@@ -26,19 +26,20 @@
 ]
 \node[box, fill=cyan!12] (labjack)  at (0.0,4.0)  {LabJack T7\\(AIN sensor channels)};
 \node[box, fill=cyan!12] (streamer) at (4.8,4.0)  {Rust \texttt{streamer}\\LJM read loop};
-\node[box, fill=green!10] (nats)    at (9.6,4.0)  {NATS JetStream\\subjects + KV config};
+\node[box, fill=green!10] (nats)    at (10.0,4.0)  {NATS JetStream\\subjects + KV config};
 
 \node[box, fill=violet!10] (webapp)   at (0.0,1.6)  {SvelteKit webapp\\login, config, plots, export};
-\node[box, fill=orange!12] (archiver) at (9.6,1.6)  {Rust \texttt{archiver}\\per-channel subscribers};
+\node[box, fill=orange!12] (archiver) at (10.0,1.6)  {Rust \texttt{archiver}\\per-channel subscribers};
 
 \node[box, fill=violet!10] (exporter) at (0.0,-0.8) {Rust \texttt{exporter}\\WS \texttt{/export} (CSV chunks)};
-\node[box, fill=yellow!18] (parquet)  at (9.6,-0.8) {Parquet storage\\asset/day/channel partitions};
+\node[box, fill=yellow!18] (parquet)  at (10.0,-0.8) {Parquet storage\\asset/day/channel partitions};
 
-\draw[data] (labjack) -- node[lbl, above, yshift=1pt] {sensor reads} (streamer);
+\draw[data] (labjack) -- (streamer);
+\node[lbl] at (2.35,4.70) {sensor reads};
 \draw[data] (streamer) -- (nats);
-\node[lbl] at (7.5,3.82) {publish \texttt{Scan}};
-\draw[cfg] (nats.north west) to[bend left=28] (streamer.north east);
-\node[lbl] at (7.9,4.95) {KV config updates};
+\node[lbl] at (7.05,3.34) {publish \texttt{Scan}};
+\draw[cfg] (nats.north west) to[bend left=6] (streamer.north east);
+\node[lbl] at (7.9,4.76) {KV config updates};
 
 \draw[data] (nats) -- node[lbl, right] {subscribe \texttt{...data.*}} (archiver);
 \draw[cfg, <->] (webapp.north east) to[out=25,in=225] node[lbl, below, pos=0.55] {WS + KV config} (nats.south west);
