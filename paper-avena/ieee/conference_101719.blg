@@ -1,0 +1,56 @@
+This is BibTeX, Version 0.99d (TeX Live 2025)
+Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
+The top-level auxiliary file: conference_101719.aux
+The style file: IEEEtran.bst
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated wiz_functions (elt_size=4) to 6000 items from 3000.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Database file #1: avena_refs.bib
+-- IEEEtran.bst version 1.14 (2015/08/26) by Michael Shell.
+-- http://www.michaelshell.org/tex/ieeetran/bibtex/
+-- See the "IEEEtran_bst_HOWTO.pdf" manual for usage information.
+
+Done.
+You've used 23 entries,
+            4087 wiz_defined-function locations,
+            973 strings with 12430 characters,
+and the built_in function-call counts, 15974 in all, are:
+= -- 1304
+> -- 422
+< -- 104
++ -- 222
+- -- 84
+* -- 762
+:= -- 2464
+add.period$ -- 46
+call.type$ -- 23
+change.case$ -- 23
+chr.to.int$ -- 207
+cite$ -- 23
+duplicate$ -- 1201
+empty$ -- 1241
+format.name$ -- 100
+if$ -- 3692
+int.to.chr$ -- 0
+int.to.str$ -- 23
+missing$ -- 230
+newline$ -- 100
+num.names$ -- 22
+pop$ -- 519
+preamble$ -- 1
+purify$ -- 0
+quote$ -- 2
+skip$ -- 1240
+stack$ -- 0
+substring$ -- 549
+swap$ -- 971
+text.length$ -- 35
+text.prefix$ -- 0
+top$ -- 5
+type$ -- 23
+warning$ -- 0
+while$ -- 61
+width$ -- 25
+write$ -- 250
