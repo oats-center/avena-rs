@@ -71,6 +71,19 @@ Use the default mode:
 cargo run --example info
 ```
 
+For Ethernet devices with changing IPs, prefer a stable identifier instead of
+setting `LABJACK_IP`:
+
+```bash
+export LABJACK_SERIAL=4700XXXX
+export LABJACK_OPEN_ORDER=ethernet
+cargo run --example info
+```
+
+If there is only one Ethernet LabJack on the network, you can leave
+`LABJACK_IDENTIFIER`, `LABJACK_SERIAL`, `LABJACK_NAME`, and `LABJACK_IP` unset
+and the code will try Ethernet auto-discovery with `ANY`.
+
 Use explicit compile-time linking only if you need it:
 
 ```bash
@@ -84,7 +97,12 @@ Sourced by `env-setup.sh`:
 - `NATS_CREDS_FILE` (required) - NATS credentials file path
 - `CFG_BUCKET` (default: `avenabox`)
 - `CFG_KEY` (required) - KV key for the LabJack config
-- `LABJACK_IP` (streamer only) - LabJack IP address
+- `LABJACK_IDENTIFIER` (recommended) - Stable LabJack identifier for Ethernet, such as serial number or device name
+- `LABJACK_SERIAL` - LabJack serial number. Used as a stable fallback identifier for Ethernet and USB
+- `LABJACK_NAME` - LabJack device name for Ethernet discovery
+- `LABJACK_IP` - Optional direct IP override if you want to bypass discovery
+- `LABJACK_USB_ID` - Optional USB identifier, defaults to `ANY`
+- `LABJACK_OPEN_ORDER` - Connection order, defaults to `ethernet,usb`
 - `ROLE` - `edge` or `server` (used by `deploy-binary.sh`)
 
 Used by exporter:
