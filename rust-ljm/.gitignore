@@ -20,3 +20,7 @@ apt.creds
 
 # env
 .env
+
+# local runtime state
+.runtime/
+logs/
