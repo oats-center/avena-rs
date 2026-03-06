@@ -10,6 +10,13 @@ It includes a LabJack streamer, a parquet archiver, and a CSV exporter over WebS
 - NATS server
 - NATS credentials file (for JetStream KV + publish/subscribe)
 
+On Debian/Ubuntu systems, install a basic C toolchain before building:
+
+```bash
+sudo apt update
+sudo apt install -y build-essential pkg-config
+```
+
 ## Quick Start (single host)
 
 1. Install the LabJack LJM library.
