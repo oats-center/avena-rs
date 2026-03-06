@@ -1,49 +1,17 @@
-use std::ffi::CString;
-use std::fmt::{Display, Formatter};
+use std::collections::BTreeSet;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
+use std::process::Command;
+use std::str::FromStr;
+use std::sync::mpsc;
+use std::time::Duration;
 
-#[cfg(feature = "dynlink")]
-use libloading::{Library, Symbol};
 use ljmrs::handle::{ConnectionType, DeviceHandleInfo, DeviceType};
 use ljmrs::{LJMError, LJMLibrary};
 
-const LJM_LIST_ALL_SIZE: usize = 128;
-
-#[cfg(all(feature = "staticlib", not(feature = "dynlink")))]
-unsafe extern "C" {
-    fn LJM_ListAllS(
-        device_type: *const std::os::raw::c_char,
-        connection_type: *const std::os::raw::c_char,
-        num_found: *mut i32,
-        device_types: *mut i32,
-        connection_types: *mut i32,
-        serial_numbers: *mut i32,
-        ip_addresses: *mut i32,
-    ) -> i32;
-}
-
 #[derive(Clone, Debug)]
-pub struct DiscoveredLabJack {
-    pub device_type: DeviceType,
-    pub connection_type: ConnectionType,
-    pub serial_number: i32,
-    pub ip_address: Option<String>,
-}
-
-impl Display for DiscoveredLabJack {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match &self.ip_address {
-            Some(ip) => write!(
-                f,
-                "{:?} via {:?}, serial {}, ip {}",
-                self.device_type, self.connection_type, self.serial_number, ip
-            ),
-            None => write!(
-                f,
-                "{:?} via {:?}, serial {}",
-                self.device_type, self.connection_type, self.serial_number
-            ),
-        }
-    }
+struct LocalIpv4Interface {
+    address: Ipv4Addr,
+    prefix_len: u8,
 }
 
 fn env_var(name: &str) -> Option<String> {
@@ -53,18 +21,12 @@ fn env_var(name: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-fn ljm_result(error_code: i32) -> Result<(), LJMError> {
-    if error_code == 0 {
-        return Ok(());
-    }
-
-    let message = LJMLibrary::error_to_string(error_code)
-        .unwrap_or_else(|_| format!("LJM error code {error_code}"));
-    Err(LJMError::ErrorCode(error_code.into(), message))
-}
-
 fn env_identifier(name: &str) -> Option<String> {
     env_var(name).filter(|value| !value.eq_ignore_ascii_case("ANY"))
+}
+
+fn parse_ipv4(value: &str) -> Option<Ipv4Addr> {
+    Ipv4Addr::from_str(value).ok()
 }
 
 fn push_unique(values: &mut Vec<String>, value: Option<String>) {
@@ -75,23 +37,27 @@ fn push_unique(values: &mut Vec<String>, value: Option<String>) {
     }
 }
 
-fn ethernet_identifiers_from_env() -> Vec<String> {
+fn direct_ethernet_identifiers_from_env() -> Vec<String> {
     let mut identifiers = Vec::new();
-    push_unique(&mut identifiers, env_identifier("LABJACK_IDENTIFIER"));
-    push_unique(&mut identifiers, env_identifier("LABJACK_SERIAL"));
-    push_unique(&mut identifiers, env_identifier("LABJACK_NAME"));
+
+    push_unique(
+        &mut identifiers,
+        env_identifier("LABJACK_IDENTIFIER").filter(|value| parse_ipv4(value).is_some()),
+    );
     push_unique(&mut identifiers, env_identifier("LABJACK_IP"));
 
-    if identifiers.is_empty() {
-        push_discovered_serials(
-            &mut identifiers,
-            discover_labjacks(ConnectionType::ETHERNET).ok(),
-        );
-    }
+    identifiers
+}
 
-    if identifiers.is_empty() {
-        identifiers.push("ANY".to_string());
-    }
+fn indirect_ethernet_identifiers_from_env() -> Vec<String> {
+    let mut identifiers = Vec::new();
+
+    push_unique(
+        &mut identifiers,
+        env_identifier("LABJACK_IDENTIFIER").filter(|value| parse_ipv4(value).is_none()),
+    );
+    push_unique(&mut identifiers, env_identifier("LABJACK_SERIAL"));
+    push_unique(&mut identifiers, env_identifier("LABJACK_NAME"));
 
     identifiers
 }
@@ -102,53 +68,18 @@ fn usb_identifiers_from_env() -> Vec<String> {
     push_unique(&mut identifiers, env_identifier("LABJACK_SERIAL"));
 
     if identifiers.is_empty() {
-        push_discovered_serials(
-            &mut identifiers,
-            discover_labjacks(ConnectionType::USB).ok(),
-        );
-    }
-
-    if identifiers.is_empty() {
         identifiers.push("ANY".to_string());
     }
 
     identifiers
 }
 
-fn any_identifiers_from_env() -> Vec<String> {
-    let mut identifiers = Vec::new();
-    push_unique(&mut identifiers, env_identifier("LABJACK_IDENTIFIER"));
-    push_unique(&mut identifiers, env_identifier("LABJACK_SERIAL"));
-    push_unique(&mut identifiers, env_identifier("LABJACK_NAME"));
-    push_unique(&mut identifiers, env_identifier("LABJACK_IP"));
-    push_unique(&mut identifiers, env_identifier("LABJACK_USB_ID"));
-
-    if identifiers.is_empty() {
-        push_discovered_serials(
-            &mut identifiers,
-            discover_labjacks(ConnectionType::ANY).ok(),
-        );
-    }
-
-    if identifiers.is_empty() {
-        identifiers.push("ANY".to_string());
-    }
-
-    identifiers
-}
-
-fn push_discovered_serials(
-    identifiers: &mut Vec<String>,
-    discovered: Option<Vec<DiscoveredLabJack>>,
-) {
-    if let Some(discovered) = discovered {
-        for device in discovered {
-            let serial = device.serial_number.to_string();
-            if !identifiers.iter().any(|existing| existing == &serial) {
-                identifiers.push(serial);
-            }
-        }
-    }
+fn requested_ethernet_serial() -> Option<i32> {
+    env_identifier("LABJACK_SERIAL")
+        .or_else(|| {
+            env_identifier("LABJACK_IDENTIFIER").filter(|value| parse_ipv4(value).is_none())
+        })
+        .and_then(|value| value.parse().ok())
 }
 
 fn format_attempt(mode: &str, identifier: &str) -> String {
@@ -162,11 +93,7 @@ fn try_open_with_identifiers(
     failures: &mut Vec<String>,
 ) -> Option<i32> {
     for identifier in identifiers {
-        let label = if identifier == "ANY" {
-            format!("{mode} auto-discovery")
-        } else {
-            format!("{mode} identifier '{identifier}'")
-        };
+        let label = format!("{mode} identifier '{identifier}'");
         println!("[labjack] trying {label}");
 
         match LJMLibrary::open_jack(DeviceType::T7, connection_type.clone(), identifier.as_str()) {
@@ -176,6 +103,300 @@ fn try_open_with_identifiers(
     }
 
     None
+}
+
+fn try_open_usb(failures: &mut Vec<String>) -> Option<i32> {
+    try_open_with_identifiers(
+        "usb",
+        ConnectionType::USB,
+        usb_identifiers_from_env(),
+        failures,
+    )
+}
+
+fn should_scan_interface(name: &str) -> bool {
+    !matches!(
+        name,
+        "lo" | "tailscale0" | "docker0" | "podman0" | "virbr0" | "zt0" | "tun0" | "tap0"
+    ) && !name.starts_with("br-")
+        && !name.starts_with("docker")
+        && !name.starts_with("tailscale")
+        && !name.starts_with("veth")
+        && !name.starts_with("virbr")
+        && !name.starts_with("zt")
+        && !name.starts_with("tun")
+        && !name.starts_with("tap")
+}
+
+#[cfg(target_os = "linux")]
+fn local_ipv4_interfaces() -> Result<Vec<LocalIpv4Interface>, LJMError> {
+    let output = Command::new("ip")
+        .args(["-o", "-4", "addr", "show", "up", "scope", "global"])
+        .output()
+        .map_err(|err| {
+            LJMError::LibraryError(format!("Failed to inspect local interfaces: {err}"))
+        })?;
+
+    if !output.status.success() {
+        return Err(LJMError::LibraryError(format!(
+            "Failed to inspect local interfaces: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut interfaces = Vec::new();
+
+    for line in stdout.lines() {
+        let mut parts = line.split_whitespace();
+        let _index = parts.next();
+        let Some(name) = parts.next() else {
+            continue;
+        };
+
+        if !should_scan_interface(name.trim_end_matches(':')) {
+            continue;
+        }
+
+        while let Some(token) = parts.next() {
+            if token != "inet" {
+                continue;
+            }
+
+            let Some(addr) = parts.next() else {
+                break;
+            };
+            let Some((ip, prefix_len)) = addr.split_once('/') else {
+                break;
+            };
+            let Some(address) = parse_ipv4(ip) else {
+                break;
+            };
+            let Ok(prefix_len) = prefix_len.parse::<u8>() else {
+                break;
+            };
+
+            if prefix_len >= 31 {
+                break;
+            }
+
+            interfaces.push(LocalIpv4Interface {
+                address,
+                prefix_len,
+            });
+            break;
+        }
+    }
+
+    Ok(interfaces)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn local_ipv4_interfaces() -> Result<Vec<LocalIpv4Interface>, LJMError> {
+    Ok(Vec::new())
+}
+
+fn ipv4_to_u32(ip: Ipv4Addr) -> u32 {
+    u32::from_be_bytes(ip.octets())
+}
+
+fn u32_to_ipv4(value: u32) -> Ipv4Addr {
+    Ipv4Addr::from(value.to_be_bytes())
+}
+
+fn scan_prefix_len(prefix_len: u8) -> Option<u8> {
+    if prefix_len >= 31 {
+        None
+    } else {
+        Some(prefix_len.max(24))
+    }
+}
+
+fn candidate_ipv4s(interface: &LocalIpv4Interface) -> Vec<Ipv4Addr> {
+    let Some(scan_prefix_len) = scan_prefix_len(interface.prefix_len) else {
+        return Vec::new();
+    };
+
+    let mask = if scan_prefix_len == 0 {
+        0
+    } else {
+        u32::MAX << (32 - scan_prefix_len)
+    };
+    let host_ip = ipv4_to_u32(interface.address);
+    let network = host_ip & mask;
+    let broadcast = network | !mask;
+
+    if broadcast <= network + 1 {
+        return Vec::new();
+    }
+
+    let mut candidates = Vec::new();
+    for raw in (network + 1)..broadcast {
+        if raw == host_ip {
+            continue;
+        }
+        candidates.push(u32_to_ipv4(raw));
+    }
+
+    candidates
+}
+
+fn tcp_port_open(ip: Ipv4Addr, port: u16, timeout: Duration) -> bool {
+    TcpStream::connect_timeout(&SocketAddr::new(IpAddr::V4(ip), port), timeout).is_ok()
+}
+
+fn candidate_ips_from_local_tcp_scan() -> Result<Vec<Ipv4Addr>, LJMError> {
+    let interfaces = local_ipv4_interfaces()?;
+    if interfaces.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut unique_candidates = BTreeSet::new();
+    for interface in &interfaces {
+        for candidate in candidate_ipv4s(interface) {
+            unique_candidates.insert(candidate);
+        }
+    }
+
+    let candidates: Vec<Ipv4Addr> = unique_candidates.into_iter().collect();
+    if candidates.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    println!("[labjack] scanning local ethernet subnets for tcp/502 candidates");
+
+    let worker_count = candidates.len().min(32);
+    let chunk_size = candidates.len().div_ceil(worker_count);
+    let (sender, receiver) = mpsc::channel();
+
+    for chunk in candidates.chunks(chunk_size) {
+        let sender = sender.clone();
+        let chunk = chunk.to_vec();
+        std::thread::spawn(move || {
+            for ip in chunk {
+                if tcp_port_open(ip, 502, Duration::from_millis(75)) {
+                    let _ = sender.send(ip);
+                }
+            }
+        });
+    }
+    drop(sender);
+
+    let mut reachable = receiver.into_iter().collect::<Vec<_>>();
+    reachable.sort();
+    reachable.dedup();
+    Ok(reachable)
+}
+
+fn try_open_ethernet_from_local_scan(failures: &mut Vec<String>) -> Option<i32> {
+    let serial_filter = requested_ethernet_serial();
+    let candidates = match candidate_ips_from_local_tcp_scan() {
+        Ok(candidates) => candidates,
+        Err(err) => {
+            failures.push(format!("ethernet(local-scan): {:?}", err));
+            return None;
+        }
+    };
+
+    if candidates.is_empty() {
+        failures
+            .push("ethernet(local-scan): no tcp/502 hosts found on local interfaces".to_string());
+        return None;
+    }
+
+    let mut matches = Vec::new();
+
+    for ip in candidates {
+        let identifier = ip.to_string();
+        println!("[labjack] probing ethernet candidate '{identifier}'");
+
+        let handle = match LJMLibrary::open_jack(
+            DeviceType::T7,
+            ConnectionType::ETHERNET,
+            identifier.as_str(),
+        ) {
+            Ok(handle) => handle,
+            Err(err) => {
+                failures.push(format!("ethernet(local-scan '{}'): {:?}", identifier, err));
+                continue;
+            }
+        };
+
+        let info = match handle_info(handle) {
+            Ok(info) => info,
+            Err(err) => {
+                let _ = LJMLibrary::close_jack(handle);
+                failures.push(format!(
+                    "ethernet(local-scan '{}'): handle info failed: {:?}",
+                    identifier, err
+                ));
+                continue;
+            }
+        };
+
+        if let Some(serial_filter) = serial_filter {
+            if info.serial_number != serial_filter {
+                let _ = LJMLibrary::close_jack(handle);
+                continue;
+            }
+        }
+
+        matches.push((identifier, handle, info));
+    }
+
+    if matches.is_empty() {
+        failures.push(
+            "ethernet(local-scan): found tcp/502 hosts, but none opened as a matching T7"
+                .to_string(),
+        );
+        return None;
+    }
+
+    if matches.len() > 1 {
+        let summary = matches
+            .iter()
+            .map(|(ip, _, info)| format!("{ip} (serial {})", info.serial_number))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        for (_, handle, _) in matches {
+            let _ = LJMLibrary::close_jack(handle);
+        }
+
+        failures.push(format!(
+            "ethernet(local-scan): multiple T7 devices matched: {summary}. Set LABJACK_IP or LABJACK_SERIAL."
+        ));
+        return None;
+    }
+
+    let (identifier, handle, info) = matches.pop().unwrap();
+    println!(
+        "[labjack] resolved ethernet LabJack to {} (serial {})",
+        identifier, info.serial_number
+    );
+    Some(handle)
+}
+
+fn try_open_ethernet(failures: &mut Vec<String>) -> Option<i32> {
+    if let Some(handle) = try_open_with_identifiers(
+        "ethernet",
+        ConnectionType::ETHERNET,
+        direct_ethernet_identifiers_from_env(),
+        failures,
+    ) {
+        return Some(handle);
+    }
+
+    if let Some(handle) = try_open_ethernet_from_local_scan(failures) {
+        return Some(handle);
+    }
+
+    try_open_with_identifiers(
+        "ethernet",
+        ConnectionType::ETHERNET,
+        indirect_ethernet_identifiers_from_env(),
+        failures,
+    )
 }
 
 pub fn connection_order_from_env() -> Vec<String> {
@@ -195,181 +416,6 @@ pub fn connection_order_from_env() -> Vec<String> {
     order
 }
 
-fn discovery_target(connection_type: &ConnectionType) -> &'static str {
-    match connection_type {
-        ConnectionType::USB => "USB",
-        ConnectionType::ETHERNET => "ETHERNET",
-        ConnectionType::WIFI => "WIFI",
-        ConnectionType::ANY | ConnectionType::UNKNOWN(_) => "ANY",
-    }
-}
-
-#[cfg(feature = "dynlink")]
-fn call_list_all(
-    device_type: &CString,
-    connection_type: &CString,
-    num_found: &mut i32,
-    device_types: &mut [i32; LJM_LIST_ALL_SIZE],
-    connection_types: &mut [i32; LJM_LIST_ALL_SIZE],
-    serial_numbers: &mut [i32; LJM_LIST_ALL_SIZE],
-    ip_addresses: &mut [i32; LJM_LIST_ALL_SIZE],
-) -> Result<(), LJMError> {
-    type ListAllS = unsafe extern "C" fn(
-        *const std::os::raw::c_char,
-        *const std::os::raw::c_char,
-        *mut i32,
-        *mut i32,
-        *mut i32,
-        *mut i32,
-        *mut i32,
-    ) -> i32;
-
-    let library_path = std::env::var("LJM_PATH").unwrap_or_else(|_| LJMLibrary::get_library_path());
-    let library = unsafe { Library::new(&library_path) }.map_err(|e| {
-        LJMError::LibraryError(format!("Failed to load LJM library '{library_path}': {e}"))
-    })?;
-    let list_all: Symbol<ListAllS> = unsafe { library.get(b"LJM_ListAllS") }
-        .map_err(|e| LJMError::LibraryError(format!("Failed to load LJM_ListAllS: {e}")))?;
-
-    let error_code = unsafe {
-        list_all(
-            device_type.as_ptr(),
-            connection_type.as_ptr(),
-            num_found,
-            device_types.as_mut_ptr(),
-            connection_types.as_mut_ptr(),
-            serial_numbers.as_mut_ptr(),
-            ip_addresses.as_mut_ptr(),
-        )
-    };
-
-    ljm_result(error_code)
-}
-
-#[cfg(all(feature = "staticlib", not(feature = "dynlink")))]
-fn call_list_all(
-    device_type: &CString,
-    connection_type: &CString,
-    num_found: &mut i32,
-    device_types: &mut [i32; LJM_LIST_ALL_SIZE],
-    connection_types: &mut [i32; LJM_LIST_ALL_SIZE],
-    serial_numbers: &mut [i32; LJM_LIST_ALL_SIZE],
-    ip_addresses: &mut [i32; LJM_LIST_ALL_SIZE],
-) -> Result<(), LJMError> {
-    let error_code = unsafe {
-        LJM_ListAllS(
-            device_type.as_ptr(),
-            connection_type.as_ptr(),
-            num_found,
-            device_types.as_mut_ptr(),
-            connection_types.as_mut_ptr(),
-            serial_numbers.as_mut_ptr(),
-            ip_addresses.as_mut_ptr(),
-        )
-    };
-
-    ljm_result(error_code)
-}
-
-pub fn discover_labjacks(
-    connection_type: ConnectionType,
-) -> Result<Vec<DiscoveredLabJack>, LJMError> {
-    let device_type = CString::new("T7")
-        .map_err(|_| LJMError::LibraryError("Invalid device type".to_string()))?;
-    let connection_type_name = CString::new(discovery_target(&connection_type))
-        .map_err(|_| LJMError::LibraryError("Invalid connection type".to_string()))?;
-
-    let mut num_found = 0;
-    let mut device_types = [0i32; LJM_LIST_ALL_SIZE];
-    let mut connection_types = [0i32; LJM_LIST_ALL_SIZE];
-    let mut serial_numbers = [0i32; LJM_LIST_ALL_SIZE];
-    let mut ip_addresses = [0i32; LJM_LIST_ALL_SIZE];
-
-    call_list_all(
-        &device_type,
-        &connection_type_name,
-        &mut num_found,
-        &mut device_types,
-        &mut connection_types,
-        &mut serial_numbers,
-        &mut ip_addresses,
-    )?;
-
-    let count = num_found.clamp(0, LJM_LIST_ALL_SIZE as i32) as usize;
-    let mut devices = Vec::with_capacity(count);
-
-    for index in 0..count {
-        let ip_address = if ip_addresses[index] == 0 {
-            None
-        } else {
-            Some(unsafe { LJMLibrary::number_to_ip(ip_addresses[index])? })
-        };
-
-        devices.push(DiscoveredLabJack {
-            device_type: DeviceType::from(device_types[index]),
-            connection_type: ConnectionType::from(connection_types[index]),
-            serial_number: serial_numbers[index],
-            ip_address,
-        });
-    }
-
-    Ok(devices)
-}
-
-#[allow(dead_code)]
-fn discovery_modes_from_env() -> Vec<ConnectionType> {
-    let mut modes = Vec::new();
-
-    for mode in connection_order_from_env() {
-        let connection_type = match mode.as_str() {
-            "ethernet" | "tcp" => ConnectionType::ETHERNET,
-            "usb" => ConnectionType::USB,
-            "any" => ConnectionType::ANY,
-            _ => continue,
-        };
-
-        if !modes
-            .iter()
-            .any(|existing| discovery_target(existing) == discovery_target(&connection_type))
-        {
-            modes.push(connection_type);
-        }
-    }
-
-    modes
-}
-
-#[allow(dead_code)]
-pub fn log_discovery_snapshot() {
-    for connection_type in discovery_modes_from_env() {
-        match discover_labjacks(connection_type.clone()) {
-            Ok(devices) if devices.is_empty() => {
-                println!(
-                    "[labjack] discovery found no T7 devices over {}",
-                    discovery_target(&connection_type)
-                );
-            }
-            Ok(devices) => {
-                println!(
-                    "[labjack] discovery found {} T7 device(s) over {}",
-                    devices.len(),
-                    discovery_target(&connection_type)
-                );
-                for device in devices {
-                    println!("[labjack]   {device}");
-                }
-            }
-            Err(err) => {
-                eprintln!(
-                    "[labjack] discovery failed over {}: {:?}",
-                    discovery_target(&connection_type),
-                    err
-                );
-            }
-        }
-    }
-}
-
 pub fn open_labjack_from_env() -> Result<i32, LJMError> {
     let raw_order =
         std::env::var("LABJACK_OPEN_ORDER").unwrap_or_else(|_| "ethernet,usb".to_string());
@@ -377,24 +423,9 @@ pub fn open_labjack_from_env() -> Result<i32, LJMError> {
 
     for mode in connection_order_from_env() {
         let handle = match mode.as_str() {
-            "ethernet" | "tcp" => try_open_with_identifiers(
-                "ethernet",
-                ConnectionType::ETHERNET,
-                ethernet_identifiers_from_env(),
-                &mut failures,
-            ),
-            "usb" => try_open_with_identifiers(
-                "usb",
-                ConnectionType::USB,
-                usb_identifiers_from_env(),
-                &mut failures,
-            ),
-            "any" => try_open_with_identifiers(
-                "any",
-                ConnectionType::ANY,
-                any_identifiers_from_env(),
-                &mut failures,
-            ),
+            "ethernet" | "tcp" => try_open_ethernet(&mut failures),
+            "usb" => try_open_usb(&mut failures),
+            "any" => try_open_ethernet(&mut failures).or_else(|| try_open_usb(&mut failures)),
             other => {
                 failures.push(format!("{other}: unsupported mode"));
                 None

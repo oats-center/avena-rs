@@ -78,8 +78,17 @@ Use the default mode:
 cargo run --example info
 ```
 
-For Ethernet devices with changing IPs, prefer a stable identifier instead of
-setting `LABJACK_IP`:
+On Linux, if `LABJACK_IP` is unset, the code scans local IPv4 subnets for hosts
+with TCP port `502` open and then verifies them by opening each candidate as a
+T7. If exactly one LabJack matches, that IP is used automatically:
+
+```bash
+export LABJACK_OPEN_ORDER=ethernet
+cargo run --example info
+```
+
+If more than one LabJack is reachable on the subnet, set `LABJACK_SERIAL` to
+select the correct one during that scan:
 
 ```bash
 export LABJACK_SERIAL=4700XXXX
@@ -87,9 +96,16 @@ export LABJACK_OPEN_ORDER=ethernet
 cargo run --example info
 ```
 
-If there is only one Ethernet LabJack on the network, you can leave
-`LABJACK_IDENTIFIER`, `LABJACK_SERIAL`, `LABJACK_NAME`, and `LABJACK_IP` unset
-and the code will try Ethernet auto-discovery with `ANY`.
+To bypass scanning entirely, set the device IP explicitly:
+
+```bash
+export LABJACK_IP=192.168.1.207
+export LABJACK_OPEN_ORDER=ethernet
+cargo run --example info
+```
+
+`LABJACK_IDENTIFIER` can also be an IP address. `LABJACK_NAME` remains an
+explicit LJM identifier fallback, but it still depends on LJM discovery.
 
 Use explicit compile-time linking only if you need it:
 
@@ -104,10 +120,10 @@ Sourced by `env-setup.sh`:
 - `NATS_CREDS_FILE` (required) - NATS credentials file path
 - `CFG_BUCKET` (default: `avenabox`)
 - `CFG_KEY` (required) - KV key for the LabJack config
-- `LABJACK_IDENTIFIER` (recommended) - Stable LabJack identifier for Ethernet, such as serial number or device name
-- `LABJACK_SERIAL` - LabJack serial number. Used as a stable fallback identifier for Ethernet and USB
-- `LABJACK_NAME` - LabJack device name for Ethernet discovery
-- `LABJACK_IP` - Optional direct IP override if you want to bypass discovery
+- `LABJACK_IDENTIFIER` (recommended) - Direct LabJack identifier. For Ethernet, prefer an IP address
+- `LABJACK_SERIAL` - LabJack serial number. Works for USB directly, and on Linux it also selects the correct LabJack during local Ethernet scanning
+- `LABJACK_NAME` - Optional explicit Ethernet identifier passed through to LJM
+- `LABJACK_IP` - Optional direct IP override if you want to bypass local scanning
 - `LABJACK_USB_ID` - Optional USB identifier, defaults to `ANY`
 - `LABJACK_OPEN_ORDER` - Connection order, defaults to `ethernet,usb`
 - `ROLE` - `edge` or `server` (used by `deploy-binary.sh`)

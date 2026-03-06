@@ -10,8 +10,6 @@ fn main() {
         ljm_mode::init_ljm().expect("Failed to init LJM");
     }
 
-    labjack::log_discovery_snapshot();
-
     let handle = labjack::open_labjack_from_env().expect("Could not open LabJack");
 
     println!("Opened LabJack, got handle: {}", handle);
