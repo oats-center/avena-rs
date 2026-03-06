@@ -316,6 +316,7 @@ pub fn discover_labjacks(
     Ok(devices)
 }
 
+#[allow(dead_code)]
 fn discovery_modes_from_env() -> Vec<ConnectionType> {
     let mut modes = Vec::new();
 
@@ -338,6 +339,7 @@ fn discovery_modes_from_env() -> Vec<ConnectionType> {
     modes
 }
 
+#[allow(dead_code)]
 pub fn log_discovery_snapshot() {
     for connection_type in discovery_modes_from_env() {
         match discover_labjacks(connection_type.clone()) {
