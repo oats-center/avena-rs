@@ -9,8 +9,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 async fn main() -> Result<()> {
     let ws_url =
         std::env::var("EXPORT_WS_URL").unwrap_or_else(|_| "ws://127.0.0.1:9001/export".into());
-    let parquet_dir =
-        std::env::var("PARQUET_DIR").unwrap_or_else(|_| "parquet".into());
+    let parquet_dir = std::env::var("PARQUET_DIR").unwrap_or_else(|_| "parquet".into());
     let output_path = PathBuf::from("target/export_test.csv");
 
     println!("connecting to exporter at {ws_url}");
@@ -48,10 +47,6 @@ async fn main() -> Result<()> {
     }
 
     ws.close(None).await.ok();
-    println!(
-        "wrote {} bytes to {}",
-        total_bytes,
-        output_path.display()
-    );
+    println!("wrote {} bytes to {}", total_bytes, output_path.display());
     Ok(())
 }

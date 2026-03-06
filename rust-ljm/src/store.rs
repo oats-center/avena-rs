@@ -364,8 +364,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     // Connect using creds
-    let creds_path = std::env::var("NATS_CREDS_FILE")
-        .unwrap_or_else(|_| "apt.creds".into());
+    let creds_path = std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| "apt.creds".into());
     let opts = ConnectOptions::with_credentials_file(creds_path)
         .await
         .map_err(|e| format!("Failed to load creds: {}", e))?;
@@ -399,11 +398,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "{}.{:03}.data.ch{:02}",
             cfg.nats_subject, cfg.asset_number, ch
         );
-        let calibration = cfg
-            .calibrations
-            .get(ch)
-            .cloned()
-            .unwrap_or_default();
+        let calibration = cfg.calibrations.get(ch).cloned().unwrap_or_default();
         let h = spawn_channel_logger(
             nc.clone(),
             subject,
@@ -422,9 +417,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             while let Some(ev) = watch.next().await {
                 if let Ok(entry) = ev {
                     if entry.operation == Operation::Put {
-                        if let Ok(new_cfg) =
-                            serde_json::from_slice::<NestedConfig>(&entry.value)
-                                .map(sample_config_from_nested)
+                        if let Ok(new_cfg) = serde_json::from_slice::<NestedConfig>(&entry.value)
+                            .map(sample_config_from_nested)
                         {
                             println!("[logger] KV config update detected: {:?}", new_cfg);
 
@@ -447,11 +441,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         "{}.{:03}.data.ch{:02}",
                                         new_cfg.nats_subject, new_cfg.asset_number, ch
                                     );
-                                    let calibration = new_cfg
-                                        .calibrations
-                                        .get(ch)
-                                        .cloned()
-                                        .unwrap_or_default();
+                                    let calibration =
+                                        new_cfg.calibrations.get(ch).cloned().unwrap_or_default();
                                     let h = spawn_channel_logger(
                                         nc.clone(),
                                         subject,
@@ -462,15 +453,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     );
                                     active.insert(*ch, h);
                                 } else {
-                                    let calibration = new_cfg
-                                        .calibrations
-                                        .get(ch)
-                                        .cloned()
-                                        .unwrap_or_default();
+                                    let calibration =
+                                        new_cfg.calibrations.get(ch).cloned().unwrap_or_default();
                                     let mut needs_respawn = false;
                                     if let Some(entry) = active.get_mut(ch) {
                                         if entry.calibration != calibration {
-                                            if entry.calibration_tx.send(calibration.clone()).is_ok() {
+                                            if entry
+                                                .calibration_tx
+                                                .send(calibration.clone())
+                                                .is_ok()
+                                            {
                                                 entry.calibration = calibration.clone();
                                             } else {
                                                 needs_respawn = true;

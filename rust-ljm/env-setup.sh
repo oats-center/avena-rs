@@ -23,7 +23,31 @@ _ENV_SETUP_OS="$(uname -s 2>/dev/null || echo unknown)"
 : "${LABJACK_USB_ID:=ANY}"
 : "${LABJACK_OPEN_ORDER:=ethernet,usb}"
 if [[ "${_ENV_SETUP_OS}" == "Darwin" ]]; then
-  : "${LJM_LIB_FILE:=/usr/local/lib/libLabJackM-1.23.4.dylib}"
+  if [[ -z "${LJM_LIB_FILE:-}" ]]; then
+    for candidate in \
+      /usr/local/lib/libLabJackM.dylib \
+      /opt/homebrew/lib/libLabJackM.dylib \
+      /usr/local/lib/libLabJackM-1.dylib \
+      /usr/local/lib/libLabJackM-1.23.4.dylib
+    do
+      if [[ -f "${candidate}" ]]; then
+        LJM_LIB_FILE="${candidate}"
+        break
+      fi
+    done
+  fi
+elif [[ "${_ENV_SETUP_OS}" == "Linux" ]]; then
+  if [[ -z "${LJM_LIB_FILE:-}" ]]; then
+    for candidate in \
+      /usr/local/lib/libLabJackM.so \
+      /usr/lib/libLabJackM.so
+    do
+      if [[ -f "${candidate}" ]]; then
+        LJM_LIB_FILE="${candidate}"
+        break
+      fi
+    done
+  fi
 else
   : "${LJM_LIB_FILE:=}"
 fi
@@ -34,10 +58,14 @@ export NATS_SUBJECT NATS_SERVERS ASSET_NUMBER OUTPUT_DIR NATS_CREDS_FILE CFG_BUC
 export LJM_LIB_FILE
 export EXPORTER_HTTP_URL
 
-# Ensure macOS can locate LabJack shared library for streamer/examples.
-if [[ "${_ENV_SETUP_OS}" == "Darwin" && -f "${LJM_LIB_FILE}" ]]; then
+# Ensure streamer/examples can locate the LabJack shared library.
+if [[ -f "${LJM_LIB_FILE}" ]]; then
   LJM_LIB_DIR="$(dirname "${LJM_LIB_FILE}")"
   export LJM_PATH="${LJM_LIB_FILE}"
+  export LJM_LIB_DIR
+fi
+
+if [[ "${_ENV_SETUP_OS}" == "Darwin" && -f "${LJM_LIB_FILE}" ]]; then
   if [[ -n "${DYLD_FALLBACK_LIBRARY_PATH:-}" ]]; then
     case ":${DYLD_FALLBACK_LIBRARY_PATH}:" in
       *":${LJM_LIB_DIR}:"*) ;;
@@ -45,6 +73,17 @@ if [[ "${_ENV_SETUP_OS}" == "Darwin" && -f "${LJM_LIB_FILE}" ]]; then
     esac
   else
     export DYLD_FALLBACK_LIBRARY_PATH="${LJM_LIB_DIR}"
+  fi
+fi
+
+if [[ "${_ENV_SETUP_OS}" == "Linux" && -f "${LJM_LIB_FILE}" ]]; then
+  if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
+    case ":${LD_LIBRARY_PATH}:" in
+      *":${LJM_LIB_DIR}:"*) ;;
+      *) export LD_LIBRARY_PATH="${LJM_LIB_DIR}:${LD_LIBRARY_PATH}" ;;
+    esac
+  else
+    export LD_LIBRARY_PATH="${LJM_LIB_DIR}"
   fi
 fi
 

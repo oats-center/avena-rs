@@ -13,6 +13,7 @@ use async_nats::{ConnectOptions, ServerAddr};
 use flatbuffers::FlatBufferBuilder;
 use futures_util::StreamExt;
 
+mod ljm_mode;
 mod sample_data_generated {
     #![allow(dead_code, unused_imports)]
     include!("data_generated.rs");
@@ -526,14 +527,8 @@ async fn main() -> Result<(), LJMError> {
     let (config_tx, config_rx) = watch::channel(cfg);
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    #[cfg(feature = "staticlib")]
     unsafe {
-        LJMLibrary::init()?;
-    }
-    #[cfg(all(feature = "dynlink", not(feature = "staticlib")))]
-    unsafe {
-        let path = std::env::var("LJM_PATH").ok();
-        LJMLibrary::init(path)?;
+        ljm_mode::init_ljm()?;
     }
 
     tokio::spawn(run_sampler(

@@ -179,12 +179,7 @@ struct CsvStreamer {
 impl CsvStreamer {
     const CHUNK_SIZE: usize = 128 * 1024;
 
-    fn new(
-        socket: WebSocket,
-        asset: u32,
-        start: DateTime<Utc>,
-        end: DateTime<Utc>,
-    ) -> Self {
+    fn new(socket: WebSocket, asset: u32, start: DateTime<Utc>, end: DateTime<Utc>) -> Self {
         let mut chunk = Vec::with_capacity(Self::CHUNK_SIZE);
         chunk.extend_from_slice(b"timestamp,channel,raw_value,calibrated_value,calibration_id\n");
         Self {
@@ -230,9 +225,8 @@ impl CsvStreamer {
         calibrated_value: f64,
         calibration_id: &str,
     ) -> Result<()> {
-        let line = format!(
-            "{timestamp},ch{channel:02},{raw_value},{calibrated_value},{calibration_id}\n"
-        );
+        let line =
+            format!("{timestamp},ch{channel:02},{raw_value},{calibrated_value},{calibration_id}\n");
         self.chunk.extend_from_slice(line.as_bytes());
         if self.chunk.len() >= Self::CHUNK_SIZE {
             self.flush().await?;
@@ -326,11 +320,7 @@ fn read_calibration_from_metadata(
     reader: &SerializedFileReader<fs::File>,
     path: &Path,
 ) -> CalibrationSpec {
-    let Some(kv) = reader
-        .metadata()
-        .file_metadata()
-        .key_value_metadata()
-    else {
+    let Some(kv) = reader.metadata().file_metadata().key_value_metadata() else {
         return CalibrationSpec::default();
     };
 

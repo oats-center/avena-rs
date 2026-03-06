@@ -6,7 +6,7 @@ It includes a LabJack streamer, a parquet archiver, and a CSV exporter over WebS
 ## Prerequisites
 
 - Rust (latest stable)
-- LabJack LJM library
+- LabJack LJM library available in a standard location, or `LJM_PATH` set to its full path
 - NATS server
 - NATS credentials file (for JetStream KV + publish/subscribe)
 
@@ -19,6 +19,7 @@ It includes a LabJack streamer, a parquet archiver, and a CSV exporter over WebS
    ```
 3. Run the binaries:
    ```bash
+   source ./env-setup.sh
    cargo run --bin streamer
    cargo run --bin archiver
    cargo run --bin exporter
@@ -58,6 +59,24 @@ Create a KV entry for each LabJack (example key: `labjackd.config.i69-mu1`):
 
 Set the key/bucket using environment variables (see `env-setup.sh`).
 
+## LJM Linking Mode
+
+The default build uses `dynlink`, which loads the LabJack shared library at runtime.
+This is more portable across machines because Cargo does not need a machine-specific
+native linker search path during compilation.
+
+Use the default mode:
+
+```bash
+cargo run --example info
+```
+
+Use explicit compile-time linking only if you need it:
+
+```bash
+cargo run --no-default-features --features staticlib --example info
+```
+
 ## Environment variables
 
 Sourced by `env-setup.sh`:
@@ -84,9 +103,9 @@ because it reads the local parquet files directly.
 
 ## Using the deploy script
 
-```
-./env-setup.sh && ROLE=edge ./deploy-binary.sh start
-./env-setup.sh && ROLE=server ./deploy-binary.sh start
+```bash
+source ./env-setup.sh && ROLE=edge ./deploy-binary.sh start
+source ./env-setup.sh && ROLE=server ./deploy-binary.sh start
 ```
 
 The script prevents multiple copies of the same binary and writes logs to `logs/`.

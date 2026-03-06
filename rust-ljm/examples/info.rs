@@ -1,5 +1,8 @@
 use ljmrs::{ConnectionType, DeviceType, LJMLibrary};
 
+#[path = "../src/ljm_mode.rs"]
+mod ljm_mode;
+
 fn open_labjack_from_env() -> Result<i32, ljmrs::LJMError> {
     let labjack_ip = std::env::var("LABJACK_IP").unwrap_or_else(|_| "10.165.77.233".to_string());
     let usb_id = std::env::var("LABJACK_USB_ID").unwrap_or_else(|_| "ANY".to_string());
@@ -57,17 +60,9 @@ fn open_labjack_from_env() -> Result<i32, ljmrs::LJMError> {
 }
 
 fn main() {
-    #[cfg(feature = "staticlib")]
     unsafe {
-        LJMLibrary::init().expect("Failed to init LJM (static)");
+        ljm_mode::init_ljm().expect("Failed to init LJM");
     }
-
-    // If you enable dynlink instead:
-    // #[cfg(all(feature = "dynlink", not(feature = "staticlib")))]
-    // unsafe {
-    //     let path = std::env::var("LJM_PATH").ok();
-    //     LJMLibrary::init(path).expect("Failed to init LJM (dynlink)");
-    // }
 
     let handle = open_labjack_from_env().expect("Could not open LabJack");
 

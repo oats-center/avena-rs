@@ -3,16 +3,12 @@ use ljmrs::{LJMError, LJMLibrary};
 use std::thread;
 use std::time::Duration;
 
+#[path = "../src/ljm_mode.rs"]
+mod ljm_mode;
+
 fn main() -> Result<(), LJMError> {
-    // Init LJM
-    #[cfg(all(feature = "dynlink", not(feature = "staticlib")))]
     unsafe {
-        let path = std::env::var("LJM_PATH").ok();
-        LJMLibrary::init(path)?;
-    }
-    #[cfg(all(feature = "staticlib", not(feature = "dynlink")))]
-    unsafe {
-        LJMLibrary::init()?;
+        ljm_mode::init_ljm()?;
     }
 
     // Open device

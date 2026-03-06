@@ -64,8 +64,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     ];
 
     // Connect using creds
-    let creds_path = std::env::var("NATS_CREDS_FILE")
-        .unwrap_or_else(|_| "apt.creds".into());
+    let creds_path = std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| "apt.creds".into());
     let opts = ConnectOptions::with_credentials_file(creds_path)
         .await
         .map_err(|e| format!("Failed to load creds: {}", e))?;
