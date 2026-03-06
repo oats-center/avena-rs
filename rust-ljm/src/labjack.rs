@@ -448,6 +448,7 @@ pub fn handle_info(handle: i32) -> Result<DeviceHandleInfo, LJMError> {
     LJMLibrary::get_handle_info(handle)
 }
 
+#[allow(dead_code)]
 pub fn handle_ip_address(info: &DeviceHandleInfo) -> Result<Option<String>, LJMError> {
     if info.ip_address == 0 {
         return Ok(None);
