@@ -15,6 +15,8 @@ Rust binaries for LabJack streaming, parquet archiving, and export serving.
 - Remote server with storage and webapp support: run `archiver` and `exporter`
 
 `exporter` must run on the same host as the parquet directory it serves.
+For a simple setup, you can also run `archiver` and `exporter` on the MU and
+point the laptop webapp at the MU's exporter address.
 
 ## Streamer Control
 
@@ -39,6 +41,41 @@ To use a different env file:
 
 ```bash
 CONFIG_FILE=/path/to/streamer.env.json ./streamerctl.sh restart
+```
+
+## Archiver Control
+
+Edit `archiver.env.json`, then control the archiver with:
+
+```bash
+./archiverctl.sh start
+./archiverctl.sh status
+./archiverctl.sh restart
+./archiverctl.sh stop
+```
+
+`archiver` subscribes to NATS and writes parquet files locally under `parquet/`.
+
+## Exporter Control
+
+Edit `exporter.env.json`, then control the exporter with:
+
+```bash
+./exporterctl.sh start
+./exporterctl.sh status
+./exporterctl.sh restart
+./exporterctl.sh stop
+```
+
+Set `EXPORTER_ADDR` to an address reachable from the laptop, for example:
+
+```json
+{
+  "env": {
+    "PARQUET_DIR": "parquet",
+    "EXPORTER_ADDR": "0.0.0.0:9001"
+  }
+}
 ```
 
 ## Streamer Env Config
@@ -86,16 +123,22 @@ The JSON stored in JetStream KV should use the newer structure:
 }
 ```
 
-## Manual Server Binaries
+## MU + Laptop Setup
 
-On the remote server:
+If `streamer` is already running on the MU, you can also run:
 
 ```bash
-cargo run --release --bin archiver
-cargo run --release --bin exporter
+./archiverctl.sh start
+./exporterctl.sh start
 ```
 
-`exporter` uses:
+Then run the webapp on the laptop and connect it to the MU's exporter endpoint.
+That works as long as:
 
-- `PARQUET_DIR` default: `parquet`
-- `EXPORTER_ADDR` default: `0.0.0.0:9001`
+- the laptop can reach the MU over the network
+- `EXPORTER_ADDR` is bound to a reachable interface
+- the firewall allows the exporter port
+
+This is fine for local testing or a small deployment. The main tradeoff is that
+parquet storage and export serving both stay on the MU instead of a separate
+server.
