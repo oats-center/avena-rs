@@ -454,6 +454,43 @@ pub fn handle_ip_address(info: &DeviceHandleInfo) -> Result<Option<String>, LJME
         return Ok(None);
     }
 
-    let ip = unsafe { LJMLibrary::number_to_ip(info.ip_address)? };
-    Ok(Some(ip))
+    // LJM exposes the raw IPv4 value through a signed i32. Reinterpret the bits
+    // directly so addresses above 127.255.255.255 do not fail conversion.
+    let ip = Ipv4Addr::from(info.ip_address as u32);
+    Ok(Some(ip.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn handle_ip_address_converts_signed_ipv4_bits() {
+        let info = DeviceHandleInfo {
+            device_type: DeviceType::T7,
+            connection_type: ConnectionType::ETHERNET,
+            ip_address: -1062731418,
+            max_bytes_per_megabyte: 0,
+            serial_number: 0,
+            port: 0,
+        };
+
+        let ip = handle_ip_address(&info).expect("conversion should succeed");
+        assert_eq!(ip.as_deref(), Some("192.168.1.102"));
+    }
+
+    #[test]
+    fn handle_ip_address_returns_none_for_zero() {
+        let info = DeviceHandleInfo {
+            device_type: DeviceType::T7,
+            connection_type: ConnectionType::ETHERNET,
+            ip_address: 0,
+            max_bytes_per_megabyte: 0,
+            serial_number: 0,
+            port: 0,
+        };
+
+        let ip = handle_ip_address(&info).expect("zero should be treated as missing");
+        assert_eq!(ip, None);
+    }
 }
