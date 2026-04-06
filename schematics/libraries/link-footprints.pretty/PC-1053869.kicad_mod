@@ -1,4 +1,4 @@
-(footprint "PHOENIX_1053869"
+(footprint "PC-1053869"
 	(version 20241229)
 	(generator "pcbnew")
 	(generator_version "9.0")
@@ -14,7 +14,7 @@
 			)
 		)
 	)
-	(property "Value" "PHOENIX_1053869"
+	(property "Value" "PC-1053869"
 		(at 8.525 1.865 0)
 		(layer "F.Fab")
 		(uuid "b69959d9-f062-4973-b20a-eee67dfd3de4")

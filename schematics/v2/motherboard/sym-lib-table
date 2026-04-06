@@ -1,0 +1,5 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "Link_Components")(type "KiCad")(uri "${KIPRJMOD}/../../libraries/component-lib/link-components.kicad_sym")(options "")(descr ""))
+  (lib (name "Link_Modules")(type "KiCad")(uri "${KIPRJMOD}/../../libraries/proto-module-lib/link_modules.kicad_sym")(options "")(descr ""))
+)
