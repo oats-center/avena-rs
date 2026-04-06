@@ -1,6 +1,59 @@
 import { Kvm } from "@nats-io/kv";
 import { wsconnect, credsAuthenticator, type NatsConnection } from "@nats-io/nats-core";
 
+function stripTrailingSlash(url: string): string {
+  return url.endsWith("/") ? url.slice(0, -1) : url;
+}
+
+function hasScheme(server: string): boolean {
+  return /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(server);
+}
+
+function defaultWebsocketScheme(): "ws" | "wss" {
+  if (typeof window !== "undefined" && window.location.protocol === "https:") {
+    return "wss";
+  }
+  return "ws";
+}
+
+function normalizeWebsocketServer(serverName: string): string {
+  const trimmed = serverName.trim();
+  if (!trimmed) return "";
+
+  const candidate = hasScheme(trimmed) ? trimmed : `${defaultWebsocketScheme()}://${trimmed}`;
+
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol === "http:") parsed.protocol = "ws:";
+    if (parsed.protocol === "https:") parsed.protocol = "wss:";
+    if (parsed.pathname === "/") parsed.pathname = "";
+    return stripTrailingSlash(parsed.toString());
+  } catch {
+    return candidate;
+  }
+}
+
+function buildServerCandidates(serverName: string): string[] {
+  const normalized = normalizeWebsocketServer(serverName);
+  if (!normalized) return [];
+
+  const candidates = new Set<string>([normalized]);
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.protocol === "ws:") {
+      parsed.protocol = "wss:";
+      candidates.add(stripTrailingSlash(parsed.toString()));
+    } else if (parsed.protocol === "wss:") {
+      parsed.protocol = "ws:";
+      candidates.add(stripTrailingSlash(parsed.toString()));
+    }
+  } catch {
+    // keep normalized only if URL parsing fails
+  }
+
+  return Array.from(candidates);
+}
+
 export class NatsService {
   public connection: NatsConnection;
   public kvm: Kvm;
@@ -15,35 +68,39 @@ export class NatsService {
 
 //connects to a nats server & initialized kvm
 export async function connect(serverName: string, credentialsContent?: string): Promise<NatsService | null> {
-  let nc: NatsConnection | null = null;
-  if (serverName) {
+  const servers = buildServerCandidates(serverName);
+  if (servers.length === 0) return null;
+
+  const connectionOptions: any = {};
+  if (credentialsContent) {
     try {
-      const connectionOptions: any = { 
-        servers: serverName 
-      };
-      
-      // Add credentials authentication if credentials content is provided
-      if (credentialsContent) {
-        try {
-          const creds = new TextEncoder().encode(credentialsContent);
-          connectionOptions.authenticator = credsAuthenticator(creds);
-        } catch (error) {
-          console.error("Failed to process credentials:", error);
-          return null;
-        }
-      }
-      
-      nc = await wsconnect(connectionOptions);
+      const creds = new TextEncoder().encode(credentialsContent);
+      connectionOptions.authenticator = credsAuthenticator(creds);
     } catch (error) {
-      console.error("Failed to connect to NATS: ", error);
+      console.error("Failed to process credentials:", error);
+      return null;
     }
   }
-  let nats: NatsService
-  if(nc){
-    const kvm = new Kvm(nc);
-    nats = new NatsService(nc, kvm);
-    return nats;
+
+  let lastError: unknown = null;
+  for (const server of servers) {
+    try {
+      const nc = await wsconnect({
+        ...connectionOptions,
+        servers: server
+      });
+      const kvm = new Kvm(nc);
+      return new NatsService(nc, kvm);
+    } catch (error) {
+      lastError = error;
+      console.error(`Failed to connect to NATS at ${server}:`, error);
+    }
   }
+
+  console.error(
+    `Failed to connect to NATS. Tried endpoints: ${servers.join(", ")}.`,
+    lastError
+  );
   return null;
 }
 

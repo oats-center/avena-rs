@@ -1,20 +1,8 @@
-Steps to Run:
+For the LabJack pipeline:
 
-Setup ENV Variables:
+- Configure the MU / edge host in [rust-ljm/streamer.env.json](/home/user/avena-rs/rust-ljm/streamer.env.json)
+- Start or restart the edge streamer with `rust-ljm/streamerctl.sh`
+- Run `archiver` and `exporter` on the remote server, or run `rust-ljm/archiverctl.sh`
+  and `rust-ljm/exporterctl.sh` on the MU for a single-host setup
 
-CFG_BUCKET=avenabox
-NATS_CREDS_FILE=<file.creds>
-
-Then run following rust binaries. 
-
-1. Run Streamer on Edge
-2. Run Archiver on Edge
-3. Run Exporter on Edge
-
-    ```
-    bash
-    PARQUET_DIR=/src/avena/parquet_folder EXPORTER_ADDR=0.0.0.0:9001 ./target/release/exporter
-    ```
-
-4. Deploy Webapp on Server using `setup.sh`
-
+See `rust-ljm/README.md` for the current workflow and config format.

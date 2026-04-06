@@ -1,101 +1,144 @@
-# Rust-LJM: LabJack Data Acquisition in Rust
+# Rust-LJM
 
-A Rust-based data acquisition system for LabJack devices with NATS integration.
-It includes a LabJack streamer, a parquet archiver, and a CSV exporter over WebSocket.
+Rust binaries for LabJack streaming, parquet archiving, and export serving.
 
-## Prerequisites
+## Binaries
 
-- Rust (latest stable)
-- LabJack LJM library
-- NATS server
-- NATS credentials file (for JetStream KV + publish/subscribe)
+- `streamer`: reads from the LabJack and publishes samples to NATS
+- `archiver`: subscribes to NATS and writes parquet files
+- `exporter`: serves parquet-backed exports over WebSocket
+- `subscriber`: diagnostic NATS subscriber
 
-## Quick Start (single host)
+## Deployment
 
-1. Install the LabJack LJM library.
-2. Build the project:
-   ```bash
-   cargo build --release
-   ```
-3. Run the binaries:
-   ```bash
-   cargo run --bin streamer
-   cargo run --bin archiver
-   cargo run --bin exporter
-   ```
+- MU / edge host with the LabJack attached: run `streamer`
+- Remote server with storage and webapp support: run `archiver` and `exporter`
 
-## Available Binaries
+`exporter` must run on the same host as the parquet directory it serves.
+For a simple setup, you can also run `archiver` and `exporter` on the MU and
+point the laptop webapp at the MU's exporter address.
 
-- `streamer` - Stream data from LabJack to NATS
-- `archiver` - Subscribe to NATS and write parquet files to disk
-- `exporter` - Serve parquet as streamed CSV over WebSocket (`/export`)
-- `subscriber` - Subscribe to NATS data streams (diagnostics)
+## Streamer Control
 
-## Configuration (JetStream KV)
+Edit `streamer.env.json`, then control the streamer with:
 
-Create a KV entry for each LabJack (example key: `labjackd.config.i69-mu1`):
-
+```bash
+./streamerctl.sh start
+./streamerctl.sh status
+./streamerctl.sh restart
+./streamerctl.sh stop
 ```
+
+Behavior:
+
+- `start` builds `target/release/streamer` if needed
+- only one streamer process is allowed at a time
+- `restart` stops the existing process before starting a new one
+- logs go to `logs/streamer.log`
+- the PID file is stored in `.runtime/streamer.pid`
+
+To use a different env file:
+
+```bash
+CONFIG_FILE=/path/to/streamer.env.json ./streamerctl.sh restart
+```
+
+## Archiver Control
+
+Edit `archiver.env.json`, then control the archiver with:
+
+```bash
+./archiverctl.sh start
+./archiverctl.sh status
+./archiverctl.sh restart
+./archiverctl.sh stop
+```
+
+`archiver` subscribes to NATS and writes parquet files locally under `parquet/`.
+
+## Exporter Control
+
+Edit `exporter.env.json`, then control the exporter with:
+
+```bash
+./exporterctl.sh start
+./exporterctl.sh status
+./exporterctl.sh restart
+./exporterctl.sh stop
+```
+
+Set `EXPORTER_ADDR` to an address reachable from the laptop, for example:
+
+```json
 {
-  "labjack_name": "I69-MU1",
-  "asset_number": 1001,
-  "max_channels": 8,
-  "nats_subject": "avenabox",
-  "nats_stream": "labjacks",
-  "rotate_secs": 600,
-  "sensor_settings": {
-    "scan_rate": 200,
-    "sampling_rate": 1000,
-    "channels_enabled": [0, 1, 2],
-    "gains": 1,
-    "data_formats": ["voltage", "temperature", "pressure"],
-    "measurement_units": ["V", "C", "PSI"],
-    "labjack_on_off": true,
-    "calibrations": {}
+  "env": {
+    "PARQUET_DIR": "parquet",
+    "EXPORTER_ADDR": "0.0.0.0:9001"
   }
 }
 ```
 
-Set the key/bucket using environment variables (see `env-setup.sh`).
+## Streamer Env Config
 
-## Environment variables
+`streamer.env.json` contains the environment variables exported before `streamer`
+starts.
 
-Sourced by `env-setup.sh`:
+Important fields:
 
-- `NATS_CREDS_FILE` (required) - NATS credentials file path
-- `CFG_BUCKET` (default: `avenabox`)
-- `CFG_KEY` (required) - KV key for the LabJack config
-- `LABJACK_IP` (streamer only) - LabJack IP address
-- `ROLE` - `edge` or `server` (used by `deploy-binary.sh`)
+- `NATS_CREDS_FILE`: path to the NATS creds file
+- `CFG_BUCKET`: JetStream KV bucket
+- `CFG_KEY`: JetStream KV key for the LabJack config
+- `LABJACK_IP`: optional direct LabJack IP
+- `LABJACK_SERIAL`: optional serial filter when multiple LabJacks are on the subnet
+- `LABJACK_OPEN_ORDER`: usually `ethernet,usb`
 
-Used by exporter:
+If `LABJACK_IP` is empty on Linux, the streamer will scan local IPv4 subnets for
+hosts with TCP `502` open and then verify which host is a T7.
 
-- `PARQUET_DIR` (default: `parquet`)
-- `EXPORTER_ADDR` (default: `0.0.0.0:9001`)
+## LabJack KV Config
 
-## Recommended deployment
+The JSON stored in JetStream KV should use the newer structure:
 
-- Edge (LabJack connected): `streamer`
-- Server (storage + webapp): `archiver` + `exporter`
-
-This keeps the LabJack close to the device and stores parquet data on the server.
-`exporter` must run on the same host (or a host with the same parquet directory)
-because it reads the local parquet files directly.
-
-## Using the deploy script
-
+```json
+{
+  "labjack_name": "Macbook",
+  "asset_number": 1456,
+  "max_channels": 14,
+  "nats_subject": "avenabox",
+  "nats_stream": "labjacks",
+  "rotate_secs": 300,
+  "sensor_settings": {
+    "scan_rate": 100,
+    "sampling_rate": 500,
+    "channels_enabled": [11, 13],
+    "gains": 1,
+    "data_formats": ["voltage", "voltage"],
+    "measurement_units": ["V", "V"],
+    "labjack_on_off": true,
+    "calibrations": {
+      "11": { "type": "identity" },
+      "13": { "type": "identity" }
+    }
+  }
+}
 ```
-./env-setup.sh && ROLE=edge ./deploy-binary.sh start
-./env-setup.sh && ROLE=server ./deploy-binary.sh start
+
+## MU + Laptop Setup
+
+If `streamer` is already running on the MU, you can also run:
+
+```bash
+./archiverctl.sh start
+./exporterctl.sh start
 ```
 
-The script prevents multiple copies of the same binary and writes logs to `logs/`.
+Then run the webapp on the laptop and connect it to the MU's exporter endpoint.
+That works as long as:
 
-## Features
+- the laptop can reach the MU over the network
+- `EXPORTER_ADDR` is bound to a reachable interface
+- the firewall allows the exporter port
 
-- Real-time data streaming
-- NATS message publishing
-- Parquet archiving
-- CSV export over WebSocket
-- FlatBuffer serialization
-- Multi-channel support
+This is fine for local testing or a small deployment. The main tradeoff is that
+parquet storage and export serving both stay on the MU instead of a separate
+server.

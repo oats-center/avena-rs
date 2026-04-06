@@ -139,7 +139,7 @@ impl core::fmt::Debug for Scan<'_> {
 /// catch every error, or be maximally performant. For the
 /// previous, unchecked, behavior use
 /// `root_as_scan_unchecked`.
-pub fn root_as_scan(buf: &[u8]) -> Result<Scan, flatbuffers::InvalidFlatbuffer> {
+pub fn root_as_scan(buf: &[u8]) -> Result<Scan<'_>, flatbuffers::InvalidFlatbuffer> {
   flatbuffers::root::<Scan>(buf)
 }
 #[inline]
@@ -149,7 +149,7 @@ pub fn root_as_scan(buf: &[u8]) -> Result<Scan, flatbuffers::InvalidFlatbuffer> 
 /// catch every error, or be maximally performant. For the
 /// previous, unchecked, behavior use
 /// `size_prefixed_root_as_scan_unchecked`.
-pub fn size_prefixed_root_as_scan(buf: &[u8]) -> Result<Scan, flatbuffers::InvalidFlatbuffer> {
+pub fn size_prefixed_root_as_scan(buf: &[u8]) -> Result<Scan<'_>, flatbuffers::InvalidFlatbuffer> {
   flatbuffers::size_prefixed_root::<Scan>(buf)
 }
 #[inline]
@@ -182,14 +182,14 @@ pub fn size_prefixed_root_as_scan_with_opts<'b, 'o>(
 /// Assumes, without verification, that a buffer of bytes contains a Scan and returns it.
 /// # Safety
 /// Callers must trust the given bytes do indeed contain a valid `Scan`.
-pub unsafe fn root_as_scan_unchecked(buf: &[u8]) -> Scan {
+pub unsafe fn root_as_scan_unchecked(buf: &[u8]) -> Scan<'_> {
   unsafe { flatbuffers::root_unchecked::<Scan>(buf) }
 }
 #[inline]
 /// Assumes, without verification, that a buffer of bytes contains a size prefixed Scan and returns it.
 /// # Safety
 /// Callers must trust the given bytes do indeed contain a valid size prefixed `Scan`.
-pub unsafe fn size_prefixed_root_as_scan_unchecked(buf: &[u8]) -> Scan {
+pub unsafe fn size_prefixed_root_as_scan_unchecked(buf: &[u8]) -> Scan<'_> {
   unsafe { flatbuffers::size_prefixed_root_unchecked::<Scan>(buf) }
 }
 #[inline]
@@ -204,4 +204,3 @@ pub fn finish_size_prefixed_scan_buffer<'a, 'b, A: flatbuffers::Allocator + 'a>(
   fbb.finish_size_prefixed(root, None);
 }
 }  // pub mod sampler
-

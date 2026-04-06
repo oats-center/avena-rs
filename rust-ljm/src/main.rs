@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, watch};
 use tokio::time::Duration;
 
-use ljmrs::handle::{ConnectionType, DeviceType};
+use ljmrs::handle::DeviceType;
 use ljmrs::{LJMError, LJMLibrary};
 
 use async_nats::jetstream::kv::Operation;
@@ -13,6 +13,8 @@ use async_nats::{ConnectOptions, ServerAddr};
 use flatbuffers::FlatBufferBuilder;
 use futures_util::StreamExt;
 
+mod labjack;
+mod ljm_mode;
 mod sample_data_generated {
     #![allow(dead_code, unused_imports)]
     include!("data_generated.rs");
@@ -277,12 +279,13 @@ async fn sample_with_config(
     )
     .await?;
 
-    let lj_ip = std::env::var("LABJACK_IP").unwrap_or_else(|_| "10.165.77.233".to_string());
-    let handle = LJMLibrary::open_jack(
-        DeviceType::T7,
-        ConnectionType::ETHERNET,
-        lj_ip.as_str(),
-    )?;
+    let handle = labjack::open_labjack_from_env()?;
+    let info = labjack::handle_info(handle)?;
+    let ip = labjack::handle_ip_address(&info)?.unwrap_or_else(|| "N/A".to_string());
+    println!(
+        "[labjack] connected via {:?}, serial {}, ip {}",
+        info.connection_type, info.serial_number, ip
+    );
     let _guard = LabJackGuard { handle };
 
     let info = LJMLibrary::get_handle_info(handle)?;
@@ -475,14 +478,8 @@ async fn main() -> Result<(), LJMError> {
     let (config_tx, config_rx) = watch::channel(cfg);
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    #[cfg(feature = "staticlib")]
     unsafe {
-        LJMLibrary::init()?;
-    }
-    #[cfg(all(feature = "dynlink", not(feature = "staticlib")))]
-    unsafe {
-        let path = std::env::var("LJM_PATH").ok();
-        LJMLibrary::init(path)?;
+        ljm_mode::init_ljm()?;
     }
 
     tokio::spawn(run_sampler(

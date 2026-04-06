@@ -1,16 +1,15 @@
-use ljmrs::handle::{ConnectionType, DeviceType};
 use ljmrs::{LJMError, LJMLibrary};
+
+#[path = "../src/labjack.rs"]
+mod labjack;
+#[path = "../src/ljm_mode.rs"]
+mod ljm_mode;
+
 fn main() -> Result<(), LJMError> {
-    #[cfg(all(feature = "dynlink", not(feature = "staticlib")))]
     unsafe {
-        let path = std::env::var("LJM_PATH").ok();
-        LJMLibrary::init(path)?;
+        ljm_mode::init_ljm()?;
     }
-    #[cfg(all(feature = "staticlib", not(feature = "dynlink")))]
-    unsafe {
-        LJMLibrary::init()?;
-    }
-    let handle = LJMLibrary::open_jack(DeviceType::ANY, ConnectionType::ANY, "ANY")?;
+    let handle = labjack::open_labjack_from_env()?;
     match LJMLibrary::stream_stop(handle) {
         Ok(_) => println!("Stopped active stream."),
         Err(e) => println!("stream_stop returned: {:?}", e),

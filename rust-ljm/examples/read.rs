@@ -1,23 +1,21 @@
-use ljmrs::handle::{ConnectionType, DeviceType};
+use ljmrs::handle::DeviceType;
 use ljmrs::{LJMError, LJMLibrary};
 use std::thread;
 use std::time::Duration;
 
+#[path = "../src/labjack.rs"]
+mod labjack;
+#[path = "../src/ljm_mode.rs"]
+mod ljm_mode;
+
 fn main() -> Result<(), LJMError> {
-    // Choose one feature at build time
-    #[cfg(all(feature = "dynlink", not(feature = "staticlib")))]
     unsafe {
-        let path = std::env::var("LJM_PATH").ok();
-        LJMLibrary::init(path)?;
-    }
-    #[cfg(all(feature = "staticlib", not(feature = "dynlink")))]
-    unsafe {
-        LJMLibrary::init()?;
+        ljm_mode::init_ljm()?;
     }
 
-    let handle = LJMLibrary::open_jack(DeviceType::ANY, ConnectionType::ANY, "ANY")?;
+    let handle = labjack::open_labjack_from_env()?;
 
-    let info = LJMLibrary::get_handle_info(handle)?;
+    let info = labjack::handle_info(handle)?;
     let num_ains = match info.device_type {
         DeviceType::T4 => 12, // AIN0–AIN11
         DeviceType::T8 => 8,  // AIN0–AIN7

@@ -4,6 +4,8 @@
     interface DataPoint {
         timestamp: number;
         value: number;
+        sourceTimestamp?: number | null;
+        receivedAt?: number;
     }
     
     interface Props {
@@ -388,6 +390,41 @@
 
         return now;
     }
+
+    function getDisplayData(): DataPoint[] {
+        return mode === 'frozen' && frozenData ? frozenData : data;
+    }
+
+    function getZeroTimePoint(points: DataPoint[]): DataPoint | null {
+        if (!points || points.length === 0) return null;
+        if (!(mode === 'frozen' && isTriggered && triggerTime > 0)) {
+            return points[points.length - 1];
+        }
+
+        let nearest = points[0];
+        let nearestDelta = Math.abs(points[0].timestamp - triggerTime);
+        for (let i = 1; i < points.length; i++) {
+            const candidate = points[i];
+            const delta = Math.abs(candidate.timestamp - triggerTime);
+            if (delta < nearestDelta) {
+                nearest = candidate;
+                nearestDelta = delta;
+            }
+        }
+        return nearest;
+    }
+
+    function formatSourceClock(timestampMs: number): string {
+        return new Date(timestampMs).toLocaleTimeString();
+    }
+
+    function formatLag(ms: number): string {
+        if (!Number.isFinite(ms) || ms < 0) return '--';
+        if (ms < 1000) return `${Math.round(ms)}ms`;
+        if (ms < 60000) return `${(ms / 1000).toFixed(2)}s`;
+        if (ms < 3600000) return `${(ms / 60000).toFixed(1)}m`;
+        return `${(ms / 3600000).toFixed(2)}h`;
+    }
     
     
     function downsampleMinMax(data: DataPoint[]): DataPoint[] {
@@ -423,6 +460,21 @@
 
         return reduced.length > 1 ? reduced : data;
     }
+
+    function getVisiblePoints(dataToPlot: DataPoint[], referenceTime: number): DataPoint[] {
+        if (dataToPlot.length === 0) return dataToPlot;
+
+        if (mode === 'frozen' && isTriggered) {
+            const { pre, post } = getFrozenWindow();
+            const start = triggerTime - (pre * 1000);
+            const end = triggerTime + (post * 1000);
+            return dataToPlot.filter((point) => point.timestamp >= start && point.timestamp <= end);
+        }
+
+        const end = referenceTime;
+        const start = end - (timeWindow * 1000);
+        return dataToPlot.filter((point) => point.timestamp >= start && point.timestamp <= end);
+    }
     
     
     function drawDataLine(data: DataPoint[], color: string) {
@@ -434,7 +486,10 @@
         
         
         const referenceTime = getContinuousReferenceTime(dataToPlot);
-        const range = getDisplayRange(dataToPlot);
+        const visibleData = getVisiblePoints(dataToPlot, referenceTime);
+        if (visibleData.length < 1) return;
+
+        const range = getDisplayRange(visibleData);
         if (!range) return;
         
         // Enable anti-aliasing for smooth lines
@@ -444,8 +499,17 @@
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         
-        // Ensure a stable draw order, then reduce points with min/max buckets.
-        const orderedData = [...dataToPlot].sort((a, b) => a.timestamp - b.timestamp);
+        // Fast path: avoid sorting every frame when data is already monotonic.
+        let isMonotonic = true;
+        for (let i = 1; i < visibleData.length; i++) {
+            if (visibleData[i].timestamp < visibleData[i - 1].timestamp) {
+                isMonotonic = false;
+                break;
+            }
+        }
+        const orderedData = isMonotonic
+            ? visibleData
+            : [...visibleData].sort((a, b) => a.timestamp - b.timestamp);
         const sampledData = downsampleMinMax(orderedData);
         
         ctx.beginPath();
@@ -611,13 +675,33 @@
 
 <div class="mt-3 text-sm text-base-content/70 flex-shrink-0">
     {#if (mode === 'continuous' && data.length > 0) || (mode === 'frozen' && frozenData && frozenData.length > 0)}
-        <div class="flex justify-between items-center">
-            <span class="badge badge-outline badge-sm">
-                Data Points: {mode === 'frozen' && frozenData ? frozenData.length : data.length}
-            </span>
-            <span class="badge badge-primary badge-sm">
-                Latest: {(mode === 'frozen' && frozenData ? frozenData[frozenData.length - 1] : data[data.length - 1])?.value.toFixed(3)} {unit}
-            </span>
+        {@const plotData = getDisplayData()}
+        {@const zeroPoint = getZeroTimePoint(plotData)}
+        {@const latestPoint = plotData[plotData.length - 1]}
+        {@const zeroSourceTimestamp = (typeof zeroPoint?.sourceTimestamp === 'number' && Number.isFinite(zeroPoint.sourceTimestamp)) ? zeroPoint.sourceTimestamp : null}
+        {@const lagReferenceTimestamp = (typeof zeroPoint?.receivedAt === 'number' && Number.isFinite(zeroPoint.receivedAt)) ? zeroPoint.receivedAt : zeroPoint?.timestamp}
+        {@const zeroLagMs = zeroSourceTimestamp !== null && typeof lagReferenceTimestamp === 'number' ? Math.max(0, lagReferenceTimestamp - zeroSourceTimestamp) : null}
+        <div class="flex justify-between items-center gap-2 flex-wrap">
+            <div class="flex items-center gap-2 flex-wrap">
+                <span class="badge badge-outline badge-sm">
+                    Data Points: {plotData.length}
+                </span>
+                {#if zeroSourceTimestamp !== null}
+                    <span class="badge badge-secondary badge-sm">
+                        t=0 Src: {formatSourceClock(zeroSourceTimestamp)}
+                    </span>
+                {/if}
+            </div>
+            <div class="flex items-center gap-2 flex-wrap justify-end">
+                {#if zeroLagMs !== null}
+                    <span class="badge badge-accent badge-sm">
+                        Lag: {formatLag(zeroLagMs)}
+                    </span>
+                {/if}
+                <span class="badge badge-primary badge-sm">
+                    Latest: {latestPoint?.value.toFixed(3)} {unit}
+                </span>
+            </div>
         </div>
         {#if mode === 'frozen' && isTriggered}
             <div class="text-xs text-warning mt-2 flex items-center">

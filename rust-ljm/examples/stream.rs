@@ -1,23 +1,20 @@
-use ljmrs::handle::{ConnectionType, DeviceType};
+use ljmrs::handle::DeviceType;
 use ljmrs::{LJMError, LJMLibrary};
 use std::thread;
 use std::time::Duration;
 
+#[path = "../src/labjack.rs"]
+mod labjack;
+#[path = "../src/ljm_mode.rs"]
+mod ljm_mode;
+
 fn main() -> Result<(), LJMError> {
-    // Init LJM
-    #[cfg(all(feature = "dynlink", not(feature = "staticlib")))]
     unsafe {
-        let path = std::env::var("LJM_PATH").ok();
-        LJMLibrary::init(path)?;
-    }
-    #[cfg(all(feature = "staticlib", not(feature = "dynlink")))]
-    unsafe {
-        LJMLibrary::init()?;
+        ljm_mode::init_ljm()?;
     }
 
-    // Open device
-    let handle = LJMLibrary::open_jack(DeviceType::ANY, ConnectionType::ANY, "ANY")?;
-    let info = LJMLibrary::get_handle_info(handle)?;
+    let handle = labjack::open_labjack_from_env()?;
+    let info = labjack::handle_info(handle)?;
 
     // Configure AIN for stream
     if matches!(info.device_type, DeviceType::T7) {
@@ -29,7 +26,7 @@ fn main() -> Result<(), LJMError> {
     LJMLibrary::write_name(handle, "STREAM_SETTLING_US", 0.0_f64)?;
 
     println!(
-        "Opened {:?} (serial {}), streaming AIN0..AIN1 — Ctrl+C to stop.",
+        "Opened {:?} (serial {}), streaming AIN0..AIN7 — Ctrl+C to stop.",
         info.device_type, info.serial_number
     );
 

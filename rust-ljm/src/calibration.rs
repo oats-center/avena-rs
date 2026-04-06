@@ -15,6 +15,7 @@ pub struct CalibrationSpec {
     pub formula: CalibrationFormula,
 }
 
+#[allow(dead_code)]
 impl CalibrationSpec {
     pub fn apply(&self, raw: f64) -> f64 {
         match &self.formula {

@@ -13,7 +13,8 @@ clap = { version = "4.5.44", features = ["derive"] }
 csv = "1.3.1"
 flatbuffers = "24.3.25"
 futures-util = "0.3.31"
-ljmrs = "0.2.2"
+libloading = "0.8.8"
+ljmrs = { version = "0.2.2", default-features = false, features = ["serde", "stream"] }
 notify = "6"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.142"
@@ -26,14 +27,14 @@ uuid = { version = "1.11.0", features = ["v4"] }
 axum = { version = "0.7.5", features = ["ws", "macros"] }
 
 [features]
-# Default: use static linking (safe & simple)
-default = ["staticlib"]
+# Default: use runtime loading so builds do not depend on platform-specific linker paths.
+default = ["dynlink"]
 
-# Optional: enable dynamic linking
-dynlink = []
+# Optional: enable runtime loading
+dynlink = ["ljmrs/dynlink"]
 
-# Optional: static linking (explicit)
-staticlib = []
+# Optional: compile-time linking
+staticlib = ["ljmrs/staticlink"]
 
 [[bin]]
 name = "streamer"

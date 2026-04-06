@@ -2,7 +2,7 @@
     import { goto } from "$app/navigation";
     import { connect } from "$lib/nats.svelte";
     
-    let serverName = $state<string>("");
+    let serverName = $state<string>("ws://nats1.oats:8080");
     let credentialsFile = $state<File | null>(null);
     let credentialsContent = $state<string>("");
     let loading = $state<boolean>(false);
@@ -45,7 +45,9 @@
                 natsService.connection.close();
                 sessionStorage.setItem("serverName", serverName);
                 sessionStorage.setItem("credentialsContent", credentialsContent);
-                goto("/labjacks");
+                await goto("/labjacks").catch(() => {
+                    window.location.assign("/labjacks");
+                });
             } else {
                 alert = "Connection failed. Please check your server URL and credentials file.";
             }
@@ -136,9 +138,6 @@
                                 class="input input-bordered w-full pl-10"
                                 required
                             />
-                        </div>
-                        <div class="label">
-                            <span class="label-text-alt">Example: ws://nats1.oats:8080</span>
                         </div>
                     </div>
 

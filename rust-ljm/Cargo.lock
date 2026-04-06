@@ -1478,6 +1478,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ad32f3932df59cea8a7ec46de5ace6f298eee9fbd4098f4bc11c0a4ff704034e"
 dependencies = [
  "bindgen",
+ "libloading",
  "serde",
 ]
 
@@ -2036,6 +2037,7 @@ dependencies = [
  "csv",
  "flatbuffers 24.12.23",
  "futures-util",
+ "libloading",
  "ljmrs",
  "notify",
  "parquet",
