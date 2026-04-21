@@ -64,6 +64,8 @@
     let stickyAutoExtrema: { min: number; max: number } | null = null;
     const Y_GRID_DIVISIONS = 8;
     const MIN_AUTO_Y_INTERVAL = 0.01;
+    const MAX_VISIBLE_LIVE_LAG_FRACTION = 0.1;
+    const MAX_VISIBLE_LIVE_LAG_MS = 75;
     
     // Color palette for different channels
     const colors = [
@@ -253,8 +255,8 @@
 
         const normalizedTime = timeSincePoint / timeWindow;
         return invertX
-            ? (plotWidth - margin.right) - normalizedTime * width
-            : margin.left + normalizedTime * width;
+            ? margin.left + normalizedTime * width
+            : (plotWidth - margin.right) - normalizedTime * width;
     }
 
     function drawLabels() {
@@ -277,8 +279,8 @@
                 const step = ((pre + post) / 10) * (invertX ? -1 : 1);
                 timeValue = start + (i * step);
             } else {
-                const start = invertX ? -timeWindow : 0;
-                const step = invertX ? timeStep : -timeStep;
+                const start = invertX ? 0 : -timeWindow;
+                const step = invertX ? -timeStep : timeStep;
                 timeValue = start + (i * step);
             }
             
@@ -337,14 +339,9 @@
         if (mode === 'frozen') {
             x = mapTimeToX(0);
         } else {
-            // For continuous mode, show where the trigger occurred relative to current time
-            const now = Date.now();
-            const timeSinceTrigger = (now - triggerTime) / 1000;
-            const normalized = timeSinceTrigger / timeWindow;
-            const width = plotWidth - margin.left - margin.right;
-            x = invertX
-                ? (plotWidth - margin.right) - normalized * width
-                : margin.left + normalized * width;
+            const referenceTime = getContinuousReferenceTime(data);
+            const timeSinceTrigger = (referenceTime - triggerTime) / 1000;
+            x = mapTimeToX(timeSinceTrigger);
         }
         
         if (x >= margin.left && x <= plotWidth - margin.right) {
@@ -440,10 +437,13 @@
             return now;
         }
 
-        // If producer and browser clocks drift beyond the visible window,
-        // anchor to latest sample so the trace stays on screen.
+        // Keep the live trace filled even when transport/render lag is noticeable.
         const skew = Math.abs(now - latestTimestamp);
-        if (skew > (timeWindow * 1000)) {
+        const maxVisibleLag = Math.max(
+            MAX_VISIBLE_LIVE_LAG_MS,
+            timeWindow * 1000 * MAX_VISIBLE_LIVE_LAG_FRACTION
+        );
+        if (skew > maxVisibleLag) {
             return latestTimestamp;
         }
 
