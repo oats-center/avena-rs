@@ -1,6 +1,5 @@
 use std::collections::BTreeSet;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
-use std::process::Command;
 use std::str::FromStr;
 use std::sync::mpsc;
 use std::time::Duration;
