@@ -99,8 +99,21 @@ fn channel_subject(prefix: &str, asset: u32, ch: u8) -> String {
     format!("{}.{}.data.{}", prefix, pad_asset(asset), pad_channel(ch))
 }
 
-fn stream_subject_wildcard(prefix: &str, asset: u32) -> String {
-    format!("{}.{}.data.*", prefix, pad_asset(asset))
+fn stream_subject_namespace(prefix: &str) -> String {
+    format!("{prefix}.*.data.*")
+}
+
+fn stream_subject_is_compatible(existing: &str, desired_namespace: &str) -> bool {
+    if existing == desired_namespace {
+        return true;
+    }
+
+    if let Some(prefix) = desired_namespace.strip_suffix(".*.data.*") {
+        return existing.starts_with(&format!("{prefix}."))
+            && existing.ends_with(".data.*");
+    }
+
+    false
 }
 
 async fn ensure_stream_exists(
@@ -108,13 +121,29 @@ async fn ensure_stream_exists(
     stream_name: &str,
     subject: &str,
 ) -> Result<(), LJMError> {
-    if js.get_stream(stream_name).await.is_ok() {
-        println!("JetStream stream '{}' already exists.", stream_name);
-        return Ok(());
+    if let Ok(stream) = js.get_stream(stream_name).await {
+        let info = stream.cached_info();
+        if info
+            .config
+            .subjects
+            .iter()
+            .any(|existing| stream_subject_is_compatible(existing, subject))
+        {
+            println!(
+                "JetStream stream '{}' already exists with compatible subjects {:?}.",
+                stream_name, info.config.subjects
+            );
+            return Ok(());
+        }
+
+        println!(
+            "JetStream stream '{}' exists with incompatible subjects {:?}; attempting update to '{}'.",
+            stream_name, info.config.subjects, subject
+        );
     }
 
     println!(
-        "Creating JetStream stream '{}' for subject '{}'",
+        "Ensuring JetStream stream '{}' is configured for subject '{}'",
         stream_name, subject
     );
 
@@ -130,9 +159,14 @@ async fn ensure_stream_exists(
         ..Default::default()
     };
 
-    js.create_stream(config)
+    js.create_or_update_stream(config)
         .await
-        .map_err(|e| LJMError::LibraryError(format!("Failed to create JetStream stream: {}", e)))?;
+        .map_err(|e| {
+            LJMError::LibraryError(format!(
+                "Failed to create or update JetStream stream '{}': {}",
+                stream_name, e
+            ))
+        })?;
 
     Ok(())
 }
@@ -311,7 +345,7 @@ async fn sample_with_config(
     ensure_stream_exists(
         &js,
         &cfg.nats_stream,
-        &stream_subject_wildcard(&cfg.nats_subject, cfg.asset_number),
+        &stream_subject_namespace(&cfg.nats_subject),
     )
     .await?;
 

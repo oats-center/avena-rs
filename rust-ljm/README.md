@@ -88,12 +88,22 @@ Important fields:
 - `NATS_CREDS_FILE`: path to the NATS creds file
 - `CFG_BUCKET`: JetStream KV bucket
 - `CFG_KEY`: JetStream KV key for the LabJack config
-- `LABJACK_IP`: optional direct LabJack IP
-- `LABJACK_SERIAL`: optional serial filter when multiple LabJacks are on the subnet
-- `LABJACK_OPEN_ORDER`: usually `ethernet,usb`
+- `LABJACK_IP`: required direct LabJack IP for `streamer`
+- `LABJACK_SERIAL`: optional but recommended post-connect serial verification
+- `LABJACK_NAME`: optional logical device name for logging
 
-If `LABJACK_IP` is empty on Linux, the streamer will scan local IPv4 subnets for
-hosts with TCP `502` open and then verify which host is a T7.
+`streamer` now uses a strict Ethernet IP path only:
+
+- no subnet scan
+- no indirect serial/name discovery
+- no USB fallback
+
+On connect, `streamer`:
+
+- opens the T7 directly via `LABJACK_IP`
+- verifies the connected handle is a T7
+- verifies `LABJACK_SERIAL` if provided
+- runs a minimal read/write self-test using `STREAM_SETTLING_US`
 
 ## FlatBuffer Codegen
 
