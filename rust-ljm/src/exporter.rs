@@ -298,8 +298,12 @@ impl CsvStreamer {
         let mut iter = reader.get_row_iter(None)?;
         while let Some(row) = iter.next() {
             let row = row?;
-            let ts = row.get_string(0)?;
-            let ts_parsed = match DateTime::parse_from_rfc3339(ts) {
+            let timestamp_unix_ns = row.get_long(0)?;
+            let ts = match timestamp_unix_ns_to_rfc3339(timestamp_unix_ns) {
+                Some(ts) => ts,
+                None => continue,
+            };
+            let ts_parsed = match DateTime::parse_from_rfc3339(&ts) {
                 Ok(dt) => dt.with_timezone(&Utc),
                 Err(_) => continue,
             };
@@ -309,11 +313,15 @@ impl CsvStreamer {
             let raw_value = row.get_double(1)?;
             let calibrated_value = calibration.apply(raw_value);
             *found = true;
-            self.push_record(ts, channel, raw_value, calibrated_value, &calibration_id)
+            self.push_record(&ts, channel, raw_value, calibrated_value, &calibration_id)
                 .await?;
         }
         Ok(())
     }
+}
+
+fn timestamp_unix_ns_to_rfc3339(timestamp_unix_ns: i64) -> Option<String> {
+    Some(DateTime::<Utc>::from_timestamp_nanos(timestamp_unix_ns).to_rfc3339())
 }
 
 fn read_calibration_from_metadata(

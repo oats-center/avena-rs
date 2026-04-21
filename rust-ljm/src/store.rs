@@ -1,11 +1,10 @@
 use async_nats::ConnectOptions;
 use async_nats::jetstream::kv::Operation;
 use async_nats::{self, ServerAddr, jetstream};
-use chrono::{NaiveDate, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use futures_util::StreamExt;
 use parquet::{
     column::writer::ColumnWriter,
-    data_type::ByteArray,
     file::{metadata::KeyValue, properties::WriterProperties, writer::SerializedFileWriter},
     schema::parser::parse_message_type,
 };
@@ -38,8 +37,10 @@ struct NestedConfig {
 #[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 struct SensorConfig {
-    scan_rate: i32,
-    sampling_rate: f64,
+    #[serde(rename = "scans_per_read", alias = "scan_rate")]
+    scans_per_read: i32,
+    #[serde(rename = "scan_rate_hz", alias = "sampling_rate")]
+    scan_rate_hz: f64,
     channels_enabled: Vec<u8>,
     gains: i32,
     data_formats: Vec<String>,
@@ -51,7 +52,7 @@ struct SensorConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct SampleConfig {
     scans_per_read: i32,
-    suggested_scan_rate: f64,
+    scan_rate_hz: f64,
     channels: Vec<u8>,
     asset_number: u32,
     nats_subject: String,
@@ -64,8 +65,8 @@ impl From<(SensorConfig, &SampleConfig)> for SampleConfig {
     fn from((raw, base): (SensorConfig, &SampleConfig)) -> Self {
         let calibrations = parse_calibrations(&raw);
         SampleConfig {
-            scans_per_read: raw.scan_rate,
-            suggested_scan_rate: raw.sampling_rate,
+            scans_per_read: raw.scans_per_read,
+            scan_rate_hz: raw.scan_rate_hz,
             channels: raw.channels_enabled,
             asset_number: base.asset_number,
             nats_subject: base.nats_subject.clone(),
@@ -98,8 +99,8 @@ fn sample_config_from_nested(nested: NestedConfig) -> SampleConfig {
     let calibrations = parse_calibrations(&nested.sensor_settings);
     let raw = nested.sensor_settings;
     SampleConfig {
-        scans_per_read: raw.scan_rate,
-        suggested_scan_rate: raw.sampling_rate,
+        scans_per_read: raw.scans_per_read,
+        scan_rate_hz: raw.scan_rate_hz,
         channels: raw.channels_enabled,
         asset_number: nested.asset_number,
         nats_subject: nested.nats_subject,
@@ -112,7 +113,7 @@ fn sample_config_from_nested(nested: NestedConfig) -> SampleConfig {
 #[allow(dead_code)]
 struct ParquetLogger {
     writer: SerializedFileWriter<fs::File>,
-    buffer: Vec<(String, f64)>,
+    buffer: Vec<(i64, f64)>,
     max_rows: usize,
     date: NaiveDate,
     asset: u32,
@@ -144,7 +145,7 @@ impl ParquetLogger {
 
         let message_type = "
             message schema {
-                REQUIRED BINARY timestamp (UTF8);
+                REQUIRED INT64 timestamp_unix_ns;
                 REQUIRED DOUBLE value;
             }
         ";
@@ -173,8 +174,8 @@ impl ParquetLogger {
         }
     }
 
-    fn write_row(&mut self, ts: &str, val: f64) {
-        self.buffer.push((ts.to_string(), val));
+    fn write_row(&mut self, timestamp_unix_ns: i64, val: f64) {
+        self.buffer.push((timestamp_unix_ns, val));
         if self.buffer.len() >= self.max_rows {
             self.flush();
         }
@@ -190,12 +191,8 @@ impl ParquetLogger {
         {
             let mut scw = rg.next_column().unwrap().expect("timestamp col");
             let mut cw = scw.untyped();
-            if let ColumnWriter::ByteArrayColumnWriter(typed) = &mut cw {
-                let values: Vec<ByteArray> = self
-                    .buffer
-                    .iter()
-                    .map(|(ts, _)| ByteArray::from(ts.as_str()))
-                    .collect();
+            if let ColumnWriter::Int64ColumnWriter(typed) = &mut cw {
+                let values: Vec<i64> = self.buffer.iter().map(|(ts, _)| *ts).collect();
                 typed.write_batch(&values, None, None).unwrap();
             }
             scw.close().unwrap();
@@ -267,36 +264,79 @@ fn spawn_channel_logger(
         let mut logger: Option<ParquetLogger> = None;
         let mut file_index = next_file_index(asset, channel, Utc::now().date_naive());
         let mut active_calibration = calibration_for_task;
+        let mut last_sequence: Option<u64> = None;
 
         loop {
             tokio::select! {
                 Some(msg) = sub.next() => {
                     if let Ok(scan) = flatbuffers::root::<sampler::Scan>(&msg.payload) {
-                        if let Some(ts) = scan.timestamp() {
-                            if let Some(vals) = scan.values() {
-                                let today = Utc::now().date_naive();
+                        let sequence = scan.sequence();
+                        match last_sequence {
+                            Some(previous) if sequence == previous + 1 => {}
+                            Some(previous) if sequence > previous + 1 => {
+                                eprintln!(
+                                    "[logger] Channel {channel:02} sequence gap: expected {}, got {}",
+                                    previous + 1,
+                                    sequence
+                                );
+                            }
+                            Some(previous) if sequence <= previous => {
+                                println!(
+                                    "[logger] Channel {channel:02} sequence reset/new run: previous {}, current {}",
+                                    previous,
+                                    sequence
+                                );
+                            }
+                            _ => {}
+                        }
+                        last_sequence = Some(sequence);
 
-                                // rollover if day changes
-                                if logger.as_ref().map(|l| l.date != today).unwrap_or(true) {
+                        if let Some(vals) = scan.values() {
+                            let first_sample_unix_ns = scan.first_sample_unix_ns();
+                            let sample_interval_ns = scan.sample_interval_ns();
+
+                            for (index, v) in vals.iter().enumerate() {
+                                let timestamp_unix_ns = match sample_timestamp_ns(
+                                    first_sample_unix_ns,
+                                    sample_interval_ns,
+                                    index,
+                                ) {
+                                    Ok(ts) => ts,
+                                    Err(err) => {
+                                        eprintln!(
+                                            "[logger] Channel {channel:02} timestamp overflow at sequence {} sample {}: {}",
+                                            sequence,
+                                            index,
+                                            err
+                                        );
+                                        break;
+                                    }
+                                };
+
+                                let sample_date = timestamp_ns_to_utc_date(timestamp_unix_ns);
+                                if logger.as_ref().map(|l| l.date != sample_date).unwrap_or(true) {
                                     if let Some(l) = logger.take() {
                                         l.close();
                                         println!("[logger] Closed file {}", file_index);
                                     }
-                                    file_index = 1; // reset numbering for new day
+                                    file_index = if logger.is_none() && sample_date != Utc::now().date_naive() {
+                                        next_file_index(asset, channel, sample_date)
+                                    } else if sample_date == Utc::now().date_naive() {
+                                        next_file_index(asset, channel, sample_date)
+                                    } else {
+                                        next_file_index(asset, channel, sample_date)
+                                    };
                                     logger = Some(ParquetLogger::new(
                                         asset,
                                         channel,
                                         file_index,
-                                        today,
+                                        sample_date,
                                         active_calibration.clone(),
                                     ));
                                 }
 
                                 if let Some(log) = logger.as_mut() {
-                                    let ts = ts.to_string();
-                                    for v in vals {
-                                        log.write_row(&ts, v);
-                                    }
+                                    log.write_row(timestamp_unix_ns, v);
                                 }
                             }
                         }
@@ -353,6 +393,21 @@ fn spawn_channel_logger(
         calibration_tx,
         calibration,
     }
+}
+
+fn sample_timestamp_ns(
+    first_sample_unix_ns: u64,
+    sample_interval_ns: u64,
+    index: usize,
+) -> Result<i64, String> {
+    let timestamp = (first_sample_unix_ns as u128)
+        .checked_add((sample_interval_ns as u128).saturating_mul(index as u128))
+        .ok_or_else(|| "sample timestamp overflowed u128".to_string())?;
+    i64::try_from(timestamp).map_err(|_| "sample timestamp exceeds i64 range".to_string())
+}
+
+fn timestamp_ns_to_utc_date(timestamp_unix_ns: i64) -> NaiveDate {
+    DateTime::<Utc>::from_timestamp_nanos(timestamp_unix_ns).date_naive()
 }
 
 #[tokio::main]

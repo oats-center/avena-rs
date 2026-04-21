@@ -3,12 +3,20 @@ use ljmrs::{LJMError, LJMLibrary};
 use std::thread;
 use std::time::Duration;
 
+#[path = "common/example_env.rs"]
+mod example_env;
 #[path = "../src/labjack.rs"]
 mod labjack;
 #[path = "../src/ljm_mode.rs"]
 mod ljm_mode;
 
 fn main() -> Result<(), LJMError> {
+    match example_env::load_example_env() {
+        Ok(Some(path)) => println!("Loaded example env from {}", path.display()),
+        Ok(None) => println!("No example env file found. {}", example_env::config_hint()),
+        Err(err) => eprintln!("Failed to load example env: {err}"),
+    }
+
     unsafe {
         ljm_mode::init_ljm()?;
     }
@@ -44,8 +52,9 @@ fn main() -> Result<(), LJMError> {
 
     // Start stream
     let scans_per_read = 2; // small batch, similar to your per-loop reads
-    let scan_rate = 500.0; // ~same as your 200 ms delay (5 Hz)
-    let actual_rate = LJMLibrary::stream_start(handle, scans_per_read, scan_rate, chans.clone())?;
+    let scan_rate_hz = 500.0; // per-channel sample rate with this one-pass scan list
+    let actual_rate =
+        LJMLibrary::stream_start(handle, scans_per_read, scan_rate_hz, chans.clone())?;
     println!("Streaming started @ {:.2} Hz", actual_rate);
 
     // Loop like the read version

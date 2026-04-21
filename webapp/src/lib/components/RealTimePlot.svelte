@@ -61,6 +61,9 @@
     let margin = { top: 30, right: 40, bottom: 50, left: 80 };
     let frozenRange: { min: number; max: number } | null = null;
     let frozenRangeTriggerTime = 0;
+    let stickyAutoExtrema: { min: number; max: number } | null = null;
+    const Y_GRID_DIVISIONS = 8;
+    const MIN_AUTO_Y_INTERVAL = 0.01;
     
     // Color palette for different channels
     const colors = [
@@ -145,10 +148,50 @@
     
     function computeValueRange(points: DataPoint[]): { min: number; max: number } | null {
         if (!points || points.length === 0) return null;
-        const values = points.map((point) => point.value);
-        const minValue = Math.min(...values);
-        const maxValue = Math.max(...values);
+        let minValue = Number.POSITIVE_INFINITY;
+        let maxValue = Number.NEGATIVE_INFINITY;
+        for (const point of points) {
+            if (!Number.isFinite(point.value)) continue;
+            minValue = Math.min(minValue, point.value);
+            maxValue = Math.max(maxValue, point.value);
+        }
+        if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) return null;
         return { min: minValue, max: maxValue };
+    }
+
+    function niceStep(value: number): number {
+        if (!Number.isFinite(value) || value <= 0) return MIN_AUTO_Y_INTERVAL;
+        const exponent = Math.floor(Math.log10(value));
+        const fraction = value / Math.pow(10, exponent);
+
+        let niceFraction = 10;
+        if (fraction <= 1) niceFraction = 1;
+        else if (fraction <= 2) niceFraction = 2;
+        else if (fraction <= 5) niceFraction = 5;
+
+        return Math.max(MIN_AUTO_Y_INTERVAL, niceFraction * Math.pow(10, exponent));
+    }
+
+    function normalizeAutoDisplayRange(extrema: { min: number; max: number }): { low: number; high: number; step: number } {
+        const midpoint = (extrema.min + extrema.max) / 2;
+        const observedSpan = Math.max(extrema.max - extrema.min, MIN_AUTO_Y_INTERVAL * Y_GRID_DIVISIONS);
+        const paddedSpan = Math.max(
+            MIN_AUTO_Y_INTERVAL * Y_GRID_DIVISIONS,
+            observedSpan * 1.2
+        );
+        const step = niceStep(paddedSpan / Y_GRID_DIVISIONS);
+        const totalSpan = step * Y_GRID_DIVISIONS;
+        const snappedLow = Math.floor((midpoint - (totalSpan / 2)) / step) * step;
+        const low = Number(snappedLow.toFixed(6));
+        const high = Number((low + totalSpan).toFixed(6));
+        return { low, high, step };
+    }
+
+    function formatAxisValue(value: number, step: number): string {
+        const decimals = step >= 1
+            ? 2
+            : Math.min(6, Math.max(2, Math.ceil(-Math.log10(step))));
+        return value.toFixed(decimals);
     }
 
     function getDisplayRange(points: DataPoint[]): { low: number; high: number } | null {
@@ -159,14 +202,29 @@
             return { low, high };
         }
 
-        const autoRange = mode === 'frozen' && frozenRange ? frozenRange : computeValueRange(points);
-        if (!autoRange) return null;
-        const span = autoRange.max - autoRange.min;
-        const padding = span > 0 ? span * 0.1 : 1;
-        return {
-            low: autoRange.min - padding,
-            high: autoRange.max + padding
-        };
+        if (mode === 'frozen') {
+            const frozenExtrema = frozenRange ?? computeValueRange(points);
+            if (!frozenExtrema) return null;
+            const { low, high } = normalizeAutoDisplayRange(frozenExtrema);
+            return { low, high };
+        }
+
+        const currentExtrema = computeValueRange(points);
+        if (!currentExtrema) {
+            if (!stickyAutoExtrema) return null;
+            const { low, high } = normalizeAutoDisplayRange(stickyAutoExtrema);
+            return { low, high };
+        }
+
+        stickyAutoExtrema = stickyAutoExtrema
+            ? {
+                min: Math.min(stickyAutoExtrema.min, currentExtrema.min),
+                max: Math.max(stickyAutoExtrema.max, currentExtrema.max)
+            }
+            : currentExtrema;
+
+        const { low, high } = normalizeAutoDisplayRange(stickyAutoExtrema);
+        return { low, high };
     }
 
     function mapValueToY(value: number, range: { low: number; high: number }): number {
@@ -240,13 +298,14 @@
 
         if (range) {
             const span = range.high - range.low;
+            const step = span / Y_GRID_DIVISIONS;
             for (let i = 0; i <= 8; i++) {
                 const y = margin.top + (i / 8) * (plotHeight - margin.top - margin.bottom);
                 const ratio = i / 8;
                 const value = invertY
                     ? range.low + ratio * span
                     : range.high - ratio * span;
-                ctx.fillText(value.toFixed(2), margin.left - 20, y);
+                ctx.fillText(formatAxisValue(value, step), margin.left - 20, y);
             }
         } else {
             // Show default scale when no data
@@ -645,6 +704,14 @@
                 // For continuous mode, render on any data change
                 render();
             }
+        }
+    });
+
+    $effect(() => {
+        if (!yAutoScale) {
+            stickyAutoExtrema = null;
+        } else if (mode !== 'frozen' && data.length === 0) {
+            stickyAutoExtrema = null;
         }
     });
 

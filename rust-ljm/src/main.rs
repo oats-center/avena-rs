@@ -1,6 +1,5 @@
-use chrono::{TimeZone, Utc};
-use chrono_tz::America::New_York;
 use serde::{Deserialize, Serialize};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::{mpsc, watch};
 use tokio::time::Duration;
 
@@ -36,8 +35,10 @@ struct NestedConfig {
 #[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 struct SensorSettings {
-    scan_rate: i32,
-    sampling_rate: f64,
+    #[serde(rename = "scans_per_read", alias = "scan_rate")]
+    scans_per_read: i32,
+    #[serde(rename = "scan_rate_hz", alias = "sampling_rate")]
+    scan_rate_hz: f64,
     channels_enabled: Vec<u8>,
     gains: i32,
     data_formats: Vec<String>,
@@ -48,7 +49,7 @@ struct SensorSettings {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct SampleConfig {
     scans_per_read: i32,
-    suggested_scan_rate: f64,
+    scan_rate_hz: f64,
     channels: Vec<u8>,
     asset_number: u32,
     nats_subject: String,
@@ -56,19 +57,23 @@ struct SampleConfig {
     rotate_secs: u64,
 }
 
-impl From<(NestedConfig, &SampleConfig)> for SampleConfig {
-    fn from((nested, base): (NestedConfig, &SampleConfig)) -> Self {
-        let raw = nested.sensor_settings;
-        SampleConfig {
-            scans_per_read: raw.scan_rate,
-            suggested_scan_rate: raw.sampling_rate,
-            channels: raw.channels_enabled,
-            asset_number: base.asset_number,
-            nats_subject: base.nats_subject.clone(),
-            nats_stream: base.nats_stream.clone(),
-            rotate_secs: base.rotate_secs,
-        }
+fn sample_config_from_nested(nested: NestedConfig) -> SampleConfig {
+    let raw = nested.sensor_settings;
+    SampleConfig {
+        scans_per_read: raw.scans_per_read,
+        scan_rate_hz: raw.scan_rate_hz,
+        channels: raw.channels_enabled,
+        asset_number: nested.asset_number,
+        nats_subject: nested.nats_subject,
+        nats_stream: nested.nats_stream,
+        rotate_secs: nested.rotate_secs,
     }
+}
+
+fn sample_config_from_json(bytes: &[u8]) -> Result<SampleConfig, LJMError> {
+    let nested_cfg: NestedConfig = serde_json::from_slice(bytes)
+        .map_err(|e| LJMError::LibraryError(format!("Config JSON parse error: {}", e)))?;
+    Ok(sample_config_from_nested(nested_cfg))
 }
 
 struct LabJackGuard {
@@ -150,22 +155,7 @@ async fn ensure_kv_bucket(js: &jetstream::Context, bucket: &str) -> Result<kv::S
 
 async fn load_config_from_kv(store: &kv::Store, key: &str) -> Result<SampleConfig, LJMError> {
     match store.entry(key).await {
-        Ok(Some(entry)) => {
-            let nested_cfg: NestedConfig = serde_json::from_slice(entry.value.as_ref())
-                .map_err(|e| LJMError::LibraryError(format!("Config JSON parse error: {}", e)))?;
-
-            let cfg = SampleConfig {
-                scans_per_read: nested_cfg.sensor_settings.scan_rate,
-                suggested_scan_rate: nested_cfg.sensor_settings.sampling_rate,
-                channels: nested_cfg.sensor_settings.channels_enabled.clone(),
-                asset_number: nested_cfg.asset_number,
-                nats_subject: nested_cfg.nats_subject.clone(),
-                nats_stream: nested_cfg.nats_stream.clone(),
-                rotate_secs: nested_cfg.rotate_secs,
-            };
-
-            Ok(cfg)
-        }
+        Ok(Some(entry)) => sample_config_from_json(entry.value.as_ref()),
         Ok(None) => Err(LJMError::LibraryError(format!(
             "KV key '{}' not found",
             key
@@ -198,40 +188,7 @@ async fn watch_kv_config(
                 match maybe {
                     Some(Ok(entry)) => {
                         if entry.operation == Operation::Put {
-                            // try nested format first
-                            let parsed = serde_json::from_slice::<NestedConfig>(entry.value.as_ref())
-                                .map(|nested| {
-                                    let raw = nested.sensor_settings;
-                                    let base = config_tx.borrow().clone();
-
-                                    SampleConfig {
-                                        scans_per_read: raw.scan_rate,
-                                        suggested_scan_rate: raw.sampling_rate,
-                                        channels: raw.channels_enabled,
-                                        asset_number: base.asset_number,
-                                        nats_subject: base.nats_subject,
-                                        nats_stream: base.nats_stream,
-                                        rotate_secs: base.rotate_secs,
-                                    }
-
-                                })
-                                .or_else(|_| {
-                                    serde_json::from_slice::<NestedConfig>(entry.value.as_ref())
-                                        .map(|nested| {
-                                            let raw = nested.sensor_settings;
-                                            SampleConfig {
-                                                scans_per_read: raw.scan_rate,
-                                                suggested_scan_rate: raw.sampling_rate,
-                                                channels: raw.channels_enabled,
-                                                asset_number: nested.asset_number,
-                                                nats_subject: nested.nats_subject,
-                                                nats_stream: nested.nats_stream,
-                                                rotate_secs: nested.rotate_secs,
-                                            }
-                                        })
-                                });
-
-                            match parsed {
+                            match sample_config_from_json(entry.value.as_ref()) {
                                 Ok(new_cfg) => {
                                     if new_cfg != *config_tx.borrow() {
                                         println!(
@@ -242,7 +199,7 @@ async fn watch_kv_config(
                                     }
                                 }
                                 Err(e) => {
-                                    eprintln!("[watch_kv_config] Failed to parse JSON for key '{}': {}", entry.key, e);
+                                    eprintln!("[watch_kv_config] Failed to parse JSON for key '{}': {:?}", entry.key, e);
                                 }
                             }
                         } else {
@@ -264,6 +221,85 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
+
+#[derive(Debug, Clone, Copy)]
+struct StreamClock {
+    sample_interval_ns: u64,
+    next_first_sample_unix_ns: u64,
+    sequence: u64,
+    last_batch_samples: usize,
+    run_started: bool,
+}
+
+impl StreamClock {
+    fn new(sample_interval_ns: u64) -> Self {
+        Self {
+            sample_interval_ns,
+            next_first_sample_unix_ns: 0,
+            sequence: 0,
+            last_batch_samples: 0,
+            run_started: false,
+        }
+    }
+
+    fn next_batch(&mut self, batch_samples: usize) -> Result<(u64, u64), LJMError> {
+        if batch_samples == 0 {
+            return Err(LJMError::LibraryError(
+                "Received empty batch; refusing to guess timestamps".to_string(),
+            ));
+        }
+
+        let first_sample_unix_ns = if !self.run_started {
+            let now_ns = unix_time_now_ns()?;
+            let offset_ns = (batch_samples.saturating_sub(1) as u128)
+                .saturating_mul(self.sample_interval_ns as u128);
+            let first = (now_ns as u128).saturating_sub(offset_ns);
+            u64::try_from(first).map_err(|_| {
+                LJMError::LibraryError("Initial stream timestamp overflowed u64".to_string())
+            })?
+        } else {
+            self.next_first_sample_unix_ns
+        };
+
+        let batch_span_ns = (batch_samples as u128).saturating_mul(self.sample_interval_ns as u128);
+        let next = (first_sample_unix_ns as u128).saturating_add(batch_span_ns);
+        self.next_first_sample_unix_ns = u64::try_from(next).map_err(|_| {
+            LJMError::LibraryError("Next stream timestamp overflowed u64".to_string())
+        })?;
+
+        let sequence = self.sequence;
+        self.sequence = self.sequence.saturating_add(1);
+        self.last_batch_samples = batch_samples;
+        self.run_started = true;
+
+        Ok((first_sample_unix_ns, sequence))
+    }
+}
+
+fn unix_time_now_ns() -> Result<u64, LJMError> {
+    let duration = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| LJMError::LibraryError(format!("system clock before Unix epoch: {e}")))?;
+    u64::try_from(duration.as_nanos())
+        .map_err(|_| LJMError::LibraryError("system time nanoseconds overflowed u64".to_string()))
+}
+
+fn derive_sample_interval_ns(actual_rate: f64) -> Result<u64, LJMError> {
+    if !actual_rate.is_finite() || actual_rate <= 0.0 {
+        return Err(LJMError::LibraryError(format!(
+            "Invalid actual scan rate returned by stream_start: {actual_rate}"
+        )));
+    }
+
+    let interval = (1_000_000_000.0 / actual_rate).round();
+    if !interval.is_finite() || interval <= 0.0 {
+        return Err(LJMError::LibraryError(format!(
+            "Failed to derive sample interval from actual scan rate: {actual_rate}"
+        )));
+    }
+
+    Ok(interval as u64)
+}
 
 async fn sample_with_config(
     run_id: usize,
@@ -316,12 +352,17 @@ async fn sample_with_config(
     let actual_rate = LJMLibrary::stream_start(
         handle,
         cfg.scans_per_read,
-        cfg.suggested_scan_rate,
+        cfg.scan_rate_hz,
         channel_addresses.clone(),
     )?;
     println!(
         "[run #{run_id}] Streaming started: {} scans/read @ {} Hz",
         cfg.scans_per_read, actual_rate
+    );
+    let sample_interval_ns = derive_sample_interval_ns(actual_rate)?;
+    println!(
+        "[run #{run_id}] Derived sample interval: {} ns from actual scan rate {} Hz",
+        sample_interval_ns, actual_rate
     );
 
     let (scan_tx, mut scan_rx) = mpsc::channel::<Vec<f64>>(32);
@@ -347,14 +388,54 @@ async fn sample_with_config(
             }
         }
     });
+    drop(scan_tx);
 
     let mut builder = FlatBufferBuilder::new();
+    let mut clock = StreamClock::new(sample_interval_ns);
 
     loop {
         tokio::select! {
-            Some(batch) = scan_rx.recv() => {
-                let batch_timestamp = New_York.from_utc_datetime(&Utc::now().naive_utc()).to_rfc3339();
+            maybe_batch = scan_rx.recv() => {
+                let Some(batch) = maybe_batch else {
+                    eprintln!(
+                        "[run #{run_id}] Stream reader ended unexpectedly at sequence {}. Next expected first sample ns {}",
+                        clock.sequence,
+                        clock.next_first_sample_unix_ns
+                    );
+                    running.store(false, Ordering::Relaxed);
+                    let _ = LJMLibrary::stream_stop(handle);
+                    let _ = read_handle.await;
+                    return Err(LJMError::LibraryError(
+                        "Stream reader terminated unexpectedly".to_string(),
+                    ));
+                };
+                if batch.is_empty() {
+                    eprintln!("[run #{run_id}] Received empty batch; stopping run.");
+                    running.store(false, Ordering::Relaxed);
+                    let _ = LJMLibrary::stream_stop(handle);
+                    let _ = read_handle.await;
+                    return Err(LJMError::LibraryError(
+                        "Received empty batch from stream_read".to_string(),
+                    ));
+                }
+                if batch.len() % num_channels != 0 {
+                    eprintln!(
+                        "[run #{run_id}] Batch length {} is not divisible by channel count {}; stopping run as discontinuity.",
+                        batch.len(),
+                        num_channels
+                    );
+                    running.store(false, Ordering::Relaxed);
+                    let _ = LJMLibrary::stream_stop(handle);
+                    let _ = read_handle.await;
+                    return Err(LJMError::LibraryError(format!(
+                        "Malformed stream batch: {} values for {} channels",
+                        batch.len(),
+                        num_channels
+                    )));
+                }
 
+                let batch_samples = batch.len() / num_channels;
+                let (first_sample_unix_ns, sequence) = clock.next_batch(batch_samples)?;
                 let scans = batch.chunks(num_channels);
                 let mut per_channel: Vec<Vec<f64>> = (0..num_channels)
                     .map(|_| Vec::with_capacity(scans.len()))
@@ -368,9 +449,14 @@ async fn sample_with_config(
 
                 for (i, values) in per_channel.into_iter().enumerate() {
                     builder.reset();
-                    let ts_fb = builder.create_string(&batch_timestamp);
                     let values_fb = builder.create_vector(&values);
-                    let scan_args = ScanArgs { timestamp: Some(ts_fb), values: Some(values_fb)};
+                    let scan_args = ScanArgs {
+                        first_sample_unix_ns,
+                        sample_interval_ns,
+                        actual_scan_rate_hz: actual_rate,
+                        sequence,
+                        values: Some(values_fb),
+                    };
                     let scan_offset = sampler::Scan::create(&mut builder, &scan_args);
                     builder.finish(scan_offset, None);
 
@@ -385,19 +471,25 @@ async fn sample_with_config(
                 }
             }
             _ = config_rx.changed() => {
-                println!("[run #{run_id}] Config change detected. Stopping stream...");
+                println!(
+                    "[run #{run_id}] Config change detected. Stopping stream at sequence {}. Next expected first sample ns {}",
+                    clock.sequence,
+                    clock.next_first_sample_unix_ns
+                );
                 running.store(false, Ordering::Relaxed);
                 let _ = LJMLibrary::stream_stop(handle);
-                drop(scan_tx);
                 let _ = read_handle.await;
                 return Ok(());
             }
             _ = shutdown_rx.changed() => {
                 if *shutdown_rx.borrow() {
-                    println!("[run #{run_id}] Shutdown signal received. Stopping stream...");
+                    println!(
+                        "[run #{run_id}] Shutdown signal received. Stopping stream at sequence {}. Next expected first sample ns {}",
+                        clock.sequence,
+                        clock.next_first_sample_unix_ns
+                    );
                     running.store(false, Ordering::Relaxed);
                     let _ = LJMLibrary::stream_stop(handle);
-                    drop(scan_tx);
                     let _ = read_handle.await;
                     return Ok(());
                 }
@@ -502,4 +594,89 @@ async fn main() -> Result<(), LJMError> {
     let _ = shutdown_tx.send(true);
     tokio::time::sleep(Duration::from_millis(300)).await;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_kv_json(scans_field: &str, scans_value: &str, rate_field: &str, rate_value: &str) -> String {
+        format!(
+            r#"{{
+  "labjack_name": "Unit A",
+  "asset_number": 1456,
+  "max_channels": 14,
+  "nats_subject": "avenabox",
+  "nats_stream": "labjacks",
+  "rotate_secs": 300,
+  "sensor_settings": {{
+    "{scans_field}": {scans_value},
+    "{rate_field}": {rate_value},
+    "channels_enabled": [7, 11],
+    "gains": 1,
+    "data_formats": ["voltage", "voltage"],
+    "measurement_units": ["V", "V"],
+    "labjack_on_off": true
+  }}
+}}"#
+        )
+    }
+
+    #[test]
+    fn derive_interval_from_actual_rate() {
+        let interval = derive_sample_interval_ns(5_000.0).expect("valid rate");
+        assert_eq!(interval, 200_000);
+    }
+
+    #[test]
+    fn clock_advances_monotonically_after_first_batch() {
+        let mut clock = StreamClock::new(200_000);
+        let (first, seq0) = clock.next_batch(10).expect("first batch");
+        let (second, seq1) = clock.next_batch(10).expect("second batch");
+        assert_eq!(seq0, 0);
+        assert_eq!(seq1, 1);
+        assert_eq!(second, first + (10 * 200_000));
+    }
+
+    #[test]
+    fn clock_resets_sequence_on_new_run() {
+        let mut clock = StreamClock::new(1_000);
+        let _ = clock.next_batch(3).expect("first batch");
+        let _ = clock.next_batch(3).expect("second batch");
+
+        let reset_clock = StreamClock::new(1_000);
+        assert_eq!(reset_clock.sequence, 0);
+    }
+
+    #[test]
+    fn clock_rejects_empty_batch() {
+        let mut clock = StreamClock::new(1_000);
+        assert!(clock.next_batch(0).is_err());
+    }
+
+    #[test]
+    fn kv_config_parses_canonical_field_names() {
+        let config = sample_config_from_json(
+            sample_kv_json("scans_per_read", "200", "scan_rate_hz", "5000").as_bytes(),
+        )
+        .expect("canonical config should parse");
+
+        assert_eq!(config.scans_per_read, 200);
+        assert_eq!(config.scan_rate_hz, 5000.0);
+        assert_eq!(config.channels, vec![7, 11]);
+        assert_eq!(config.asset_number, 1456);
+        assert_eq!(config.nats_subject, "avenabox");
+    }
+
+    #[test]
+    fn kv_config_parses_legacy_field_names() {
+        let config = sample_config_from_json(
+            sample_kv_json("scan_rate", "200", "sampling_rate", "1000").as_bytes(),
+        )
+        .expect("legacy config should parse");
+
+        assert_eq!(config.scans_per_read, 200);
+        assert_eq!(config.scan_rate_hz, 1000.0);
+        assert_eq!(config.rotate_secs, 300);
+    }
 }

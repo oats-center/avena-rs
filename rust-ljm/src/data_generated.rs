@@ -34,8 +34,11 @@ impl<'a> flatbuffers::Follow<'a> for Scan<'a> {
 }
 
 impl<'a> Scan<'a> {
-  pub const VT_TIMESTAMP: flatbuffers::VOffsetT = 4;
-  pub const VT_VALUES: flatbuffers::VOffsetT = 6;
+  pub const VT_FIRST_SAMPLE_UNIX_NS: flatbuffers::VOffsetT = 4;
+  pub const VT_SAMPLE_INTERVAL_NS: flatbuffers::VOffsetT = 6;
+  pub const VT_ACTUAL_SCAN_RATE_HZ: flatbuffers::VOffsetT = 8;
+  pub const VT_SEQUENCE: flatbuffers::VOffsetT = 10;
+  pub const VT_VALUES: flatbuffers::VOffsetT = 12;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -47,18 +50,42 @@ impl<'a> Scan<'a> {
     args: &'args ScanArgs<'args>
   ) -> flatbuffers::WIPOffset<Scan<'bldr>> {
     let mut builder = ScanBuilder::new(_fbb);
+    builder.add_sequence(args.sequence);
+    builder.add_actual_scan_rate_hz(args.actual_scan_rate_hz);
+    builder.add_sample_interval_ns(args.sample_interval_ns);
+    builder.add_first_sample_unix_ns(args.first_sample_unix_ns);
     if let Some(x) = args.values { builder.add_values(x); }
-    if let Some(x) = args.timestamp { builder.add_timestamp(x); }
     builder.finish()
   }
 
 
   #[inline]
-  pub fn timestamp(&self) -> Option<&'a str> {
+  pub fn first_sample_unix_ns(&self) -> u64 {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(Scan::VT_TIMESTAMP, None)}
+    unsafe { self._tab.get::<u64>(Scan::VT_FIRST_SAMPLE_UNIX_NS, Some(0)).unwrap()}
+  }
+  #[inline]
+  pub fn sample_interval_ns(&self) -> u64 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<u64>(Scan::VT_SAMPLE_INTERVAL_NS, Some(0)).unwrap()}
+  }
+  #[inline]
+  pub fn actual_scan_rate_hz(&self) -> f64 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<f64>(Scan::VT_ACTUAL_SCAN_RATE_HZ, Some(0.0)).unwrap()}
+  }
+  #[inline]
+  pub fn sequence(&self) -> u64 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<u64>(Scan::VT_SEQUENCE, Some(0)).unwrap()}
   }
   #[inline]
   pub fn values(&self) -> Option<flatbuffers::Vector<'a, f64>> {
@@ -76,21 +103,30 @@ impl flatbuffers::Verifiable for Scan<'_> {
   ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
     use self::flatbuffers::Verifiable;
     v.visit_table(pos)?
-     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("timestamp", Self::VT_TIMESTAMP, false)?
+     .visit_field::<u64>("first_sample_unix_ns", Self::VT_FIRST_SAMPLE_UNIX_NS, false)?
+     .visit_field::<u64>("sample_interval_ns", Self::VT_SAMPLE_INTERVAL_NS, false)?
+     .visit_field::<f64>("actual_scan_rate_hz", Self::VT_ACTUAL_SCAN_RATE_HZ, false)?
+     .visit_field::<u64>("sequence", Self::VT_SEQUENCE, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, f64>>>("values", Self::VT_VALUES, false)?
      .finish();
     Ok(())
   }
 }
 pub struct ScanArgs<'a> {
-    pub timestamp: Option<flatbuffers::WIPOffset<&'a str>>,
+    pub first_sample_unix_ns: u64,
+    pub sample_interval_ns: u64,
+    pub actual_scan_rate_hz: f64,
+    pub sequence: u64,
     pub values: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, f64>>>,
 }
 impl<'a> Default for ScanArgs<'a> {
   #[inline]
   fn default() -> Self {
     ScanArgs {
-      timestamp: None,
+      first_sample_unix_ns: 0,
+      sample_interval_ns: 0,
+      actual_scan_rate_hz: 0.0,
+      sequence: 0,
       values: None,
     }
   }
@@ -102,8 +138,20 @@ pub struct ScanBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
 }
 impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> ScanBuilder<'a, 'b, A> {
   #[inline]
-  pub fn add_timestamp(&mut self, timestamp: flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(Scan::VT_TIMESTAMP, timestamp);
+  pub fn add_first_sample_unix_ns(&mut self, first_sample_unix_ns: u64) {
+    self.fbb_.push_slot::<u64>(Scan::VT_FIRST_SAMPLE_UNIX_NS, first_sample_unix_ns, 0);
+  }
+  #[inline]
+  pub fn add_sample_interval_ns(&mut self, sample_interval_ns: u64) {
+    self.fbb_.push_slot::<u64>(Scan::VT_SAMPLE_INTERVAL_NS, sample_interval_ns, 0);
+  }
+  #[inline]
+  pub fn add_actual_scan_rate_hz(&mut self, actual_scan_rate_hz: f64) {
+    self.fbb_.push_slot::<f64>(Scan::VT_ACTUAL_SCAN_RATE_HZ, actual_scan_rate_hz, 0.0);
+  }
+  #[inline]
+  pub fn add_sequence(&mut self, sequence: u64) {
+    self.fbb_.push_slot::<u64>(Scan::VT_SEQUENCE, sequence, 0);
   }
   #[inline]
   pub fn add_values(&mut self, values: flatbuffers::WIPOffset<flatbuffers::Vector<'b , f64>>) {
@@ -127,7 +175,10 @@ impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> ScanBuilder<'a, 'b, A> {
 impl core::fmt::Debug for Scan<'_> {
   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
     let mut ds = f.debug_struct("Scan");
-      ds.field("timestamp", &self.timestamp());
+      ds.field("first_sample_unix_ns", &self.first_sample_unix_ns());
+      ds.field("sample_interval_ns", &self.sample_interval_ns());
+      ds.field("actual_scan_rate_hz", &self.actual_scan_rate_hz());
+      ds.field("sequence", &self.sequence());
       ds.field("values", &self.values());
       ds.finish()
   }

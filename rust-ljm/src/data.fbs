@@ -1,7 +1,10 @@
 namespace sampler;
 
 table Scan {
-  timestamp: string;
+  first_sample_unix_ns: ulong;
+  sample_interval_ns: ulong;
+  actual_scan_rate_hz: double;
+  sequence: ulong;
   values: [double];
 }
 

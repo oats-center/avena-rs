@@ -29,9 +29,13 @@ fn open_csv_for_channel(out_dir: &Path, asset: u32, ch_token: &str) -> std::io::
 
     let mut file = OpenOptions::new().create(true).append(true).open(&path)?;
     if need_header || file.metadata()?.len() == 0 {
-        writeln!(file, "timestamp,values")?;
+        writeln!(file, "sequence,timestamp,raw_value")?;
     }
     Ok(file)
+}
+
+fn timestamp_unix_ns_to_rfc3339(timestamp_unix_ns: i64) -> Option<String> {
+    Some(chrono::DateTime::<chrono::Utc>::from_timestamp_nanos(timestamp_unix_ns).to_rfc3339())
 }
 
 #[tokio::main]
@@ -90,9 +94,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         match root::<sampler::Scan>(&msg.payload) {
             Ok(scan) => {
-                let timestamp = scan.timestamp().unwrap_or("<no ts>");
-                let values = scan.values().unwrap();
-                let values_vec: Vec<f64> = values.iter().collect();
+                let values = match scan.values() {
+                    Some(values) => values,
+                    None => continue,
+                };
+                let sequence = scan.sequence();
+                let first_sample_unix_ns = scan.first_sample_unix_ns();
+                let sample_interval_ns = scan.sample_interval_ns();
 
                 let out_dir_clone = out_dir.clone();
                 let file = files.entry(ch_token.clone()).or_insert_with(move || {
@@ -100,13 +108,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         .expect("failed to open per-channel csv")
                 });
 
-                let values_str = values_vec
-                    .iter()
-                    .map(|v| v.to_string())
-                    .collect::<Vec<_>>()
-                    .join(";");
-
-                writeln!(file, "{},{}", timestamp, values_str)?;
+                for (index, value) in values.iter().enumerate() {
+                    let timestamp_unix_ns = (first_sample_unix_ns as u128)
+                        .saturating_add((sample_interval_ns as u128).saturating_mul(index as u128));
+                    let timestamp_unix_ns = match i64::try_from(timestamp_unix_ns) {
+                        Ok(ts) => ts,
+                        Err(_) => {
+                            eprintln!(
+                                "timestamp overflow for subject '{}' sequence {} sample {}",
+                                msg.subject, sequence, index
+                            );
+                            break;
+                        }
+                    };
+                    let Some(timestamp) = timestamp_unix_ns_to_rfc3339(timestamp_unix_ns) else {
+                        continue;
+                    };
+                    writeln!(file, "{},{},{}", sequence, timestamp, value)?;
+                }
                 file.flush()?;
             }
             Err(e) => {

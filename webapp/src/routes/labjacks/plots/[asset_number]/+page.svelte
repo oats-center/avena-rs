@@ -7,14 +7,13 @@
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
     import {
         FlatBufferParser,
-        calculateReceiveSampleTimestamps,
         calculateSourceSampleTimestamps
     } from "$lib/flatbuffer-parser";
 
     
     interface SensorSettings {
-        scan_rate: number;
-        sampling_rate: number;
+        scans_per_read: number;
+        scan_rate_hz: number;
         channels_enabled: number[];
         gains: number;
         data_formats: string[];
@@ -34,8 +33,8 @@
     }
 
     const DEFAULT_SENSOR_SETTINGS: SensorSettings = {
-        scan_rate: 200,
-        sampling_rate: 1000,
+        scans_per_read: 200,
+        scan_rate_hz: 1000,
         channels_enabled: [],
         gains: 1,
         data_formats: [],
@@ -44,18 +43,37 @@
         calibrations: {}
     };
 
-    function normalizeLabJackConfig(raw: any): LabJackConfig | null {
-        if (!raw || typeof raw !== "object") return null;
-        const sensor = { ...DEFAULT_SENSOR_SETTINGS, ...(raw.sensor_settings ?? {}) } as SensorSettings;
-        if (!Array.isArray(sensor.channels_enabled)) sensor.channels_enabled = [];
-        if (!Array.isArray(sensor.data_formats)) sensor.data_formats = [];
-        if (!Array.isArray(sensor.measurement_units)) sensor.measurement_units = [];
-        if (!Number.isFinite(sensor.scan_rate)) sensor.scan_rate = DEFAULT_SENSOR_SETTINGS.scan_rate;
-        if (!Number.isFinite(sensor.sampling_rate)) sensor.sampling_rate = DEFAULT_SENSOR_SETTINGS.sampling_rate;
+    function normalizeSensorSettings(rawSensor: any): SensorSettings {
+        const sensor: SensorSettings = {
+            scans_per_read: Number(
+                rawSensor?.scans_per_read ?? rawSensor?.scan_rate ?? DEFAULT_SENSOR_SETTINGS.scans_per_read
+            ),
+            scan_rate_hz: Number(
+                rawSensor?.scan_rate_hz ?? rawSensor?.sampling_rate ?? DEFAULT_SENSOR_SETTINGS.scan_rate_hz
+            ),
+            channels_enabled: Array.isArray(rawSensor?.channels_enabled) ? [...rawSensor.channels_enabled] : [],
+            gains: Number(rawSensor?.gains ?? DEFAULT_SENSOR_SETTINGS.gains),
+            data_formats: Array.isArray(rawSensor?.data_formats) ? [...rawSensor.data_formats] : [],
+            measurement_units: Array.isArray(rawSensor?.measurement_units) ? [...rawSensor.measurement_units] : [],
+            labjack_on_off: Boolean(rawSensor?.labjack_on_off),
+            calibrations:
+                rawSensor?.calibrations && typeof rawSensor.calibrations === "object"
+                    ? { ...rawSensor.calibrations }
+                    : {}
+        };
+
+        if (!Number.isFinite(sensor.scans_per_read)) sensor.scans_per_read = DEFAULT_SENSOR_SETTINGS.scans_per_read;
+        if (!Number.isFinite(sensor.scan_rate_hz)) sensor.scan_rate_hz = DEFAULT_SENSOR_SETTINGS.scan_rate_hz;
         if (!Number.isFinite(sensor.gains)) sensor.gains = DEFAULT_SENSOR_SETTINGS.gains;
-        if (!sensor.calibrations || typeof sensor.calibrations !== "object") sensor.calibrations = {};
         while (sensor.data_formats.length < sensor.channels_enabled.length) sensor.data_formats.push("voltage");
         while (sensor.measurement_units.length < sensor.channels_enabled.length) sensor.measurement_units.push("V");
+
+        return sensor;
+    }
+
+    function normalizeLabJackConfig(raw: any): LabJackConfig | null {
+        if (!raw || typeof raw !== "object") return null;
+        const sensor = normalizeSensorSettings(raw.sensor_settings ?? {});
 
         return {
             labjack_name: raw.labjack_name ?? "unknown",
@@ -93,6 +111,8 @@
         invertX: boolean;
         invertY: boolean;
     }
+
+    const TARGET_SAMPLES_PER_WINDOW = 1000;
     
     let assetNumber = $state<number>(0);
     let labjackConfig = $state<LabJackConfig | null>(null);
@@ -113,7 +133,7 @@
     let channelPrebufferReady = $state<Map<number, boolean>>(new Map());
     let uiNow = $state<number>(Date.now());
     let uiNowTimer: ReturnType<typeof setInterval> | null = null;
-    let timeWindow = $state<number>(5); // seconds
+    let timeWindow = $state<number>(1); // seconds
     let maxDataPoints = $state<number>(10000);
     let showExportModal = $state<boolean>(false);
     let exportStart = $state<string>("");
@@ -134,7 +154,10 @@
     });
 
     $effect(() => {
-        if (labjackConfig) updateMaxDataPoints();
+        if (labjackConfig) {
+            timeWindow = deriveAutoTimeWindowSec(labjackConfig.sensor_settings.scan_rate_hz);
+            updateMaxDataPoints();
+        }
     });
 
     $effect(() => {
@@ -146,7 +169,7 @@
 
     function updateMaxDataPoints() {
         if (!labjackConfig) return;
-        const sr = labjackConfig.sensor_settings.sampling_rate;
+        const sr = labjackConfig.sensor_settings.scan_rate_hz;
         let requiredSeconds = timeWindow * 2;
 
         for (const axis of axisSettings.values()) {
@@ -160,6 +183,13 @@
 
         maxDataPoints = Math.ceil(sr * requiredSeconds);
         console.log(`Max data points in rolling buffer: ${maxDataPoints}`);
+    }
+
+    function deriveAutoTimeWindowSec(scanRateHz: number): number {
+        if (!Number.isFinite(scanRateHz) || scanRateHz <= 0) {
+            return 1;
+        }
+        return Math.max(0.05, TARGET_SAMPLES_PER_WINDOW / scanRateHz);
     }
 
     function downsampleForDisplay(data: DataPoint[]): DataPoint[] {
@@ -253,6 +283,7 @@
     
     function initializeChannelData() {
         if (!labjackConfig) return;
+        const autoTimeWindow = deriveAutoTimeWindowSec(labjackConfig.sensor_settings.scan_rate_hz);
         
         const newChannelData = new Map<number, DataPoint[]>();
         const newFrozenChannelData = new Map<number, DataPoint[]>();
@@ -271,7 +302,7 @@
                 autoY: true,
                 yMin: -1,
                 yMax: 1,
-                xWindowSec: timeWindow,
+                xWindowSec: autoTimeWindow,
                 invertX: false,
                 invertY: false
             });
@@ -280,7 +311,7 @@
                 threshold: 0,
                 holdoffMs: 500,
                 preTriggerPercent: 40,
-                postTriggerWindowSec: timeWindow
+                postTriggerWindowSec: autoTimeWindow
             });
             newChannelTriggered.set(channel, false);
             newChannelTriggerTime.set(channel, 0);
@@ -328,15 +359,10 @@
                             }
                             
                             const receivedAt = Date.now();
-                            const receiveTimestamps = calculateReceiveSampleTimestamps(
-                                scanData.values,
-                                labjackConfig.sensor_settings.sampling_rate,
-                                receivedAt
-                            );
                             const sourceTimestamps = calculateSourceSampleTimestamps(
-                                scanData.timestamp,
-                                scanData.values,
-                                labjackConfig.sensor_settings.sampling_rate
+                                scanData.firstSampleUnixNs,
+                                scanData.sampleIntervalNs,
+                                scanData.values.length
                             );
                             const calibrationSpec = normalizeCalibration(
                                 labjackConfig?.sensor_settings.calibrations?.[String(channel)]
@@ -346,15 +372,14 @@
                             const newPoints: DataPoint[] = [];
                             for (let i = 0; i < scanData.values.length; i++) {
                                 const rawValue = scanData.values[i];
-                                const timestamp = receiveTimestamps[i];
-                                const sourceTimestamp = sourceTimestamps[i] ?? null;
+                                const timestamp = sourceTimestamps[i];
                                 
                                 if (typeof rawValue === 'number' && typeof timestamp === 'number' && !isNaN(rawValue) && isFinite(rawValue) && Math.abs(rawValue) < 100) {
                                     const calibrated = applyCalibration(calibrationSpec, rawValue);
                                     newPoints.push({
                                         timestamp,
                                         value: calibrated,
-                                        sourceTimestamp,
+                                        sourceTimestamp: timestamp,
                                         receivedAt
                                     });
                                 }
@@ -908,8 +933,16 @@
                             <span class="badge badge-primary badge-sm">{assetNumber}</span>
                         </div>
                         <div class="flex justify-between">
-                            <span>Sampling Rate:</span>
-                            <span class="badge badge-info badge-sm">{labjackConfig.sensor_settings.sampling_rate} Hz</span>
+                            <span>Scans / Read:</span>
+                            <span class="badge badge-info badge-sm">{labjackConfig.sensor_settings.scans_per_read}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Scan Rate:</span>
+                            <span class="badge badge-info badge-sm">{labjackConfig.sensor_settings.scan_rate_hz} Hz</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Auto X Window:</span>
+                            <span class="badge badge-info badge-sm">{deriveAutoTimeWindowSec(labjackConfig.sensor_settings.scan_rate_hz).toFixed(3)} s</span>
                         </div>
                         <div class="flex justify-between">
                             <span>Enabled Channels:</span>
@@ -938,7 +971,7 @@
                         </div>
                         <div class="flex justify-between">
                             <span>Data Parser:</span>
-                            <span class="badge badge-info badge-sm">Receive-time plot + source-time lag</span>
+                            <span class="badge badge-info badge-sm">Source-time plot + receive-time lag</span>
                         </div>
                     </div>
                 </div>

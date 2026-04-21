@@ -5,8 +5,8 @@
     import LabJackConfigModal from "$lib/components/LabJackConfigModal.svelte";
     
     interface SensorSettings {
-        scan_rate: number;
-        sampling_rate: number;
+        scans_per_read: number;
+        scan_rate_hz: number;
         channels_enabled: number[];
         gains: number;
         data_formats: string[];
@@ -26,8 +26,8 @@
     }
 
     const DEFAULT_SENSOR_SETTINGS: SensorSettings = {
-        scan_rate: 200,
-        sampling_rate: 1000,
+        scans_per_read: 200,
+        scan_rate_hz: 1000,
         channels_enabled: [],
         gains: 1,
         data_formats: [],
@@ -36,18 +36,49 @@
         calibrations: {}
     };
 
-    function normalizeLabJackConfig(raw: any): LabJackConfig | null {
-        if (!raw || typeof raw !== "object") return null;
-        const sensor = { ...DEFAULT_SENSOR_SETTINGS, ...(raw.sensor_settings ?? {}) } as SensorSettings;
-        if (!Array.isArray(sensor.channels_enabled)) sensor.channels_enabled = [];
-        if (!Array.isArray(sensor.data_formats)) sensor.data_formats = [];
-        if (!Array.isArray(sensor.measurement_units)) sensor.measurement_units = [];
-        if (!Number.isFinite(sensor.scan_rate)) sensor.scan_rate = DEFAULT_SENSOR_SETTINGS.scan_rate;
-        if (!Number.isFinite(sensor.sampling_rate)) sensor.sampling_rate = DEFAULT_SENSOR_SETTINGS.sampling_rate;
+    function normalizeSensorSettings(rawSensor: any): SensorSettings {
+        const sensor: SensorSettings = {
+            scans_per_read: Number(
+                rawSensor?.scans_per_read ?? rawSensor?.scan_rate ?? DEFAULT_SENSOR_SETTINGS.scans_per_read
+            ),
+            scan_rate_hz: Number(
+                rawSensor?.scan_rate_hz ?? rawSensor?.sampling_rate ?? DEFAULT_SENSOR_SETTINGS.scan_rate_hz
+            ),
+            channels_enabled: Array.isArray(rawSensor?.channels_enabled) ? [...rawSensor.channels_enabled] : [],
+            gains: Number(rawSensor?.gains ?? DEFAULT_SENSOR_SETTINGS.gains),
+            data_formats: Array.isArray(rawSensor?.data_formats) ? [...rawSensor.data_formats] : [],
+            measurement_units: Array.isArray(rawSensor?.measurement_units) ? [...rawSensor.measurement_units] : [],
+            labjack_on_off: Boolean(rawSensor?.labjack_on_off),
+            calibrations:
+                rawSensor?.calibrations && typeof rawSensor.calibrations === "object"
+                    ? { ...rawSensor.calibrations }
+                    : {}
+        };
+
+        if (!Number.isFinite(sensor.scans_per_read)) sensor.scans_per_read = DEFAULT_SENSOR_SETTINGS.scans_per_read;
+        if (!Number.isFinite(sensor.scan_rate_hz)) sensor.scan_rate_hz = DEFAULT_SENSOR_SETTINGS.scan_rate_hz;
         if (!Number.isFinite(sensor.gains)) sensor.gains = DEFAULT_SENSOR_SETTINGS.gains;
-        if (!sensor.calibrations || typeof sensor.calibrations !== "object") sensor.calibrations = {};
         while (sensor.data_formats.length < sensor.channels_enabled.length) sensor.data_formats.push("voltage");
         while (sensor.measurement_units.length < sensor.channels_enabled.length) sensor.measurement_units.push("V");
+
+        return sensor;
+    }
+
+    function sanitizeLabJackConfig(raw: LabJackConfig): LabJackConfig {
+        return {
+            labjack_name: raw.labjack_name,
+            asset_number: Number(raw.asset_number),
+            max_channels: Number(raw.max_channels),
+            nats_subject: raw.nats_subject,
+            nats_stream: raw.nats_stream,
+            rotate_secs: Number(raw.rotate_secs),
+            sensor_settings: normalizeSensorSettings(raw.sensor_settings)
+        };
+    }
+
+    function normalizeLabJackConfig(raw: any): LabJackConfig | null {
+        if (!raw || typeof raw !== "object") return null;
+        const sensor = normalizeSensorSettings(raw.sensor_settings ?? {});
 
         return {
             labjack_name: raw.labjack_name ?? "unknown",
@@ -160,8 +191,8 @@
             nats_stream: "labjacks",
             rotate_secs: 60,
             sensor_settings: {
-                scan_rate: 200,
-                sampling_rate: 1000,
+                scans_per_read: 200,
+                scan_rate_hz: 1000,
                 channels_enabled: [0, 1, 2],
                 gains: 1,
                 data_formats: ["voltage", "temperature", "pressure"],
@@ -215,13 +246,14 @@
                 return;
             }
             
-            const key = isAddingNew ? `labjackd.config.${config.labjack_name.toLowerCase()}` : editingKey;
-            const success = await updateConfig(serverName, credentialsContent, "avenabox", key, config);
+            const sanitizedConfig = sanitizeLabJackConfig(config);
+            const key = isAddingNew ? `labjackd.config.${sanitizedConfig.labjack_name.toLowerCase()}` : editingKey;
+            const success = await updateConfig(serverName, credentialsContent, "avenabox", key, sanitizedConfig);
             
             if (success) {
                 // Update local state
                 const newLabJacks = new Map(labjacks);
-                newLabJacks.set(key, config);
+                newLabJacks.set(key, sanitizedConfig);
                 labjacks = newLabJacks;
                 
                 showModal = false;
@@ -465,12 +497,12 @@
                                 <h4 class="text-sm font-semibold mb-3 text-base-content">Sensor Settings</h4>
                                 <div class="space-y-2">
                                     <div class="flex justify-between items-center text-sm">
-                                        <span class="text-base-content/70">Scan Rate:</span>
-                                        <span class="badge badge-info badge-sm">{config.sensor_settings.scan_rate} Hz</span>
+                                        <span class="text-base-content/70">Scans / Read:</span>
+                                        <span class="badge badge-info badge-sm">{config.sensor_settings.scans_per_read}</span>
                                     </div>
                                     <div class="flex justify-between items-center text-sm">
-                                        <span class="text-base-content/70">Sampling Rate:</span>
-                                        <span class="badge badge-info badge-sm">{config.sensor_settings.sampling_rate} Hz</span>
+                                        <span class="text-base-content/70">Scan Rate:</span>
+                                        <span class="badge badge-info badge-sm">{config.sensor_settings.scan_rate_hz} Hz</span>
                                     </div>
                                     <div class="text-sm">
                                         <span class="text-base-content/70 mb-2 block">Channels:</span>

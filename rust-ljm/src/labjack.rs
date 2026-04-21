@@ -113,6 +113,7 @@ fn try_open_usb(failures: &mut Vec<String>) -> Option<i32> {
     )
 }
 
+#[cfg(target_os = "linux")]
 fn should_scan_interface(name: &str) -> bool {
     !matches!(
         name,

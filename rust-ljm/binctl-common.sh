@@ -50,7 +50,15 @@ get_running_pid() {
 }
 
 ensure_built() {
+  local needs_build=0
+
   if [[ ! -x "$BIN_PATH" ]]; then
+    needs_build=1
+  elif find "$ROOT_DIR/src" "$ROOT_DIR/examples" "$ROOT_DIR/Cargo.toml" "$ROOT_DIR/Cargo.lock" -type f -newer "$BIN_PATH" -print -quit 2>/dev/null | grep -q .; then
+    needs_build=1
+  fi
+
+  if [[ "$needs_build" -eq 1 ]]; then
     echo ">>> Building release ${APP_NAME} binary"
     (cd "$ROOT_DIR" && cargo build --release --bin "$BUILD_TARGET")
   fi

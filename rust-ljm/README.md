@@ -95,6 +95,21 @@ Important fields:
 If `LABJACK_IP` is empty on Linux, the streamer will scan local IPv4 subnets for
 hosts with TCP `502` open and then verify which host is a T7.
 
+## FlatBuffer Codegen
+
+The stream payload schema is committed in `src/data.fbs`, and the generated
+bindings are also committed:
+
+- Rust: `src/data_generated.rs`
+- TypeScript: `../webapp/src/lib/sampler.ts` and `../webapp/src/lib/sampler/scan.ts`
+
+When `src/data.fbs` changes, regenerate both files from the repo root:
+
+```bash
+flatc --rust -o rust-ljm/src rust-ljm/src/data.fbs
+flatc --ts --gen-object-api -o webapp/src/lib rust-ljm/src/data.fbs
+```
+
 ## LabJack KV Config
 
 The JSON stored in JetStream KV should use the newer structure:
@@ -108,8 +123,8 @@ The JSON stored in JetStream KV should use the newer structure:
   "nats_stream": "labjacks",
   "rotate_secs": 300,
   "sensor_settings": {
-    "scan_rate": 100,
-    "sampling_rate": 500,
+    "scans_per_read": 100,
+    "scan_rate_hz": 500,
     "channels_enabled": [11, 13],
     "gains": 1,
     "data_formats": ["voltage", "voltage"],
@@ -122,6 +137,10 @@ The JSON stored in JetStream KV should use the newer structure:
   }
 }
 ```
+
+Legacy KV configs using `scan_rate` and `sampling_rate` are still accepted on
+read, but new configs should use `scans_per_read` and `scan_rate_hz` so the
+names match the actual LabJack stream semantics.
 
 ## MU + Laptop Setup
 

@@ -2,8 +2,8 @@
     import { normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
 
     interface SensorSettings {
-        scan_rate: number;
-        sampling_rate: number;
+        scans_per_read: number;
+        scan_rate_hz: number;
         channels_enabled: number[];
         gains: number;
         data_formats: string[];
@@ -230,12 +230,12 @@
             errors.nats_stream = "NATS stream is required";
         }
         
-        if (formData.sensor_settings.scan_rate <= 0) {
-            errors.scan_rate = "Scan rate must be greater than 0";
+        if (formData.sensor_settings.scans_per_read <= 0) {
+            errors.scans_per_read = "Scans per read must be greater than 0";
         }
         
-        if (formData.sensor_settings.sampling_rate <= 0) {
-            errors.sampling_rate = "Sampling rate must be greater than 0";
+        if (formData.sensor_settings.scan_rate_hz <= 0) {
+            errors.scan_rate_hz = "Scan rate must be greater than 0";
         }
         
         if (formData.sensor_settings.channels_enabled.length === 0) {
@@ -468,40 +468,40 @@
                 <div>
                     <h3 class="text-lg font-semibold mb-6 text-base-content">Sensor Settings</h3>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <!-- Scan Rate -->
+                        <!-- Scans Per Read -->
                         <div class="form-control">
-                            <label class="label" for="scan_rate">
-                                <span class="label-text font-medium">Scan Rate (Hz) *</span>
+                            <label class="label" for="scans_per_read">
+                                <span class="label-text font-medium">Scans Per Read *</span>
                             </label>
                             <input
-                                id="scan_rate"
+                                id="scans_per_read"
                                 type="number"
                                 min="1"
-                                bind:value={formData.sensor_settings.scan_rate}
+                                bind:value={formData.sensor_settings.scans_per_read}
                                 class="input input-bordered w-full focus:input-primary"
                             />
-                            {#if errors.scan_rate}
+                            {#if errors.scans_per_read}
                                 <div class="label">
-                                    <span class="label-text-alt text-error">{errors.scan_rate}</span>
+                                    <span class="label-text-alt text-error">{errors.scans_per_read}</span>
                                 </div>
                             {/if}
                         </div>
 
-                        <!-- Sampling Rate -->
+                        <!-- Scan Rate -->
                         <div class="form-control">
-                            <label class="label" for="sampling_rate">
-                                <span class="label-text font-medium">Sampling Rate (Hz) *</span>
+                            <label class="label" for="scan_rate_hz">
+                                <span class="label-text font-medium">Scan Rate (Hz) *</span>
                             </label>
                             <input
-                                id="sampling_rate"
+                                id="scan_rate_hz"
                                 type="number"
                                 min="1"
-                                bind:value={formData.sensor_settings.sampling_rate}
+                                bind:value={formData.sensor_settings.scan_rate_hz}
                                 class="input input-bordered w-full focus:input-primary"
                             />
-                            {#if errors.sampling_rate}
+                            {#if errors.scan_rate_hz}
                                 <div class="label">
-                                    <span class="label-text-alt text-error">{errors.sampling_rate}</span>
+                                    <span class="label-text-alt text-error">{errors.scan_rate_hz}</span>
                                 </div>
                             {/if}
                         </div>
