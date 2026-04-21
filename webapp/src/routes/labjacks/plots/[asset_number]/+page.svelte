@@ -6,8 +6,7 @@
     import { applyCalibration, normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
     import {
-        FlatBufferParser,
-        calculateSourceSampleTimestamps
+        FlatBufferParser
     } from "$lib/flatbuffer-parser";
 
     
@@ -121,7 +120,14 @@
         complete: boolean;
     }
 
+    interface PendingScanBatch {
+        payload: ArrayBuffer | Uint8Array;
+        receivedAt: number;
+    }
+
     const TARGET_SAMPLES_PER_WINDOW = 1000;
+    const UI_SNAPSHOT_INTERVAL_MS = 100;
+    const SNAPSHOT_OVERSCAN_FACTOR = 1.25;
     
     let assetNumber = $state<number>(0);
     let labjackConfig = $state<LabJackConfig | null>(null);
@@ -153,6 +159,12 @@
     let exporting = $state<boolean>(false);
     let exportProgress = $state<number>(0);
     let exportTotal = $state<number | null>(null);
+    let channelBuffers = new Map<number, DataPoint[]>();
+    let frozenChannelBuffers = new Map<number, DataPoint[]>();
+    let pendingScanBatches = new Map<number, PendingScanBatch>();
+    let selectedPlotChannels = $state<Set<number>>(new Set());
+    let visibleChannels = $state<Set<number>>(new Set());
+    let uiSnapshotDirty = false;
     
     // Get asset number from URL params
     $effect(() => {
@@ -191,6 +203,8 @@
         }
 
         maxDataPoints = Math.ceil(sr * requiredSeconds);
+        trimAllChannelBuffers();
+        markUiSnapshotDirty();
         console.log(`Max data points in rolling buffer: ${maxDataPoints}`);
     }
 
@@ -204,6 +218,171 @@
     function downsampleForDisplay(data: DataPoint[]): DataPoint[] {
         // Preserve all points so the plotted shape matches what was received.
         return data;
+    }
+
+    function markUiSnapshotDirty() {
+        uiSnapshotDirty = true;
+    }
+
+    function trimAllChannelBuffers() {
+        for (const data of channelBuffers.values()) {
+            const excess = data.length - maxDataPoints;
+            if (excess > 0) {
+                data.splice(0, excess);
+            }
+        }
+    }
+
+    function findFirstTimestampIndex(data: DataPoint[], startTime: number): number {
+        let low = 0;
+        let high = data.length;
+
+        while (low < high) {
+            const mid = Math.floor((low + high) / 2);
+            if (data[mid].timestamp < startTime) {
+                low = mid + 1;
+            } else {
+                high = mid;
+            }
+        }
+
+        return low;
+    }
+
+    function snapshotLiveChannelData(channel: number): DataPoint[] {
+        const data = channelBuffers.get(channel) || [];
+        if (data.length === 0) return [];
+
+        const axisWindowSec = axisSettings.get(channel)?.xWindowSec ?? timeWindow;
+        let keepSeconds = Math.max(0.25, axisWindowSec * SNAPSHOT_OVERSCAN_FACTOR);
+
+        const triggerMode = channelModes.get(channel);
+        if (triggerMode === "trigger_normal" || triggerMode === "trigger_single") {
+            const trigger = triggerSettings.get(channel);
+            if (trigger) {
+                const windows = getTriggerWindows(trigger);
+                keepSeconds = Math.max(keepSeconds, windows.preWindowSec + 0.25);
+            }
+        }
+
+        const endTime = data[data.length - 1]?.timestamp ?? 0;
+        const startTime = endTime - (keepSeconds * 1000);
+        const startIndex = findFirstTimestampIndex(data, startTime);
+        return data.slice(startIndex);
+    }
+
+    function flushUiSnapshots(force: boolean = false) {
+        if (!force && !uiSnapshotDirty) return;
+
+        const liveSnapshots = new Map<number, DataPoint[]>();
+        const frozenSnapshots = new Map<number, DataPoint[]>();
+
+        for (const channel of labjackConfig?.sensor_settings.channels_enabled ?? []) {
+            liveSnapshots.set(channel, snapshotLiveChannelData(channel));
+            frozenSnapshots.set(channel, [...(frozenChannelBuffers.get(channel) || [])]);
+        }
+
+        channelData = liveSnapshots;
+        frozenChannelData = frozenSnapshots;
+        uiSnapshotDirty = false;
+    }
+
+    function pickInitialPlotChannels(enabledChannels: number[], existingSelection?: Set<number>): Set<number> {
+        const selected = new Set<number>();
+
+        if (existingSelection) {
+            for (const channel of enabledChannels) {
+                if (existingSelection.has(channel)) {
+                    selected.add(channel);
+                    if (selected.size >= 2) return selected;
+                }
+            }
+        }
+
+        for (const channel of enabledChannels) {
+            selected.add(channel);
+            if (selected.size >= 2) break;
+        }
+
+        return selected;
+    }
+
+    function getRenderablePlotChannels(): number[] {
+        if (!labjackConfig) return [];
+        return labjackConfig.sensor_settings.channels_enabled.filter((channel) =>
+            selectedPlotChannels.has(channel)
+        );
+    }
+
+    function getChannelConfigIndex(channel: number): number {
+        return labjackConfig?.sensor_settings.channels_enabled.indexOf(channel) ?? -1;
+    }
+
+    function togglePlotChannel(channel: number, checked: boolean) {
+        const next = new Set(selectedPlotChannels);
+
+        if (checked) {
+            if (next.size >= 2) return;
+            next.add(channel);
+        } else {
+            next.delete(channel);
+        }
+
+        selectedPlotChannels = next;
+        markUiSnapshotDirty();
+    }
+
+    function processPendingVisualizationBatches() {
+        if (!labjackConfig) return;
+
+        for (const channel of labjackConfig.sensor_settings.channels_enabled) {
+            const pending = pendingScanBatches.get(channel);
+            if (!pending) continue;
+            const shouldProcess = selectedPlotChannels.has(channel);
+            if (!shouldProcess) continue;
+
+            pendingScanBatches.delete(channel);
+
+            try {
+                const scanData = flatBufferParser.parse(pending.payload);
+                if (!scanData) continue;
+
+                const firstSampleMs = Number(scanData.firstSampleUnixNs) / 1_000_000;
+                const sampleIntervalMs = Number(scanData.sampleIntervalNs) / 1_000_000;
+                const calibrationSpec = normalizeCalibration(
+                    labjackConfig.sensor_settings.calibrations?.[String(channel)]
+                );
+
+                const newPoints: DataPoint[] = [];
+                let timestamp = firstSampleMs;
+                for (let i = 0; i < scanData.values.length; i++) {
+                    const rawValue = scanData.values[i];
+
+                    if (
+                        typeof rawValue === "number" &&
+                        Number.isFinite(rawValue) &&
+                        Number.isFinite(timestamp) &&
+                        Math.abs(rawValue) < 100
+                    ) {
+                        const calibrated = applyCalibration(calibrationSpec, rawValue);
+                        newPoints.push({
+                            timestamp,
+                            value: calibrated,
+                            sourceTimestamp: timestamp,
+                            receivedAt: pending.receivedAt
+                        });
+                    }
+
+                    timestamp += sampleIntervalMs;
+                }
+
+                if (newPoints.length > 0) {
+                    addDataChunk(channel, newPoints);
+                }
+            } catch (err) {
+                console.error(`Error processing pending batch for channel ${channel}:`, err);
+            }
+        }
     }
 
     let channelDisplayData = $derived(
@@ -278,6 +457,7 @@
                 labjackConfig = foundConfig;
                 updateMaxDataPoints();
                 initializeChannelData();
+                flushUiSnapshots(true);
                 await startDataSubscription();
             } else {
                 error = `LabJack with asset number ${assetNumber} not found`;
@@ -303,9 +483,13 @@
         const newChannelTriggerTime = new Map<number, number>();
         const newChannelPrebufferReady = new Map<number, boolean>();
         const newChannelTriggerCaptures = new Map<number, TriggerCaptureState>();
+        const newChannelBuffers = new Map<number, DataPoint[]>();
+        const newFrozenBuffers = new Map<number, DataPoint[]>();
         labjackConfig.sensor_settings.channels_enabled.forEach(channel => {
             newChannelData.set(channel, []);
             newFrozenChannelData.set(channel, []);
+            newChannelBuffers.set(channel, []);
+            newFrozenBuffers.set(channel, []);
             newChannelModes.set(channel, 'free_run');
             newAxisSettings.set(channel, {
                 autoY: true,
@@ -335,6 +519,50 @@
         channelTriggerTime = newChannelTriggerTime;
         channelPrebufferReady = newChannelPrebufferReady;
         channelTriggerCaptures = newChannelTriggerCaptures;
+        channelBuffers = newChannelBuffers;
+        frozenChannelBuffers = newFrozenBuffers;
+        pendingScanBatches = new Map<number, PendingScanBatch>();
+        selectedPlotChannels = pickInitialPlotChannels(
+            labjackConfig.sensor_settings.channels_enabled,
+            selectedPlotChannels
+        );
+        visibleChannels = new Set<number>(labjackConfig.sensor_settings.channels_enabled);
+        uiSnapshotDirty = false;
+    }
+
+    function observeChannelVisibility(node: HTMLElement, channel: number) {
+        const initiallyVisible = new Set(visibleChannels);
+        initiallyVisible.add(channel);
+        visibleChannels = initiallyVisible;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                const visible = entries.some((entry) => entry.isIntersecting);
+                const next = new Set(visibleChannels);
+                if (visible) {
+                    next.add(channel);
+                } else {
+                    next.delete(channel);
+                }
+                visibleChannels = next;
+            },
+            {
+                root: null,
+                threshold: 0,
+                rootMargin: "300px 0px 300px 0px"
+            }
+        );
+
+        observer.observe(node);
+
+        return {
+            destroy() {
+                observer.disconnect();
+                const next = new Set(visibleChannels);
+                next.delete(channel);
+                visibleChannels = next;
+            }
+        };
     }
     
     async function startDataSubscription() {
@@ -349,54 +577,12 @@
                 (async () => {
                     for await (const msg of subscription) {
                         try {
-                            let arrayBuffer: ArrayBuffer;
-                            if (msg.data instanceof ArrayBuffer) {
-                                arrayBuffer = msg.data;
-                            } else {
-                                const uint8Array = msg.data as Uint8Array;
-                                const start = uint8Array.byteOffset;
-                                const end = uint8Array.byteOffset + uint8Array.byteLength;
-                                arrayBuffer = uint8Array.buffer.slice(start, end);
-                            }
-                            
-                            const scanData = flatBufferParser.parse(arrayBuffer);
-                            if (!scanData) {
-                                console.warn(`Failed to parse FlatBuffer for channel ${channel}`);
-                                continue;
-                            }
-                            
-                            const receivedAt = Date.now();
-                            const sourceTimestamps = calculateSourceSampleTimestamps(
-                                scanData.firstSampleUnixNs,
-                                scanData.sampleIntervalNs,
-                                scanData.values.length
-                            );
-                            const calibrationSpec = normalizeCalibration(
-                                labjackConfig?.sensor_settings.calibrations?.[String(channel)]
-                            );
-                            
-                            // **CHANGE: Create a chunk of new data points**
-                            const newPoints: DataPoint[] = [];
-                            for (let i = 0; i < scanData.values.length; i++) {
-                                const rawValue = scanData.values[i];
-                                const timestamp = sourceTimestamps[i];
-                                
-                                if (typeof rawValue === 'number' && typeof timestamp === 'number' && !isNaN(rawValue) && isFinite(rawValue) && Math.abs(rawValue) < 100) {
-                                    const calibrated = applyCalibration(calibrationSpec, rawValue);
-                                    newPoints.push({
-                                        timestamp,
-                                        value: calibrated,
-                                        sourceTimestamp: timestamp,
-                                        receivedAt
-                                    });
-                                }
-                            }
-
-                            // **CHANGE: Process the entire chunk at once**
-                            if (newPoints.length > 0) {
-                                addDataChunk(channel, newPoints);
-                            }
-                            
+                            pendingScanBatches.set(channel, {
+                                payload: msg.data instanceof ArrayBuffer
+                                    ? msg.data
+                                    : (msg.data as Uint8Array),
+                                receivedAt: Date.now()
+                            });
                         } catch (err) {
                             console.error(`Error processing message for channel ${channel}:`, err);
                         }
@@ -411,27 +597,27 @@
     }
     
     function addDataChunk(channel: number, chunk: DataPoint[]) {
-        const currentData = channelData.get(channel) || [];
-        
-        let newData = currentData.concat(chunk);
-        
-        if (newData.length > maxDataPoints) {
-            newData = newData.slice(newData.length - maxDataPoints);
+        const currentData = channelBuffers.get(channel) || [];
+        for (const point of chunk) {
+            currentData.push(point);
         }
-        
-        channelData.set(channel, newData);
+        const excess = currentData.length - maxDataPoints;
+        if (excess > 0) {
+            currentData.splice(0, excess);
+        }
+        channelBuffers.set(channel, currentData);
 
         const channelMode = channelModes.get(channel) ?? "free_run";
         if (channelMode === "trigger_normal" || channelMode === "trigger_single") {
-            processTriggerMode(channel, channelMode, newData, chunk);
+            processTriggerMode(channel, channelMode, currentData, chunk);
         } else {
             if (!(channelPrebufferReady.get(channel) ?? false)) {
                 channelPrebufferReady.set(channel, true);
                 channelPrebufferReady = new Map(channelPrebufferReady);
             }
         }
-        
-        channelData = new Map(channelData);
+
+        markUiSnapshotDirty();
     }
 
     function processTriggerMode(
@@ -487,8 +673,8 @@
         channelTriggerCaptures.delete(channel);
 
         if (clearFrozen) {
-            frozenChannelData.set(channel, []);
-            frozenChannelData = new Map(frozenChannelData);
+            frozenChannelBuffers.set(channel, []);
+            markUiSnapshotDirty();
         }
 
         channelTriggered = new Map(channelTriggered);
@@ -562,8 +748,8 @@
 
         channelTriggerCaptures.set(channel, capture);
         channelTriggerCaptures = new Map(channelTriggerCaptures);
-        frozenChannelData.set(channel, frozenData);
-        frozenChannelData = new Map(frozenChannelData);
+        frozenChannelBuffers.set(channel, frozenData);
+        markUiSnapshotDirty();
     }
 
     function appendToTriggerCapture(channel: number, chunk: DataPoint[]) {
@@ -596,8 +782,8 @@
 
         channelTriggerCaptures.set(channel, updatedCapture);
         channelTriggerCaptures = new Map(channelTriggerCaptures);
-        frozenChannelData.set(channel, data);
-        frozenChannelData = new Map(frozenChannelData);
+        frozenChannelBuffers.set(channel, data);
+        markUiSnapshotDirty();
     }
     
     
@@ -646,6 +832,7 @@
 
         axisSettings.set(channel, updated);
         axisSettings = new Map(axisSettings);
+        markUiSnapshotDirty();
     }
 
     function getTriggerWindows(settings: TriggerSettings | undefined) {
@@ -854,7 +1041,9 @@
     onMount(() => {
         uiNowTimer = setInterval(() => {
             uiNow = Date.now();
-        }, 100);
+            processPendingVisualizationBatches();
+            flushUiSnapshots();
+        }, UI_SNAPSHOT_INTERVAL_MS);
     });
     
     onDestroy(() => {
@@ -1022,10 +1211,47 @@
                 </button>
             </div>
 
+            <div class="card bg-base-100 shadow-xl mb-6">
+                <div class="card-body">
+                    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                            <h4 class="card-title text-base-content">Visible Plot Channels</h4>
+                            <p class="text-sm text-base-content/70">
+                                Select up to 2 channels. Only selected channels are parsed and rendered in the browser.
+                            </p>
+                        </div>
+                        <span class="badge badge-info badge-sm">
+                            {selectedPlotChannels.size} / 2 selected
+                        </span>
+                    </div>
+                    <div class="flex flex-wrap gap-3 mt-2">
+                        {#each labjackConfig.sensor_settings.channels_enabled as channel}
+                            {@const isSelected = selectedPlotChannels.has(channel)}
+                            {@const disableUnchecked = !isSelected && selectedPlotChannels.size >= 2}
+                            <label class="label cursor-pointer gap-2 border border-base-300 rounded-lg px-3 py-2">
+                                <input
+                                    type="checkbox"
+                                    class="checkbox checkbox-primary checkbox-sm"
+                                    checked={isSelected}
+                                    disabled={disableUnchecked}
+                                    onchange={(e) => {
+                                        if (e.target instanceof HTMLInputElement) {
+                                            togglePlotChannel(channel, e.target.checked);
+                                        }
+                                    }}
+                                />
+                                <span class="label-text">Channel {channel}</span>
+                            </label>
+                        {/each}
+                    </div>
+                </div>
+            </div>
+
 
             <!-- Channel Sections: Combined Trigger Settings + Plots -->
             <div class="space-y-6">
-                {#each labjackConfig.sensor_settings.channels_enabled as channel, index}
+                {#each getRenderablePlotChannels() as channel}
+                    {@const index = getChannelConfigIndex(channel)}
                     {@const channelTriggerSetting = triggerSettings.get(channel)}
                     {@const channelMode = channelModes.get(channel) ?? 'free_run'}
                     {@const channelAxis = axisSettings.get(channel)}
@@ -1035,7 +1261,10 @@
                     {@const isPrebufferReady = channelPrebufferReady.get(channel) ?? false}
                     
                     <!-- Combined Channel Section -->
-                    <div class="card bg-base-100 shadow-xl border border-base-200">
+                    <div
+                        class="card bg-base-100 shadow-xl border border-base-200"
+                        use:observeChannelVisibility={channel}
+                    >
                         <div class="card-body">
                             <!-- Channel Header -->
                             <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">

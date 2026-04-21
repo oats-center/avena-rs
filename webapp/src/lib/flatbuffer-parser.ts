@@ -6,7 +6,7 @@ export interface ScanData {
     sampleIntervalNs: bigint;
     actualScanRateHz: number;
     sequence: bigint;
-    values: number[];
+    values: Float64Array;
 }
 
 function nsToMs(timestampNs: bigint): number {
@@ -14,14 +14,14 @@ function nsToMs(timestampNs: bigint): number {
 }
 
 export class FlatBufferParser {
-    parse(buffer: ArrayBuffer): ScanData | null {
+    parse(buffer: ArrayBuffer | Uint8Array): ScanData | null {
         try {
-            const bb = new flatbuffers.ByteBuffer(new Uint8Array(buffer));
+            const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+            const bb = new flatbuffers.ByteBuffer(bytes);
             const scan = Scan.getRootAsScan(bb);
 
-            const valuesArray = scan.valuesArray();
-            const values = valuesArray ? Array.from(valuesArray) : [];
-            if (values.length === 0) {
+            const values = scan.valuesArray();
+            if (!values || values.length === 0) {
                 console.warn('No values found in FlatBuffer');
                 return null;
             }

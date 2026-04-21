@@ -52,8 +52,8 @@
     
     let canvas: HTMLCanvasElement;
     let ctx: CanvasRenderingContext2D;
-    let animationFrame: number;
-    let lastRenderTime = 0;
+    let animationFrame = 0;
+    let renderQueued = false;
     let plotWidth = 0;
     let plotHeight = 0;
     let margin = { top: 30, right: 40, bottom: 50, left: 80 };
@@ -657,46 +657,38 @@
             ctx.fillText('No Data Available', plotWidth / 2, plotHeight / 2);
         }
     }
-    
-    function animate() {
-        const now = performance.now();
-        if (now - lastRenderTime >= 16) { // ~60 FPS
+
+    function scheduleRender() {
+        if (renderQueued) return;
+        renderQueued = true;
+        animationFrame = requestAnimationFrame(() => {
+            renderQueued = false;
             render();
-            lastRenderTime = now;
-        }
-        animationFrame = requestAnimationFrame(animate);
+        });
     }
     
     onMount(() => {
         resizeCanvas();
-        animate();
+        scheduleRender();
         
         const handleResize = () => {
             resizeCanvas();
+            scheduleRender();
         };
         
         window.addEventListener('resize', handleResize);
         
         return () => {
             window.removeEventListener('resize', handleResize);
-            if (animationFrame) {
-                cancelAnimationFrame(animationFrame);
-            }
+            if (animationFrame) cancelAnimationFrame(animationFrame);
         };
     });
     
     // Re-render when data changes using effect
     $effect(() => {
         if (ctx && data) {
-            if (mode === 'frozen') {
-                // For frozen mode, only render when frozen data changes
-                if (frozenData) {
-                    render();
-                }
-            } else {
-                // For continuous mode, render on any data change
-                render();
-            }
+            if (mode === 'frozen' && !frozenData) return;
+            scheduleRender();
         }
     });
 
@@ -706,6 +698,7 @@
         } else if (mode !== 'frozen' && data.length === 0) {
             stickyAutoExtrema = null;
         }
+        scheduleRender();
     });
 
     $effect(() => {
@@ -722,6 +715,7 @@
             frozenRange = null;
             frozenRangeTriggerTime = 0;
         }
+        scheduleRender();
     });
 </script>
 
