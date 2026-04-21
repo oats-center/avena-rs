@@ -21,7 +21,6 @@
         frozenCollecting?: boolean;
         showTriggerThreshold?: boolean;
         triggerThreshold?: number;
-        holdoffRemainingMs?: number;
         prebuffering?: boolean;
         yAutoScale?: boolean;
         yMin?: number;
@@ -43,7 +42,6 @@
         frozenCollecting = false,
         showTriggerThreshold = false,
         triggerThreshold,
-        holdoffRemainingMs = 0,
         prebuffering = false,
         yAutoScale = true,
         yMin = -1,
@@ -416,11 +414,6 @@
 
         if (prebuffering) {
             drawBadge('PREBUFFERING', right, top, 'rgba(59, 130, 246, 0.18)', 'rgba(59, 130, 246, 0.8)');
-            top += 22;
-        }
-
-        if (holdoffRemainingMs > 0) {
-            drawBadge(`HOLDOFF ${(holdoffRemainingMs / 1000).toFixed(2)}s`, right, top, 'rgba(249, 115, 22, 0.18)', 'rgba(249, 115, 22, 0.8)');
             top += 22;
         }
 
