@@ -1,0 +1,6 @@
+numpy
+scipy
+pandas
+pyarrow
+matplotlib
+websockets

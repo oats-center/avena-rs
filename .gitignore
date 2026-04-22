@@ -1,4 +1,9 @@
 *.zip
 \#auto_saved_files#
 
+.vscode
 .claude
+
+ljstreamM_data/**
+!ljstreamM_data/validate_signals.py
+!ljstreamM_data/requirements.txt
