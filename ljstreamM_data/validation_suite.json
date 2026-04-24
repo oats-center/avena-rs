@@ -1,0 +1,41 @@
+{
+  "output_dir": "results/suite",
+  "defaults": {
+    "reference_channel": 11,
+    "input_format": "csv",
+    "signal_column": "raw_value",
+    "plot": true,
+    "thresholds": {
+      "max_rmse": 0.25,
+      "max_mae": 0.2,
+      "max_abs_error": 1.1,
+      "max_abs_error_p95": 0.35,
+      "min_pearson_correlation": 0.8,
+      "max_abs_initial_lag_sec": 0.02,
+      "max_abs_lag_sec_per_sec": 0.001,
+      "max_abs_amplitude_ratio_per_sec": 0.01
+    }
+  },
+  "cases": [
+    {
+      "name": "r-sine10hz_csv",
+      "reference": "sine10hz02.dat",
+      "input": "r-sine10hz.csv"
+    },
+    {
+      "name": "r-sine100hz_csv",
+      "reference": "sine100hz_1.dat",
+      "input": "r-sine100hz.csv"
+    },
+    {
+      "name": "r-sine1khz_csv",
+      "reference": "sine1khz0_2.dat",
+      "input": "r-sine1khz.csv"
+    },
+    {
+      "name": "r-sine5khz_csv",
+      "reference": "sine5khz0_1.dat",
+      "input": "r-sine5khz.csv"
+    }
+  ]
+}

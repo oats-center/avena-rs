@@ -20,11 +20,11 @@
 - [ ] Re-check waveform shape and numeric agreement against LJStreamM
 
 ## Part 3: Validation Suite
-- [ ] Add configurable validation harness
-- [ ] Load LJStreamM CSV reference data
-- [ ] Align our Parquet samples by timestamp
-- [ ] Compute absolute error, relative error, and drift
-- [ ] Emit summary report and pass/fail result
+- [x] Add configurable validation harness
+- [x] Load LJStreamM CSV reference data
+- [x] Align our Parquet samples by timestamp
+- [x] Compute absolute error, relative error, and drift
+- [x] Emit summary report and pass/fail result
 
 ## Part 4: Deployment
 - [ ] Keep Tauri as the preferred deployment direction

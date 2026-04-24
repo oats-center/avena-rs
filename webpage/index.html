@@ -1,0 +1,597 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Avena LabJack Pipeline</title>
+    <meta
+      name="description"
+      content="Static guide for the Avena Rust LabJack streamer, archiver, exporter, validation suite, and Svelte dashboard."
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#top" aria-label="Avena LabJack Pipeline">
+        <span class="brand-mark">A</span>
+        <span>Avena LabJack Pipeline</span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="#flow">Flow</a>
+        <a href="#binaries">Binaries</a>
+        <a href="#config">Config</a>
+        <a href="#validation">Validation</a>
+        <a href="#demo">Demo</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Rust + NATS + Parquet + Svelte</p>
+          <h1>Avena LabJack data capture from sensor input to exportable files.</h1>
+          <p>
+            This repo streams LabJack T7 analog input samples into NATS, archives
+            those samples as timestamped parquet files, serves CSV exports over a
+            WebSocket endpoint, and provides a Svelte dashboard for configuration,
+            live plots, and export requests.
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href="#quickstart">Start locally</a>
+            <a class="button" href="#flow">See the data flow</a>
+          </div>
+        </div>
+        <div class="hero-panel">
+          <video controls preload="metadata" poster="">
+            <source src="./assets/avena-recording.mov" type="video/quicktime" />
+            Your browser cannot play this demo video. Open
+            webpage/assets/avena-recording.mov directly from the repo.
+          </video>
+        </div>
+      </section>
+
+      <section id="quickstart" class="section">
+        <div class="section-head">
+          <p class="eyebrow">Quickstart</p>
+          <h2>Run the pipeline pieces</h2>
+        </div>
+        <div class="command-grid">
+          <div class="command-card">
+            <h3>Build Rust binaries</h3>
+            <pre><code>cd rust-ljm
+cargo build --release</code></pre>
+          </div>
+          <div class="command-card">
+            <h3>Start managed processes</h3>
+            <pre><code>./streamerctl.sh start
+./archiverctl.sh start
+./exporterctl.sh start</code></pre>
+          </div>
+          <div class="command-card">
+            <h3>Run the dashboard</h3>
+            <pre><code>cd webapp
+pnpm install
+pnpm run dev -- --host 0.0.0.0</code></pre>
+          </div>
+          <div class="command-card">
+            <h3>Run validation</h3>
+            <pre><code>python3 ljstreamM_data/validate_signals.py run-suite \
+  --config ljstreamM_data/validation_suite.json</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <section id="flow" class="section">
+        <div class="section-head">
+          <p class="eyebrow">System overview</p>
+          <h2>How data moves through the repo</h2>
+        </div>
+
+        <div class="flow-diagram" role="img" aria-label="Avena data flow diagram">
+          <div class="node source">
+            <span class="node-label">Sensors</span>
+            <strong>Analog input</strong>
+            <small>AIN channels on LabJack T7</small>
+          </div>
+          <div class="arrow">-></div>
+          <div class="node rust">
+            <span class="node-label">streamer</span>
+            <strong>FlatBuffer scans</strong>
+            <small>Per-channel NATS subjects</small>
+          </div>
+          <div class="arrow">-></div>
+          <div class="node nats">
+            <span class="node-label">NATS</span>
+            <strong>JetStream + KV</strong>
+            <small>Config and sample transport</small>
+          </div>
+          <div class="arrow">-></div>
+          <div class="node rust">
+            <span class="node-label">archiver</span>
+            <strong>Parquet files</strong>
+            <small>timestamp_unix_ns, value</small>
+          </div>
+          <div class="arrow">-></div>
+          <div class="node rust">
+            <span class="node-label">exporter</span>
+            <strong>CSV stream</strong>
+            <small>WebSocket /export</small>
+          </div>
+          <div class="arrow">-></div>
+          <div class="node app">
+            <span class="node-label">Svelte webapp</span>
+            <strong>Plots + downloads</strong>
+            <small>Browser UI for operators</small>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <article>
+            <h3>Runtime paths</h3>
+            <ul>
+              <li><code>streamer</code> runs on the edge host with Ethernet access to the LabJack.</li>
+              <li><code>archiver</code> runs wherever parquet should be stored.</li>
+              <li><code>exporter</code> must run on the same host as the parquet directory it serves.</li>
+              <li><code>webapp</code> runs in the browser and talks to NATS WebSocket plus exporter WebSocket.</li>
+            </ul>
+          </article>
+          <article>
+            <h3>NATS subject shape</h3>
+            <pre><code>avenabox.001.data.ch11
+└prefix └asset └kind └channel</code></pre>
+            <p>
+              The streamer creates or updates the JetStream stream configured by
+              <code>nats_stream</code> and publishes every enabled channel under
+              <code>{nats_subject}.{asset_number:03}.data.ch{channel:02}</code>.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section id="binaries" class="section">
+        <div class="section-head">
+          <p class="eyebrow">Rust binaries</p>
+          <h2>What each binary does</h2>
+        </div>
+
+        <div class="binary-list">
+          <article class="binary">
+            <div>
+              <h3>streamer</h3>
+              <p>
+                Opens the LabJack T7 through a strict Ethernet IP path, verifies
+                device type and optional serial number, starts LJM streaming, and
+                publishes one FlatBuffer scan per channel per read batch.
+              </p>
+            </div>
+            <dl>
+              <dt>Inputs</dt>
+              <dd>NATS credentials, KV config, <code>LABJACK_IP</code>, optional <code>LABJACK_SERIAL</code>.</dd>
+              <dt>Output</dt>
+              <dd>NATS payloads containing <code>first_sample_unix_ns</code>, <code>sample_interval_ns</code>, <code>actual_scan_rate_hz</code>, <code>sequence</code>, and <code>values</code>.</dd>
+              <dt>Command</dt>
+              <dd><code>cd rust-ljm && ./streamerctl.sh restart</code></dd>
+            </dl>
+          </article>
+
+          <article class="binary">
+            <div>
+              <h3>archiver</h3>
+              <p>
+                Loads the same KV config, subscribes to each enabled channel,
+                decodes FlatBuffer scans, expands timestamps for every sample,
+                and writes raw channel values into per-asset, per-day, per-channel parquet files.
+              </p>
+            </div>
+            <dl>
+              <dt>Inputs</dt>
+              <dd>NATS subjects such as <code>avenabox.001.data.ch11</code> and calibration specs from KV config.</dd>
+              <dt>Output</dt>
+              <dd><code>parquet/asset001/2026-04-22/ch11/part-0001.parquet</code> with parquet metadata carrying calibration JSON.</dd>
+              <dt>Command</dt>
+              <dd><code>cd rust-ljm && ./archiverctl.sh start</code></dd>
+            </dl>
+          </article>
+
+          <article class="binary">
+            <div>
+              <h3>exporter</h3>
+              <p>
+                Serves a WebSocket endpoint at <code>/export</code>. A browser
+                sends an asset, channels, time range, and format. The exporter
+                scans parquet files, applies calibration in memory, and streams CSV chunks back.
+              </p>
+            </div>
+            <dl>
+              <dt>Inputs</dt>
+              <dd>Parquet directory plus WebSocket JSON request.</dd>
+              <dt>Output</dt>
+              <dd>Text metadata frame, binary CSV frames, summary frame, then completion frame.</dd>
+              <dt>Command</dt>
+              <dd><code>cd rust-ljm && ./exporterctl.sh start</code></dd>
+            </dl>
+          </article>
+
+          <article class="binary">
+            <div>
+              <h3>subscriber</h3>
+              <p>
+                Diagnostic listener for NATS sample traffic. It subscribes to an
+                asset wildcard, decodes FlatBuffer scans, and appends per-channel CSV files.
+              </p>
+            </div>
+            <dl>
+              <dt>Inputs</dt>
+              <dd><code>NATS_SUBJECT</code>, <code>ASSET_NUMBER</code>, <code>NATS_CREDS_FILE</code>.</dd>
+              <dt>Output</dt>
+              <dd><code>outputs/labjack_001_ch11.csv</code> with <code>sequence,timestamp,raw_value</code>.</dd>
+              <dt>Command</dt>
+              <dd><code>cd rust-ljm && cargo run --bin subscriber</code></dd>
+            </dl>
+          </article>
+        </div>
+      </section>
+
+      <section id="config" class="section">
+        <div class="section-head">
+          <p class="eyebrow">Configuration</p>
+          <h2>NATS KV JSON and process env files</h2>
+        </div>
+
+        <div class="two-col">
+          <article>
+            <h3>LabJack KV config</h3>
+            <p>
+              Store this JSON at the configured <code>CFG_BUCKET</code> and
+              <code>CFG_KEY</code>, for example <code>avenabox:labjackd.config.i69-mu1</code>.
+            </p>
+            <pre><code>{
+  "labjack_name": "i69-lj2",
+  "asset_number": 1001,
+  "max_channels": 14,
+  "nats_subject": "avenabox",
+  "nats_stream": "labjacks",
+  "rotate_secs": 300,
+  "sensor_settings": {
+    "scans_per_read": 100,
+    "scan_rate_hz": 5000,
+    "channels_enabled": [11, 13],
+    "gains": 1,
+    "data_formats": ["voltage", "voltage"],
+    "measurement_units": ["V", "V"],
+    "labjack_on_off": true,
+    "calibrations": {
+      "11": { "id": "identity", "type": "identity" },
+      "13": { "id": "load-cell-a", "type": "linear", "a": 2.5, "b": -0.01 }
+    }
+  }
+}</code></pre>
+          </article>
+
+          <article>
+            <h3>Managed env files</h3>
+            <p>
+              The control scripts read JSON files such as
+              <code>rust-ljm/streamer.env.json</code>. Relative paths are resolved
+              from the config file directory.
+            </p>
+            <pre><code>{
+  "env": {
+    "NATS_CREDS_FILE": "apt.creds",
+    "CFG_BUCKET": "avenabox",
+    "CFG_KEY": "labjackd.config.i69-mu1",
+    "LABJACK_IP": "192.168.1.111",
+    "LABJACK_SERIAL": "470036330",
+    "LABJACK_NAME": "i69-lj2"
+  }
+}</code></pre>
+            <pre><code>{
+  "env": {
+    "PARQUET_DIR": "parquet",
+    "EXPORTER_ADDR": "0.0.0.0:9001"
+  }
+}</code></pre>
+          </article>
+        </div>
+
+        <div class="explain-block">
+          <h3>Why the config is split this way</h3>
+          <div class="explain-grid">
+            <div>
+              <strong>KV config is runtime device intent.</strong>
+              <p>
+                The LabJack name, asset number, enabled channels, scan rate, and
+                calibration settings live in NATS KV so the webapp can update
+                them without editing files on the edge host. The streamer and
+                archiver both watch the same source of truth.
+              </p>
+            </div>
+            <div>
+              <strong>Env JSON is host-local process setup.</strong>
+              <p>
+                Credentials, LabJack IP, exporter bind address, and parquet path
+                are machine-specific. Keeping them in <code>*.env.json</code>
+                avoids storing deployment details in the shared KV payload.
+              </p>
+            </div>
+            <div>
+              <strong>Strict <code>LABJACK_IP</code> prevents wrong-device capture.</strong>
+              <p>
+                The streamer intentionally opens the T7 by direct Ethernet IP and
+                verifies the optional serial number. That removes USB fallback and
+                subnet discovery from production capture, where silent device
+                selection mistakes are worse than a hard startup failure.
+              </p>
+            </div>
+            <div>
+              <strong>Calibration is archived with the data.</strong>
+              <p>
+                The archiver writes raw values to parquet and stores calibration
+                metadata on each file. Export time can then reproduce calibrated
+                CSV values using the calibration that was active when the file was
+                written.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <p class="eyebrow">Payload examples</p>
+          <h2>Input and output shapes</h2>
+        </div>
+        <div class="three-col">
+          <article class="code-tile">
+            <h3>FlatBuffer scan</h3>
+            <pre><code>table Scan {
+  first_sample_unix_ns: ulong;
+  sample_interval_ns: ulong;
+  actual_scan_rate_hz: double;
+  sequence: ulong;
+  values: [double];
+}</code></pre>
+          </article>
+          <article class="code-tile">
+            <h3>Parquet row</h3>
+            <pre><code>timestamp_unix_ns,value
+1776890700000075000,2.1363790035
+1776890700000275000,1.5884703398</code></pre>
+          </article>
+          <article class="code-tile">
+            <h3>Export CSV</h3>
+            <pre><code>timestamp,channel,raw_value,calibrated_value,calibration_id
+2026-04-22T20:45:00.000075+00:00,ch11,2.136379,2.136379,identity</code></pre>
+          </article>
+        </div>
+
+        <div class="field-table-wrap">
+          <h3>FlatBuffer field meanings</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Field</th>
+                <th>Meaning</th>
+                <th>Reason it exists</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>first_sample_unix_ns</code></td>
+                <td>Unix timestamp, in nanoseconds, for <code>values[0]</code>.</td>
+                <td>Gives every batch an absolute time anchor so archive files, plots, and exports do not depend on browser or subscriber receive time.</td>
+              </tr>
+              <tr>
+                <td><code>sample_interval_ns</code></td>
+                <td>Nanoseconds between consecutive samples in <code>values</code>.</td>
+                <td>Avoids repeating one timestamp per sample on the wire while still allowing exact timestamp reconstruction for every row.</td>
+              </tr>
+              <tr>
+                <td><code>actual_scan_rate_hz</code></td>
+                <td>The scan rate returned by <code>LJM_eStreamStart</code>.</td>
+                <td>LabJack may return an actual achievable rate. Carrying it in the payload makes downstream timing diagnostics and validation explicit.</td>
+              </tr>
+              <tr>
+                <td><code>sequence</code></td>
+                <td>Monotonic batch counter for the current streamer run.</td>
+                <td>Consumers can detect gaps, resets, duplicate batches, or streamer restarts without inspecting timestamps alone.</td>
+              </tr>
+              <tr>
+                <td><code>values</code></td>
+                <td>Raw voltage samples for one channel in this batch.</td>
+                <td>The streamer publishes one FlatBuffer per channel, which keeps NATS subjects channel-addressable and lets the archiver write independent channel files.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="explain-block">
+          <h3>Why FlatBuffers and per-channel messages</h3>
+          <div class="explain-grid">
+            <div>
+              <strong>Binary payloads keep high-rate streams smaller.</strong>
+              <p>
+                FlatBuffers avoid JSON parsing overhead and preserve numeric
+                types directly for Rust and TypeScript consumers.
+              </p>
+            </div>
+            <div>
+              <strong>One batch timestamp plus interval is compact.</strong>
+              <p>
+                A 5 kHz channel does not need 5,000 full timestamps per second on
+                NATS. The archiver reconstructs sample timestamps as
+                <code>first_sample_unix_ns + index * sample_interval_ns</code>.
+              </p>
+            </div>
+            <div>
+              <strong>Per-channel subjects simplify storage and UI subscriptions.</strong>
+              <p>
+                The webapp can subscribe only to channels it is plotting, and the
+                archiver can rotate parquet files per asset, date, and channel.
+              </p>
+            </div>
+            <div>
+              <strong>Raw-first storage preserves future options.</strong>
+              <p>
+                Parquet stores raw values, while exporter output includes both
+                raw and calibrated values. That keeps archival data immutable even
+                if calibration formulas improve later.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="webapp" class="section">
+        <div class="section-head">
+          <p class="eyebrow">Svelte webapp</p>
+          <h2>What the browser UI does</h2>
+        </div>
+        <div class="two-col">
+          <article>
+            <h3>Configuration dashboard</h3>
+            <p>
+              The login page connects to NATS over WebSocket using a creds file.
+              The LabJack page lists <code>labjackd.config.*</code> keys from the
+              <code>avenabox</code> bucket, edits configs, writes updates back to
+              KV, and can save reusable <code>calibration.*</code> presets.
+            </p>
+          </article>
+          <article>
+            <h3>Live plotting and exports</h3>
+            <p>
+              Plot pages subscribe to the same per-channel NATS sample subjects
+              as the archiver, decode the generated TypeScript FlatBuffer schema,
+              and draw source-timestamped data on canvas. Export requests go to
+              the Rust exporter WebSocket and produce CSV files from archived parquet.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section id="validation" class="section">
+        <div class="section-head">
+          <p class="eyebrow">Validation</p>
+          <h2>How signal validation is done</h2>
+        </div>
+        <div class="validation-grid">
+          <article>
+            <h3>Suite command</h3>
+            <pre><code>python3 ljstreamM_data/validate_signals.py run-suite \
+  --config ljstreamM_data/validation_suite.json</code></pre>
+            <p>
+              The default suite compares checked-in LJStreamM references with
+              Avena CSV exports for 10 Hz, 100 Hz, 1 kHz, and 5 kHz captures.
+              The suite emits <code>suite_summary.json</code>,
+              <code>suite_summary.csv</code>, per-case summaries, aligned samples,
+              and plots.
+            </p>
+          </article>
+          <article>
+            <h3>Metrics</h3>
+            <ul>
+              <li>Timestamp-relative alignment with cross-correlation lag estimate.</li>
+              <li>Absolute error: RMSE, MAE, max, p50, p95, p99.</li>
+              <li>Relative error: mean, p50, p95, p99.</li>
+              <li>Drift: lag slope and amplitude-ratio slope over rolling windows.</li>
+              <li>Pass/fail: configurable JSON thresholds per suite or per case.</li>
+            </ul>
+          </article>
+        </div>
+
+        <figure class="validation-figure">
+          <img
+            src="./assets/overlap.png"
+            alt="Validation overlay plot showing LJStreamM reference and aligned Avena input for the 10Hz suite case"
+          />
+          <figcaption>
+            Suite overlay for <code>r-sine10hz_csv</code>: LJStreamM reference
+            and Avena input after lag alignment. This file is copied from the
+            suite artifact <code>r-sine10hz_csv/overlay.png</code> as
+            <code>webpage/assets/overlap.png</code>.
+          </figcaption>
+        </figure>
+
+        <div class="field-table-wrap">
+          <h3>Current suite metrics</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Case</th>
+                <th>Status</th>
+                <th>RMSE</th>
+                <th>MAE</th>
+                <th>P95 abs err</th>
+                <th>Correlation</th>
+                <th>Initial lag</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>r-sine10hz_csv</code></td>
+                <td><span class="pass">PASS</span></td>
+                <td>0.03040</td>
+                <td>0.01700</td>
+                <td>0.07284</td>
+                <td>0.99631</td>
+                <td>12.000 ms</td>
+              </tr>
+              <tr>
+                <td><code>r-sine100hz_csv</code></td>
+                <td><span class="pass">PASS</span></td>
+                <td>0.05804</td>
+                <td>0.04685</td>
+                <td>0.10878</td>
+                <td>0.98661</td>
+                <td>4.000 ms</td>
+              </tr>
+              <tr>
+                <td><code>r-sine1khz_csv</code></td>
+                <td><span class="pass">PASS</span></td>
+                <td>0.19830</td>
+                <td>0.17753</td>
+                <td>0.28341</td>
+                <td>0.84330</td>
+                <td>0.200 ms</td>
+              </tr>
+              <tr>
+                <td><code>r-sine5khz_csv</code></td>
+                <td><span class="pass">PASS</span></td>
+                <td>0.04080</td>
+                <td>0.03093</td>
+                <td>0.08146</td>
+                <td>0.99339</td>
+                <td>1.716 ms</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="table-note">
+            These values come from
+            <code>ljstreamM_data/results/suite/suite_summary.json</code>. The
+            generated result files are ignored by git; rerun the suite before
+            publishing final validation numbers.
+          </p>
+        </div>
+      </section>
+
+      <section id="demo" class="section demo-section">
+        <div class="section-head">
+          <p class="eyebrow">Demo video</p>
+          <h2>Repository walkthrough recording</h2>
+        </div>
+        <video controls preload="metadata">
+          <source src="./assets/avena-recording.mov" type="video/quicktime" />
+          Your browser cannot play this demo video. Open
+          webpage/assets/avena-recording.mov directly from the repo.
+        </video>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        Static documentation for the Avena LabJack pipeline. Serve
+        <code>webpage/index.html</code> with GitHub Pages or any static file server.
+      </p>
+    </footer>
+  </body>
+</html>

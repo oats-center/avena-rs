@@ -7,3 +7,4 @@
 ljstreamM_data/**
 !ljstreamM_data/validate_signals.py
 !ljstreamM_data/requirements.txt
+!ljstreamM_data/validation_suite.json

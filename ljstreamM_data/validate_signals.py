@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import csv as csv_module
 import json
 import math
 import re
@@ -85,6 +86,23 @@ def parse_args() -> argparse.Namespace:
     compare_parser.add_argument("--plot", action="store_true")
     compare_parser.set_defaults(func=cmd_compare)
 
+    suite_parser = subparsers.add_parser(
+        "run-suite",
+        help="Run a configurable validation suite and emit pass/fail reports.",
+    )
+    suite_parser.add_argument("--config", required=True, type=Path)
+    suite_parser.add_argument(
+        "--out-dir",
+        type=Path,
+        help="Override the output directory from the suite config.",
+    )
+    suite_parser.add_argument(
+        "--plot",
+        action="store_true",
+        help="Render plots for every case, in addition to per-case config.",
+    )
+    suite_parser.set_defaults(func=cmd_run_suite)
+
     return parser.parse_args()
 
 
@@ -93,20 +111,25 @@ def main() -> int:
     try:
         result = args.func(args)
         if asyncio.iscoroutine(result):
-            asyncio.run(result)
+            result = asyncio.run(result)
     except KeyboardInterrupt:
         print("Interrupted.", file=sys.stderr)
         return 130
     except Exception as exc:  # noqa: BLE001
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    return 0
+    return int(result or 0)
 
 
 def split_fields(line: str) -> list[str]:
     stripped = line.strip()
     if not stripped:
         return []
+    if "," in stripped:
+        try:
+            return next(csv_module.reader([stripped]))
+        except csv_module.Error:
+            return [field.strip() for field in stripped.split(",")]
     if "\t" in stripped:
         return [field for field in re.split(r"\t+", stripped) if field]
     return re.split(r"\s+", stripped)
@@ -263,6 +286,11 @@ def load_reference_signal(path: Path, channel: int) -> SignalSeries:
         table["times_sec"],
         values,
     )
+
+
+def relative_errors(errors: np.ndarray, reference_values: np.ndarray) -> np.ndarray:
+    scale = np.maximum(np.abs(reference_values), np.finfo(np.float64).eps)
+    return np.abs(errors) / scale
 
 
 def load_csv_signal(path: Path, channel: int, signal_column: str) -> SignalSeries:
@@ -529,6 +557,7 @@ def compute_summary(
 ) -> dict[str, Any]:
     errors = aligned["errors"]
     abs_errors = np.abs(errors)
+    rel_errors = relative_errors(errors, aligned["reference_values"])
 
     correlation = float(np.corrcoef(aligned["reference_values"], aligned["input_values"])[0, 1])
     drift = compute_window_metrics(
@@ -580,6 +609,10 @@ def compute_summary(
             "abs_error_p50": float(np.percentile(abs_errors, 50)),
             "abs_error_p95": float(np.percentile(abs_errors, 95)),
             "abs_error_p99": float(np.percentile(abs_errors, 99)),
+            "mean_relative_error": float(np.mean(rel_errors)),
+            "relative_error_p50": float(np.percentile(rel_errors, 50)),
+            "relative_error_p95": float(np.percentile(rel_errors, 95)),
+            "relative_error_p99": float(np.percentile(rel_errors, 99)),
             "lag_sec_per_sec": drift["lag_sec_per_sec"],
             "amplitude_ratio_per_sec": drift["amplitude_ratio_per_sec"],
             "mean_amplitude_ratio": float(
@@ -622,9 +655,277 @@ def write_aligned_samples(aligned: dict[str, np.ndarray], out_path: Path) -> Non
             "input_value_aligned": aligned["input_values"],
             "error": aligned["errors"],
             "abs_error": np.abs(aligned["errors"]),
+            "relative_error": relative_errors(
+                aligned["errors"],
+                aligned["reference_values"],
+            ),
         }
     )
     df.to_csv(out_path, index=False)
+
+
+def run_comparison(
+    reference_path: Path,
+    reference_channel: int,
+    input_path: Path,
+    input_format: str,
+    signal_column: str,
+    out_dir: Path,
+    plot: bool,
+) -> dict[str, Any]:
+    if not 0 <= reference_channel < REFERENCE_CHANNEL_COUNT:
+        raise ValueError("reference_channel must be between 0 and 13")
+
+    reference = load_reference_signal(reference_path, reference_channel)
+    if input_format == "csv":
+        input_signal = load_csv_signal(input_path, reference_channel, signal_column)
+    elif input_format == "parquet":
+        input_signal = load_parquet_signal(input_path, signal_column)
+    else:
+        raise ValueError(f"unsupported input_format {input_format!r}")
+
+    lag_info = estimate_initial_lag(reference, input_signal)
+    aligned = align_to_reference(reference, input_signal, lag_info["lag_sec"])
+    summary = compute_summary(
+        reference,
+        input_signal,
+        input_format,
+        signal_column,
+        lag_info,
+        aligned,
+    )
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    summary_json_path = out_dir / "summary.json"
+    summary_csv_path = out_dir / "summary.csv"
+    aligned_path = out_dir / "aligned_samples.csv"
+
+    with summary_json_path.open("w", encoding="utf-8") as handle:
+        json.dump(summary, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    write_summary_csv(summary, summary_csv_path)
+    write_aligned_samples(aligned, aligned_path)
+    if plot:
+        render_plots(out_dir, reference, aligned, summary)
+
+    summary["artifacts"] = {
+        "summary_json": str(summary_json_path),
+        "summary_csv": str(summary_csv_path),
+        "aligned_samples": str(aligned_path),
+    }
+    if plot:
+        summary["artifacts"].update(
+            {
+                "overlay_png": str(out_dir / "overlay.png"),
+                "error_trace_png": str(out_dir / "error_trace.png"),
+                "lag_drift_png": str(out_dir / "lag_drift.png"),
+                "amplitude_drift_png": str(out_dir / "amplitude_drift.png"),
+            }
+        )
+
+    return summary
+
+
+THRESHOLD_METRIC_NAMES = {
+    "max_rmse": ("metrics", "rmse", "<="),
+    "max_mae": ("metrics", "mae", "<="),
+    "max_abs_error": ("metrics", "max_abs_error", "<="),
+    "max_max_abs_error": ("metrics", "max_abs_error", "<="),
+    "max_abs_error_p95": ("metrics", "abs_error_p95", "<="),
+    "max_abs_error_p99": ("metrics", "abs_error_p99", "<="),
+    "max_mean_relative_error": ("metrics", "mean_relative_error", "<="),
+    "max_relative_error_p95": ("metrics", "relative_error_p95", "<="),
+    "max_relative_error_p99": ("metrics", "relative_error_p99", "<="),
+    "min_pearson_correlation": ("metrics", "pearson_correlation", ">="),
+    "max_abs_initial_lag_sec": ("alignment", "initial_lag_sec", "abs<="),
+    "max_abs_lag_sec_per_sec": ("metrics", "lag_sec_per_sec", "abs<="),
+    "max_abs_amplitude_ratio_per_sec": (
+        "metrics",
+        "amplitude_ratio_per_sec",
+        "abs<=",
+    ),
+}
+
+
+def evaluate_thresholds(summary: dict[str, Any], thresholds: dict[str, Any]) -> list[dict[str, Any]]:
+    checks: list[dict[str, Any]] = []
+    for name, limit_raw in thresholds.items():
+        if name not in THRESHOLD_METRIC_NAMES:
+            raise ValueError(f"unknown threshold {name!r}")
+        section, metric_name, op = THRESHOLD_METRIC_NAMES[name]
+        value = float(summary[section][metric_name])
+        limit = float(limit_raw)
+        comparable = abs(value) if op == "abs<=" else value
+        passed = comparable >= limit if op == ">=" else comparable <= limit
+        checks.append(
+            {
+                "threshold": name,
+                "metric": f"{section}.{metric_name}",
+                "op": op,
+                "value": value,
+                "limit": limit,
+                "passed": bool(passed),
+            }
+        )
+    return checks
+
+
+def resolve_config_path(config_dir: Path, value: str | Path) -> Path:
+    path = Path(value)
+    if path.is_absolute():
+        return path
+    return (config_dir / path).resolve()
+
+
+def merged_thresholds(
+    defaults: dict[str, Any],
+    case: dict[str, Any],
+) -> dict[str, Any]:
+    merged = dict(defaults.get("thresholds", {}))
+    merged.update(case.get("thresholds", {}))
+    return merged
+
+
+def write_suite_reports(out_dir: Path, results: list[dict[str, Any]]) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    suite_json = out_dir / "suite_summary.json"
+    with suite_json.open("w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "passed": all(row["passed"] for row in results),
+                "case_count": len(results),
+                "results": results,
+            },
+            handle,
+            indent=2,
+            sort_keys=True,
+        )
+        handle.write("\n")
+
+    rows = []
+    for result in results:
+        summary = result.get("summary", {})
+        metrics = summary.get("metrics", {})
+        alignment = summary.get("alignment", {})
+        rows.append(
+            {
+                "name": result["name"],
+                "passed": result["passed"],
+                "reference": result["reference"],
+                "input": result["input"],
+                "input_format": result["input_format"],
+                "rmse": metrics.get("rmse"),
+                "mae": metrics.get("mae"),
+                "max_abs_error": metrics.get("max_abs_error"),
+                "abs_error_p95": metrics.get("abs_error_p95"),
+                "mean_relative_error": metrics.get("mean_relative_error"),
+                "relative_error_p95": metrics.get("relative_error_p95"),
+                "pearson_correlation": metrics.get("pearson_correlation"),
+                "initial_lag_sec": alignment.get("initial_lag_sec"),
+                "lag_sec_per_sec": metrics.get("lag_sec_per_sec"),
+                "amplitude_ratio_per_sec": metrics.get("amplitude_ratio_per_sec"),
+                "failed_checks": ",".join(
+                    check["threshold"]
+                    for check in result.get("checks", [])
+                    if not check["passed"]
+                ),
+                "error": result.get("error", ""),
+            }
+        )
+    pd.DataFrame(rows).to_csv(out_dir / "suite_summary.csv", index=False)
+
+
+def cmd_run_suite(args: argparse.Namespace) -> int:
+    config_path = args.config.resolve()
+    with config_path.open("r", encoding="utf-8") as handle:
+        config = json.load(handle)
+
+    config_dir = config_path.parent
+    defaults = config.get("defaults", {})
+    out_dir = args.out_dir or config.get("output_dir")
+    if out_dir is None:
+        out_dir = config_dir / "results" / "suite"
+    else:
+        out_dir = resolve_config_path(config_dir, out_dir)
+
+    cases = config.get("cases", [])
+    if not isinstance(cases, list) or not cases:
+        raise ValueError("suite config must contain a non-empty 'cases' array")
+
+    results: list[dict[str, Any]] = []
+    for index, case in enumerate(cases, start=1):
+        name = str(case.get("name") or f"case_{index:02d}")
+        case_out_dir = out_dir / name
+        input_format = str(case.get("input_format", defaults.get("input_format", "csv")))
+        signal_column = str(case.get("signal_column", defaults.get("signal_column", "raw_value")))
+        plot = bool(args.plot or case.get("plot", defaults.get("plot", False)))
+        thresholds = merged_thresholds(defaults, case)
+        reference = resolve_config_path(config_dir, case["reference"])
+        input_path = resolve_config_path(config_dir, case["input"])
+        reference_channel = int(case.get("reference_channel", defaults.get("reference_channel", 0)))
+
+        try:
+            summary = run_comparison(
+                reference,
+                reference_channel,
+                input_path,
+                input_format,
+                signal_column,
+                case_out_dir,
+                plot,
+            )
+            checks = evaluate_thresholds(summary, thresholds)
+            passed = all(check["passed"] for check in checks)
+            results.append(
+                {
+                    "name": name,
+                    "passed": passed,
+                    "reference": str(reference),
+                    "reference_channel": reference_channel,
+                    "input": str(input_path),
+                    "input_format": input_format,
+                    "signal_column": signal_column,
+                    "out_dir": str(case_out_dir),
+                    "checks": checks,
+                    "summary": summary,
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            results.append(
+                {
+                    "name": name,
+                    "passed": False,
+                    "reference": str(reference),
+                    "reference_channel": reference_channel,
+                    "input": str(input_path),
+                    "input_format": input_format,
+                    "signal_column": signal_column,
+                    "out_dir": str(case_out_dir),
+                    "checks": [],
+                    "error": str(exc),
+                }
+            )
+
+    write_suite_reports(out_dir, results)
+
+    failed = [row for row in results if not row["passed"]]
+    for row in results:
+        status = "PASS" if row["passed"] else "FAIL"
+        print(f"{status} {row['name']}")
+        if "error" in row:
+            print(f"  error: {row['error']}")
+        else:
+            failed_checks = [check for check in row["checks"] if not check["passed"]]
+            for check in failed_checks:
+                print(
+                    "  failed "
+                    f"{check['threshold']}: {check['value']:.12g} "
+                    f"{check['op']} {check['limit']:.12g}"
+                )
+
+    print(f"suite_summary_json: {out_dir / 'suite_summary.json'}")
+    print(f"suite_summary_csv: {out_dir / 'suite_summary.csv'}")
+    return 1 if failed else 0
 
 
 def render_plots(
@@ -777,42 +1078,19 @@ async def cmd_fetch_export(args: argparse.Namespace) -> None:
 
 
 def cmd_compare(args: argparse.Namespace) -> None:
-    if not 0 <= args.reference_channel < REFERENCE_CHANNEL_COUNT:
-        raise ValueError("--reference-channel must be between 0 and 13")
-
-    reference = load_reference_signal(args.reference, args.reference_channel)
-    if args.input_format == "csv":
-        input_signal = load_csv_signal(args.input, args.reference_channel, args.signal_column)
-    else:
-        input_signal = load_parquet_signal(args.input, args.signal_column)
-
-    lag_info = estimate_initial_lag(reference, input_signal)
-    aligned = align_to_reference(reference, input_signal, lag_info["lag_sec"])
-    summary = compute_summary(
-        reference,
-        input_signal,
+    summary = run_comparison(
+        args.reference,
+        args.reference_channel,
+        args.input,
         args.input_format,
         args.signal_column,
-        lag_info,
-        aligned,
+        args.out_dir,
+        args.plot,
     )
 
-    args.out_dir.mkdir(parents=True, exist_ok=True)
-    summary_json_path = args.out_dir / "summary.json"
-    summary_csv_path = args.out_dir / "summary.csv"
-    aligned_path = args.out_dir / "aligned_samples.csv"
-
-    with summary_json_path.open("w", encoding="utf-8") as handle:
-        json.dump(summary, handle, indent=2, sort_keys=True)
-        handle.write("\n")
-    write_summary_csv(summary, summary_csv_path)
-    write_aligned_samples(aligned, aligned_path)
-    if args.plot:
-        render_plots(args.out_dir, reference, aligned, summary)
-
-    print(f"summary_json: {summary_json_path}")
-    print(f"summary_csv: {summary_csv_path}")
-    print(f"aligned_samples: {aligned_path}")
+    print(f"summary_json: {summary['artifacts']['summary_json']}")
+    print(f"summary_csv: {summary['artifacts']['summary_csv']}")
+    print(f"aligned_samples: {summary['artifacts']['aligned_samples']}")
     print(f"rmse: {summary['metrics']['rmse']:.12g}")
     print(f"mae: {summary['metrics']['mae']:.12g}")
     print(f"pearson_correlation: {summary['metrics']['pearson_correlation']:.12g}")
