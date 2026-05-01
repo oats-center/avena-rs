@@ -9858,8 +9858,8 @@
 				(justify left)
 			)
 		)
-		(property "Value" "1u"
-			(at 50.038 110.236 0)
+		(property "Value" "1uF"
+			(at 49.276 109.982 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10016,7 +10016,7 @@
 		(dnp no)
 		(uuid "07d13492-6822-46e6-8a82-093367505f63")
 		(property "Reference" "C5"
-			(at 73.406 107.188 0)
+			(at 74.676 107.696 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -10024,8 +10024,8 @@
 				(justify left)
 			)
 		)
-		(property "Value" "1u"
-			(at 74.93 110.236 0)
+		(property "Value" "1uF"
+			(at 74.422 110.236 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -11264,7 +11264,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "10n"
+		(property "Value" "10nF"
 			(at 43.434 127.762 0)
 			(effects
 				(font
@@ -11690,7 +11690,7 @@
 		(dnp no)
 		(uuid "3f0a307d-5056-444f-b7ec-c402c9987286")
 		(property "Reference" "C6"
-			(at 82.296 107.188 0)
+			(at 91.694 107.442 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -11698,8 +11698,8 @@
 				(justify left)
 			)
 		)
-		(property "Value" "0.1u"
-			(at 83.058 110.236 0)
+		(property "Value" "0.1uF"
+			(at 91.694 109.982 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -12316,8 +12316,8 @@
 				(justify left)
 			)
 		)
-		(property "Value" "0.1u"
-			(at 100.838 176.276 0)
+		(property "Value" "0.1uF"
+			(at 102.362 176.276 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -14026,7 +14026,7 @@
 		(dnp no)
 		(uuid "81a12f15-1c6f-4a68-b4a0-9dbc71590a80")
 		(property "Reference" "C4"
-			(at 59.436 107.188 0)
+			(at 68.326 107.95 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -14034,8 +14034,8 @@
 				(justify left)
 			)
 		)
-		(property "Value" "0.1u"
-			(at 60.198 110.236 0)
+		(property "Value" "0.1uF"
+			(at 68.072 109.982 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -14103,7 +14103,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "0.1u"
+		(property "Value" "0.1uF"
 			(at 107.442 138.43 90)
 			(effects
 				(font
@@ -16450,7 +16450,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "10n"
+		(property "Value" "10nF"
 			(at 43.434 151.638 0)
 			(effects
 				(font
@@ -16655,7 +16655,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "0.1u"
+		(property "Value" "0.1uF"
 			(at 306.832 96.266 0)
 			(effects
 				(font
