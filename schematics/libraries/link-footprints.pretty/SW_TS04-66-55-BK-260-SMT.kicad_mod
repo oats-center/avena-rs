@@ -221,7 +221,7 @@
 		(uuid "4e8b1d4a-ee8e-4ec6-ac18-3d2b35e7034c")
 	)
 	(embedded_fonts no)
-	(model "${KIPRJMOD}/../libraries/models/TS04-66-55-BK-260-SMT.step"
+	(model "${KIPRJMOD}/../../libraries/models/Same_Sky_TS04-66-55-BK-160-SMT.step"
 		(offset
 			(xyz 0 0 0)
 		)

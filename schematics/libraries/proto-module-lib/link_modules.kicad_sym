@@ -513,7 +513,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(property "Reference" "U"
-			(at 0 16.51 0)
+			(at 14.224 15.748 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -521,7 +521,7 @@
 			)
 		)
 		(property "Value" "Signal_Module"
-			(at 0 14.478 0)
+			(at 14.732 13.462 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -557,7 +557,7 @@
 		)
 		(symbol "Signal_Module_0_0"
 			(pin output line
-				(at -12.7 7.62 0)
+				(at -12.7 3.81 0)
 				(length 2.54)
 				(name "S1_o+"
 					(effects
@@ -575,7 +575,7 @@
 				)
 			)
 			(pin output line
-				(at -12.7 3.81 0)
+				(at -12.7 0 0)
 				(length 2.54)
 				(name "S1_o-"
 					(effects
@@ -593,7 +593,7 @@
 				)
 			)
 			(pin output line
-				(at -12.7 0 0)
+				(at -12.7 -3.81 0)
 				(length 2.54)
 				(name "S2_o+"
 					(effects
@@ -611,7 +611,7 @@
 				)
 			)
 			(pin output line
-				(at -12.7 -3.81 0)
+				(at -12.7 -7.62 0)
 				(length 2.54)
 				(name "S2_o-"
 					(effects
@@ -629,43 +629,7 @@
 				)
 			)
 			(pin power_in line
-				(at -7.62 -16.51 90)
-				(length 2.54)
-				(name "+12V"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-				(number "1"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-			)
-			(pin power_in line
-				(at -2.54 -16.51 90)
-				(length 2.54)
-				(name "+5V"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-				(number "2"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-			)
-			(pin power_in line
-				(at 2.54 -16.51 90)
+				(at -5.08 13.97 270)
 				(length 2.54)
 				(name "+3V3"
 					(effects
@@ -683,7 +647,25 @@
 				)
 			)
 			(pin power_in line
-				(at 7.62 -16.51 90)
+				(at 0 13.97 270)
+				(length 2.54)
+				(name "+5V"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(number "2"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+			)
+			(pin power_in line
+				(at 0 -16.51 90)
 				(length 2.54)
 				(name "GND"
 					(effects
@@ -700,8 +682,26 @@
 					)
 				)
 			)
+			(pin power_in line
+				(at 5.08 13.97 270)
+				(length 2.54)
+				(name "+12V"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(number "1"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+			)
 			(pin input line
-				(at 12.7 7.62 180)
+				(at 12.7 3.81 180)
 				(length 2.54)
 				(name "S1_in+"
 					(effects
@@ -719,7 +719,7 @@
 				)
 			)
 			(pin input line
-				(at 12.7 3.81 180)
+				(at 12.7 0 180)
 				(length 2.54)
 				(name "S1_in-"
 					(effects
@@ -737,7 +737,7 @@
 				)
 			)
 			(pin input line
-				(at 12.7 0 180)
+				(at 12.7 -3.81 180)
 				(length 2.54)
 				(name "S2_in+"
 					(effects
@@ -755,7 +755,7 @@
 				)
 			)
 			(pin input line
-				(at 12.7 -3.81 180)
+				(at 12.7 -7.62 180)
 				(length 2.54)
 				(name "S2_in-"
 					(effects

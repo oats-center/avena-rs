@@ -1,0 +1,224 @@
+(footprint "Oscillator_SMD_Kyocera_KC2520Z-4Pin_2.5x2.0mm"
+	(version 20241229)
+	(generator "pcbnew")
+	(generator_version "9.0")
+	(layer "F.Cu")
+	(descr "https://global.kyocera.com/prdct/electro/product/pdf/clock_z_xz_e.pdf")
+	(tags "2.5mm 2mm SMD")
+	(property "Reference" "REF**"
+		(at 0 -2.5 0)
+		(layer "F.SilkS")
+		(uuid "c4810c48-2d21-4c5e-b5d8-4bd5f1197c4a")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "Oscillator_SMD_Kyocera_KC2520Z-4Pin_2.5x2.0mm"
+		(at 0 2.5 0)
+		(layer "F.Fab")
+		(uuid "08941cc6-0788-4140-a8dc-2957526221d9")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "37adbbad-9701-46aa-a399-a1ac6def215b")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "edf4900e-41e4-4c41-a3e6-0a1e23f32fdf")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr smd)
+	(fp_line
+		(start -1.46 -1.71)
+		(end 1.15 -1.71)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "93d83200-14e9-419e-9e1c-057ed54d3909")
+	)
+	(fp_line
+		(start -1.46 -1.17)
+		(end -1.46 -1.71)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "9ed49475-990c-4c52-b52f-cf62989ce88c")
+	)
+	(fp_line
+		(start 1.14 1.71)
+		(end -1.14 1.71)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "dbea041d-2b28-4e3c-9e7d-e7720d516473")
+	)
+	(fp_line
+		(start -1.45 -1.7)
+		(end 1.45 -1.7)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "d12e8e71-66e1-4bd5-9e75-7cd10fceaefb")
+	)
+	(fp_line
+		(start -1.45 1.7)
+		(end -1.45 -1.7)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "9baf450d-f0e8-4a35-a58f-ad6ca572f050")
+	)
+	(fp_line
+		(start 1.45 -1.7)
+		(end 1.45 1.7)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "75a96349-dfa3-4e41-aa88-9dcf15114489")
+	)
+	(fp_line
+		(start 1.45 1.7)
+		(end -1.45 1.7)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "e266513a-fe8a-430c-a752-258bcc12b4b6")
+	)
+	(fp_line
+		(start -1 1.25)
+		(end -1 -0.75)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "e1e714de-c966-4002-84c6-3d084ed958ad")
+	)
+	(fp_line
+		(start -0.5 -1.25)
+		(end -1 -0.75)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "38b064ad-fed7-4115-b8bd-c8833e46afed")
+	)
+	(fp_line
+		(start -0.5 -1.25)
+		(end 1 -1.25)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "64e1441c-7a44-4138-92ce-15abf695bdc7")
+	)
+	(fp_line
+		(start 1 -1.25)
+		(end 1 1.25)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "e0b55374-4d60-49d2-a334-4fcabe6af26d")
+	)
+	(fp_line
+		(start 1 1.25)
+		(end -1 1.25)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "b719f9b3-0d0f-40ea-a882-fb99fef4b06a")
+	)
+	(fp_text user "${REFERENCE}"
+		(at -0.01 0.07 0)
+		(layer "F.Fab")
+		(uuid "c5e2a94d-a3c8-44f8-886a-ae04426c25e9")
+		(effects
+			(font
+				(size 0.5 0.5)
+				(thickness 0.075)
+			)
+		)
+	)
+	(pad "1" smd rect
+		(at -0.725 -0.925)
+		(size 0.95 1.05)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "0edc7467-bd3e-4108-9454-50aa8249edb5")
+	)
+	(pad "2" smd rect
+		(at -0.725 0.925)
+		(size 0.95 1.05)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "8e353427-1a1d-4fbc-9186-cc04301e3ddf")
+	)
+	(pad "3" smd rect
+		(at 0.725 0.925)
+		(size 0.95 1.05)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "47f84297-fc84-431b-9dbc-43a4d07dee95")
+	)
+	(pad "4" smd rect
+		(at 0.725 -0.925)
+		(size 0.95 1.05)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "718bb204-57f7-4537-829a-f8fdcd26a0f4")
+	)
+	(embedded_fonts no)
+	(model "${KIPRJMOD}/../../libraries/models/KC2520Z25_KAV.step"
+		(offset
+			(xyz 0 0 0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz 0 0 0)
+		)
+	)
+)
