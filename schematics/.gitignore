@@ -12,9 +12,9 @@
 # Generated files (e.g., netlists, BOMs, etc.)
 *.xml
 *.net
-*.csv
+.csv
 *.tsv
-*.bom
+.bom
 *.gbr
 *.gbl
 *.gbs
