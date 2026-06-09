@@ -28,21 +28,32 @@ ensure_dirs() {
   mkdir -p "$RUNTIME_DIR" "$LOG_DIR"
 }
 
-get_running_pid() {
+get_running_pids() {
+  local found=0
+  local seen=""
+
   if [[ -f "$PID_FILE" ]]; then
     local pid
     pid="$(cat "$PID_FILE" 2>/dev/null || true)"
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
       echo "$pid"
-      return 0
+      seen=" $pid "
+      found=1
+    else
+      rm -f "$PID_FILE"
     fi
-    rm -f "$PID_FILE"
   fi
 
-  local pids
-  pids="$(pgrep -f "$BIN_PATH" 2>/dev/null || true)"
-  if [[ -n "$pids" ]]; then
-    echo "$pids" | head -n1
+  while IFS= read -r pid; do
+    [[ -z "$pid" ]] && continue
+    if [[ "$seen" != *" $pid "* ]]; then
+      echo "$pid"
+      seen="${seen}${pid} "
+      found=1
+    fi
+  done < <(pgrep -f -- "$BIN_PATH" 2>/dev/null || true)
+
+  if [[ "$found" -eq 1 ]]; then
     return 0
   fi
 
@@ -92,13 +103,18 @@ if not isinstance(env, dict):
     raise SystemExit(f"{config_path}: expected an object or an 'env' object")
 
 defaults = {
-    "NATS_SUBJECT": "avenabox",
-    "NATS_SERVERS": "nats://nats1.oats:4222,nats://nats2.oats:4222,nats://nats3.oats:4222",
+    "NATS_SUBJECT": "avenars",
+    "NATS_SERVERS": "nats://127.0.0.1:4222",
+    "JS_DOMAIN": "edge-i69-mu2",
     "ASSET_NUMBER": "1001",
+    "SITE_ID": "i69",
+    "BOX_ID": "i69-mu2",
+    "SOURCE_TYPE": "labjack",
+    "SOURCE_ID": "",
     "OUTPUT_DIR": "outputs",
     "NATS_CREDS_FILE": os.path.join(root_dir, "apt.creds"),
     "CFG_BUCKET": "avenabox",
-    "CFG_KEY": "labjackd.config.i69-mu1",
+    "CFG_KEY": "labjackd.config.i69-mu2",
     "LABJACK_IDENTIFIER": "",
     "LABJACK_SERIAL": "",
     "LABJACK_NAME": "",
@@ -171,8 +187,9 @@ PY
 
 start_managed_bin() {
   ensure_dirs
-  if pid="$(get_running_pid)"; then
-    echo ">>> ${APP_NAME} already running (pid $pid)"
+  local pids
+  if pids="$(get_running_pids)"; then
+    echo ">>> ${APP_NAME} already running (pid(s): $(echo "$pids" | xargs))"
     return 0
   fi
 
@@ -187,16 +204,20 @@ start_managed_bin() {
 
 stop_managed_bin() {
   ensure_dirs
-  local pid
-  if ! pid="$(get_running_pid)"; then
+  local pids
+  if ! pids="$(get_running_pids)"; then
     echo ">>> ${APP_NAME} not running"
     return 0
   fi
 
-  echo ">>> Stopping ${APP_NAME} (pid $pid)"
-  kill "$pid" 2>/dev/null || true
+  echo ">>> Stopping ${APP_NAME} (pid(s): $(echo "$pids" | xargs))"
+  while IFS= read -r pid; do
+    [[ -z "$pid" ]] && continue
+    kill "$pid" 2>/dev/null || true
+  done <<< "$pids"
+
   for _ in {1..20}; do
-    if ! kill -0 "$pid" 2>/dev/null; then
+    if ! get_running_pids >/dev/null; then
       rm -f "$PID_FILE"
       echo ">>> ${APP_NAME} stopped"
       return 0
@@ -205,14 +226,20 @@ stop_managed_bin() {
   done
 
   echo ">>> ${APP_NAME} did not stop gracefully, sending SIGKILL"
-  kill -9 "$pid" 2>/dev/null || true
+  if pids="$(get_running_pids)"; then
+    while IFS= read -r pid; do
+      [[ -z "$pid" ]] && continue
+      kill -9 "$pid" 2>/dev/null || true
+    done <<< "$pids"
+  fi
   rm -f "$PID_FILE"
 }
 
 status_managed_bin() {
   ensure_dirs
-  if pid="$(get_running_pid)"; then
-    echo ">>> ${APP_NAME} running (pid $pid)"
+  local pids
+  if pids="$(get_running_pids)"; then
+    echo ">>> ${APP_NAME} running (pid(s): $(echo "$pids" | xargs))"
     echo ">>> config: $CONFIG_FILE"
     echo ">>> log: $LOG_FILE"
   else

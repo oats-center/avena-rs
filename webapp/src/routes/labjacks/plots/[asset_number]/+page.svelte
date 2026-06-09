@@ -4,6 +4,7 @@
     import { connect, getKeyValue, getKeys } from "$lib/nats.svelte";
     import { downloadExportViaWebSocket, type ExportRequestPayload } from "$lib/exporter";
     import { applyCalibration, normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
+    import { liveLabJackChannelPattern, liveLabJackChannelSubject } from "$lib/subjects";
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
     import {
         FlatBufferParser
@@ -25,6 +26,10 @@
         labjack_name: string;
         asset_number: number;
         max_channels: number;
+        site_id?: string;
+        box_id?: string;
+        source_type?: string;
+        source_id?: string;
         nats_subject: string;
         nats_stream: string;
         rotate_secs: number;
@@ -78,7 +83,11 @@
             labjack_name: raw.labjack_name ?? "unknown",
             asset_number: Number(raw.asset_number ?? 0),
             max_channels: Number(raw.max_channels ?? 8),
-            nats_subject: raw.nats_subject ?? "avenabox",
+            site_id: raw.site_id ?? "",
+            box_id: raw.box_id ?? "",
+            source_type: raw.source_type ?? "labjack",
+            source_id: raw.source_id ?? raw.labjack_name ?? "",
+            nats_subject: raw.nats_subject ?? "avenars",
             nats_stream: raw.nats_stream ?? "labjacks",
             rotate_secs: Number(raw.rotate_secs ?? 60),
             sensor_settings: sensor
@@ -570,7 +579,7 @@
         
         try {
             for (const channel of labjackConfig.sensor_settings.channels_enabled) {
-                const subject = `${labjackConfig.nats_subject}.${labjackConfig.asset_number}.data.ch${channel.toString().padStart(2, '0')}`;
+                const subject = liveLabJackChannelSubject(labjackConfig, channel);
                 const subscription = natsService.connection.subscribe(subject);
                 subscriptions.push(subscription);
                 
@@ -1174,7 +1183,7 @@
                         </div>
                         <div class="flex justify-between">
                             <span>NATS Subject Pattern:</span>
-                            <span class="badge badge-accent badge-sm font-mono">{labjackConfig.nats_subject}.{labjackConfig.asset_number}.data.ch##</span>
+                            <span class="badge badge-accent badge-sm font-mono">{liveLabJackChannelPattern(labjackConfig)}</span>
                         </div>
                         <div class="flex justify-between">
                             <span>Channel Data Status:</span>

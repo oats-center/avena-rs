@@ -1,4 +1,4 @@
-use async_nats::{self, ConnectOptions, ServerAddr};
+use async_nats::{self, ConnectOptions};
 use flatbuffers::root;
 use futures_util::stream::StreamExt;
 use std::collections::HashMap;
@@ -12,18 +12,16 @@ mod sample_data_generated {
     #![allow(dead_code, unused_imports)]
     include!("data_generated.rs"); // path relative to examples/
 }
+mod nats_config;
+mod subjects;
 use sample_data_generated::sampler;
 
 fn extract_channel_token(subject: &str) -> Option<String> {
     subject.split('.').last().map(|s| s.to_string())
 }
 
-fn pad_asset(n: u32) -> String {
-    format!("{n:03}")
-}
-
 fn open_csv_for_channel(out_dir: &Path, asset: u32, ch_token: &str) -> std::io::Result<File> {
-    let fname = format!("labjack_{}_{}.csv", pad_asset(asset), ch_token);
+    let fname = format!("labjack_{}_{}.csv", subjects::pad_asset(asset), ch_token);
     let path = out_dir.join(fname);
     let need_header = !path.exists();
 
@@ -46,6 +44,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(1);
+    let site_id = std::env::var("SITE_ID").ok();
+    let box_id = std::env::var("BOX_ID").ok();
+    let labjack_name = std::env::var("LABJACK_NAME").ok();
+    let source_type = std::env::var("SOURCE_TYPE").ok();
+    let source_id = std::env::var("SOURCE_ID").ok();
 
     let out_dir_str = std::env::var("OUTPUT_DIR").unwrap_or_else(|_| "outputs".to_string());
     let out_dir = PathBuf::from(&out_dir_str);
@@ -57,15 +60,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     // Subscribe to all per-channel subjects for this asset
-    let wildcard = format!("{}.{}.data.*", subject_prefix, pad_asset(asset_number));
+    let wildcard = subjects::live_labjack_stream_subject(
+        &subject_prefix,
+        site_id.as_deref(),
+        box_id.as_deref(),
+        labjack_name.as_deref(),
+        source_type.as_deref(),
+        source_id.as_deref(),
+    );
     println!("Subscribing to subject '{}'", wildcard);
 
-    // Build server list
-    let servers: Vec<ServerAddr> = vec![
-        "nats://nats1.oats:4222".parse()?,
-        "nats://nats2.oats:4222".parse()?,
-        "nats://nats3.oats:4222".parse()?,
-    ];
+    let servers = nats_config::servers_from_env()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
 
     // Connect using creds
     let creds_path = std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| "apt.creds".into());

@@ -16,6 +16,10 @@
         labjack_name: string;
         asset_number: number;
         max_channels: number;
+        site_id?: string;
+        box_id?: string;
+        source_type?: string;
+        source_id?: string;
         nats_subject: string;
         nats_stream: string;
         rotate_secs: number;
@@ -427,14 +431,14 @@
                         <!-- NATS Subject -->
                         <div class="form-control">
                             <label class="label" for="nats_subject">
-                                <span class="label-text font-medium">NATS Subject *</span>
+                                <span class="label-text font-medium">NATS Root *</span>
                             </label>
                             <input
                                 id="nats_subject"
                                 type="text"
                                 bind:value={formData.nats_subject}
                                 class="input input-bordered w-full focus:input-primary"
-                                placeholder="e.g., avenabox"
+                                placeholder="e.g., avenars"
                             />
                             {#if errors.nats_subject}
                                 <div class="label">
@@ -460,6 +464,62 @@
                                     <span class="label-text-alt text-error">{errors.nats_stream}</span>
                                 </div>
                             {/if}
+                        </div>
+
+                        <!-- Site ID -->
+                        <div class="form-control">
+                            <label class="label" for="site_id">
+                                <span class="label-text font-medium">Site ID</span>
+                            </label>
+                            <input
+                                id="site_id"
+                                type="text"
+                                bind:value={formData.site_id}
+                                class="input input-bordered w-full focus:input-primary"
+                                placeholder="e.g., i69"
+                            />
+                        </div>
+
+                        <!-- Box ID -->
+                        <div class="form-control">
+                            <label class="label" for="box_id">
+                                <span class="label-text font-medium">Box ID</span>
+                            </label>
+                            <input
+                                id="box_id"
+                                type="text"
+                                bind:value={formData.box_id}
+                                class="input input-bordered w-full focus:input-primary"
+                                placeholder="e.g., i69-mu2"
+                            />
+                        </div>
+
+                        <!-- Source Type -->
+                        <div class="form-control">
+                            <label class="label" for="source_type">
+                                <span class="label-text font-medium">Source Type</span>
+                            </label>
+                            <input
+                                id="source_type"
+                                type="text"
+                                bind:value={formData.source_type}
+                                class="input input-bordered w-full focus:input-primary"
+                                placeholder="e.g., labjack"
+                            />
+                        </div>
+
+                        <!-- Source ID -->
+                        <div class="form-control">
+                            <label class="label" for="source_id">
+                                <span class="label-text font-medium">Source ID</span>
+                            </label>
+                            <input
+                                id="source_id"
+                                type="text"
+                                bind:value={formData.source_id}
+                                class="input input-bordered w-full focus:input-primary"
+                                placeholder="e.g., i69-lj2"
+                            />
                         </div>
                     </div>
                 </div>

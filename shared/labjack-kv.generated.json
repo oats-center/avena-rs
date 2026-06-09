@@ -1,0 +1,38 @@
+{
+  "labjack_name": "i69-lj2",
+  "asset_number": 1001,
+  "max_channels": 14,
+  "site_id": "i69",
+  "box_id": "i69-mu2",
+  "source_type": "labjack",
+  "source_id": "i69-lj2",
+  "nats_subject": "avenars",
+  "nats_stream": "labjacks",
+  "rotate_secs": 300,
+  "sensor_settings": {
+    "scans_per_read": 100,
+    "scan_rate_hz": 500,
+    "channels_enabled": [
+      11,
+      13
+    ],
+    "gains": 1,
+    "data_formats": [
+      "voltage",
+      "voltage"
+    ],
+    "measurement_units": [
+      "V",
+      "V"
+    ],
+    "labjack_on_off": true,
+    "calibrations": {
+      "11": {
+        "type": "identity"
+      },
+      "13": {
+        "type": "identity"
+      }
+    }
+  }
+}

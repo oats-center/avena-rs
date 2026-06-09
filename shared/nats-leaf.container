@@ -1,0 +1,26 @@
+[Unit]
+Description=Avena RS local NATS leaf node
+Wants=network-online.target tailscaled.service
+After=network-online.target tailscaled.service
+
+[Container]
+ContainerName=avena-nats-leaf
+Image=docker.io/library/nats:2.11
+
+Network=host
+ReadOnly=true
+ReadOnlyTmpfs=true
+
+Volume=./nats-leaf.conf:/etc/nats/nats-leaf.conf:ro
+Volume=./creds:/etc/nats/creds:ro
+Volume=nats-jetstream.volume:/var/lib/nats:Z
+
+Exec=-c /etc/nats/nats-leaf.conf
+
+[Service]
+Restart=always
+RestartSec=5s
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

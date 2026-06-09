@@ -8,3 +8,6 @@ For the LabJack pipeline:
   and `rust-ljm/exporterctl.sh` on the MU for a single-host setup
 
 See `rust-ljm/README.md` for the current workflow and config format.
+
+For edge boxes with a local NATS leaf node, JetStream, and Prometheus/Alloy
+monitoring, see [docs/edge-nats-prometheus.md](docs/edge-nats-prometheus.md).

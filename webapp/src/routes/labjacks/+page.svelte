@@ -19,6 +19,10 @@
         labjack_name: string;
         asset_number: number;
         max_channels: number;
+        site_id?: string;
+        box_id?: string;
+        source_type?: string;
+        source_id?: string;
         nats_subject: string;
         nats_stream: string;
         rotate_secs: number;
@@ -69,6 +73,10 @@
             labjack_name: raw.labjack_name,
             asset_number: Number(raw.asset_number),
             max_channels: Number(raw.max_channels),
+            site_id: raw.site_id,
+            box_id: raw.box_id,
+            source_type: raw.source_type,
+            source_id: raw.source_id,
             nats_subject: raw.nats_subject,
             nats_stream: raw.nats_stream,
             rotate_secs: Number(raw.rotate_secs),
@@ -84,7 +92,11 @@
             labjack_name: raw.labjack_name ?? "unknown",
             asset_number: Number(raw.asset_number ?? 0),
             max_channels: Number(raw.max_channels ?? 8),
-            nats_subject: raw.nats_subject ?? "avenabox",
+            site_id: raw.site_id ?? "",
+            box_id: raw.box_id ?? "",
+            source_type: raw.source_type ?? "labjack",
+            source_id: raw.source_id ?? raw.labjack_name ?? "",
+            nats_subject: raw.nats_subject ?? "avenars",
             nats_stream: raw.nats_stream ?? "labjacks",
             rotate_secs: Number(raw.rotate_secs ?? 60),
             sensor_settings: sensor
@@ -187,7 +199,11 @@
             labjack_name: "",
             asset_number: 0,
             max_channels: 8,
-            nats_subject: "avenabox",
+            site_id: "i69",
+            box_id: "i69-mu2",
+            source_type: "labjack",
+            source_id: "",
+            nats_subject: "avenars",
             nats_stream: "labjacks",
             rotate_secs: 60,
             sensor_settings: {

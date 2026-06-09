@@ -1,6 +1,6 @@
 use async_nats::ConnectOptions;
 use async_nats::jetstream::kv::Operation;
-use async_nats::{self, ServerAddr, jetstream};
+use async_nats;
 use chrono::{DateTime, NaiveDate, Utc};
 use futures_util::StreamExt;
 use parquet::{
@@ -8,11 +8,18 @@ use parquet::{
     file::{metadata::KeyValue, properties::WriterProperties, writer::SerializedFileWriter},
     schema::parser::parse_message_type,
 };
-use std::{collections::HashMap, fs, path::Path, sync::Arc};
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use tokio::sync::watch;
 use tokio::time::Duration;
 
 mod calibration;
+mod nats_config;
+mod subjects;
 mod sample_data_generated {
     #![allow(dead_code, unused_imports)]
     include!("data_generated.rs");
@@ -28,6 +35,14 @@ struct NestedConfig {
     labjack_name: String,
     asset_number: u32,
     max_channels: u32,
+    #[serde(default)]
+    site_id: Option<String>,
+    #[serde(default)]
+    box_id: Option<String>,
+    #[serde(default)]
+    source_type: Option<String>,
+    #[serde(default)]
+    source_id: Option<String>,
     nats_subject: String,
     nats_stream: String,
     rotate_secs: u64,
@@ -55,6 +70,11 @@ struct SampleConfig {
     scan_rate_hz: f64,
     channels: Vec<u8>,
     asset_number: u32,
+    labjack_name: String,
+    site_id: Option<String>,
+    box_id: Option<String>,
+    source_type: Option<String>,
+    source_id: Option<String>,
     nats_subject: String,
     nats_stream: String,
     rotate_secs: u64,
@@ -69,6 +89,11 @@ impl From<(SensorConfig, &SampleConfig)> for SampleConfig {
             scan_rate_hz: raw.scan_rate_hz,
             channels: raw.channels_enabled,
             asset_number: base.asset_number,
+            labjack_name: base.labjack_name.clone(),
+            site_id: base.site_id.clone(),
+            box_id: base.box_id.clone(),
+            source_type: base.source_type.clone(),
+            source_id: base.source_id.clone(),
             nats_subject: base.nats_subject.clone(),
             nats_stream: base.nats_stream.clone(),
             rotate_secs: base.rotate_secs,
@@ -103,6 +128,11 @@ fn sample_config_from_nested(nested: NestedConfig) -> SampleConfig {
         scan_rate_hz: raw.scan_rate_hz,
         channels: raw.channels_enabled,
         asset_number: nested.asset_number,
+        labjack_name: nested.labjack_name,
+        site_id: nested.site_id,
+        box_id: nested.box_id,
+        source_type: nested.source_type,
+        source_id: nested.source_id,
         nats_subject: nested.nats_subject,
         nats_stream: nested.nats_stream,
         rotate_secs: nested.rotate_secs,
@@ -134,8 +164,9 @@ impl ParquetLogger {
         file_index: usize,
         date: NaiveDate,
         calibration: CalibrationSpec,
+        parquet_root: &Path,
     ) -> Self {
-        let dir = Path::new("parquet")
+        let dir = parquet_root
             .join(format!("asset{:03}", asset))
             .join(date.format("%Y-%m-%d").to_string())
             .join(format!("ch{:02}", channel));
@@ -222,8 +253,8 @@ impl ParquetLogger {
 }
 
 /// Scan channel/day directory to find the next available parquet file index
-fn next_file_index(asset: u32, channel: u8, date: NaiveDate) -> usize {
-    let dir = Path::new("parquet")
+fn next_file_index(parquet_root: &Path, asset: u32, channel: u8, date: NaiveDate) -> usize {
+    let dir = parquet_root
         .join(format!("asset{:03}", asset))
         .join(date.format("%Y-%m-%d").to_string())
         .join(format!("ch{:02}", channel));
@@ -253,6 +284,7 @@ fn spawn_channel_logger(
     channel: u8,
     rotate_secs: u64,
     calibration: CalibrationSpec,
+    parquet_root: PathBuf,
 ) -> ChannelLogger {
     let (calibration_tx, mut calibration_rx) = watch::channel(calibration.clone());
     let calibration_for_task = calibration.clone();
@@ -262,7 +294,8 @@ fn spawn_channel_logger(
 
         let mut ticker = tokio::time::interval(Duration::from_secs(rotate_secs));
         let mut logger: Option<ParquetLogger> = None;
-        let mut file_index = next_file_index(asset, channel, Utc::now().date_naive());
+        let mut file_index =
+            next_file_index(&parquet_root, asset, channel, Utc::now().date_naive());
         let mut active_calibration = calibration_for_task;
         let mut last_sequence: Option<u64> = None;
 
@@ -320,11 +353,11 @@ fn spawn_channel_logger(
                                         println!("[logger] Closed file {}", file_index);
                                     }
                                     file_index = if logger.is_none() && sample_date != Utc::now().date_naive() {
-                                        next_file_index(asset, channel, sample_date)
+                                        next_file_index(&parquet_root, asset, channel, sample_date)
                                     } else if sample_date == Utc::now().date_naive() {
-                                        next_file_index(asset, channel, sample_date)
+                                        next_file_index(&parquet_root, asset, channel, sample_date)
                                     } else {
-                                        next_file_index(asset, channel, sample_date)
+                                        next_file_index(&parquet_root, asset, channel, sample_date)
                                     };
                                     logger = Some(ParquetLogger::new(
                                         asset,
@@ -332,6 +365,7 @@ fn spawn_channel_logger(
                                         file_index,
                                         sample_date,
                                         active_calibration.clone(),
+                                        &parquet_root,
                                     ));
                                 }
 
@@ -355,6 +389,7 @@ fn spawn_channel_logger(
                         file_index,
                         today,
                         active_calibration.clone(),
+                        &parquet_root,
                     ));
                 }
                 changed = calibration_rx.changed() => {
@@ -369,7 +404,7 @@ fn spawn_channel_logger(
                             println!("[logger] Closed file {}", file_index);
                             file_index += 1;
                         } else {
-                            file_index = next_file_index(asset, channel, today);
+                            file_index = next_file_index(&parquet_root, asset, channel, today);
                         }
                         println!(
                             "[logger] Calibration updated for channel {channel:02}; rotating file."
@@ -380,6 +415,7 @@ fn spawn_channel_logger(
                             file_index,
                             today,
                             updated.clone(),
+                            &parquet_root,
                         ));
                         active_calibration = updated;
                     }
@@ -412,11 +448,10 @@ fn timestamp_ns_to_utc_date(timestamp_unix_ns: i64) -> NaiveDate {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let servers: Vec<ServerAddr> = vec![
-        "nats://nats1.oats:4222".parse()?,
-        "nats://nats2.oats:4222".parse()?,
-        "nats://nats3.oats:4222".parse()?,
-    ];
+    let servers = nats_config::servers_from_env()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+    let parquet_root =
+        PathBuf::from(std::env::var("PARQUET_DIR").unwrap_or_else(|_| "parquet".into()));
 
     // Connect using creds
     let creds_path = std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| "apt.creds".into());
@@ -430,7 +465,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|e| format!("NATS connect failed: {}", e))?;
 
     println!("Connected to NATS via creds!");
-    let js = jetstream::new(nc.clone());
+    let js = nats_config::jetstream_context(nc.clone());
 
     // Step 2: load config from KV
     let bucket = std::env::var("CFG_BUCKET").unwrap_or_else(|_| "avenabox".into());
@@ -449,9 +484,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // initial subscriptions
     for ch in &cfg.channels {
-        let subject = format!(
-            "{}.{:03}.data.ch{:02}",
-            cfg.nats_subject, cfg.asset_number, ch
+        let subject = subjects::live_labjack_channel_subject(
+            &cfg.nats_subject,
+            cfg.asset_number,
+            *ch,
+            cfg.site_id.as_deref(),
+            cfg.box_id.as_deref(),
+            Some(&cfg.labjack_name),
+            cfg.source_type.as_deref(),
+            cfg.source_id.as_deref(),
         );
         let calibration = cfg.calibrations.get(ch).cloned().unwrap_or_default();
         let h = spawn_channel_logger(
@@ -461,6 +502,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             *ch,
             cfg.rotate_secs,
             calibration,
+            parquet_root.clone(),
         );
         active.insert(*ch, h);
     }
@@ -492,9 +534,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             for ch in &new_cfg.channels {
                                 if !active.contains_key(ch) {
                                     println!("[logger] Adding channel {ch}");
-                                    let subject = format!(
-                                        "{}.{:03}.data.ch{:02}",
-                                        new_cfg.nats_subject, new_cfg.asset_number, ch
+                                    let subject = subjects::live_labjack_channel_subject(
+                                        &new_cfg.nats_subject,
+                                        new_cfg.asset_number,
+                                        *ch,
+                                        new_cfg.site_id.as_deref(),
+                                        new_cfg.box_id.as_deref(),
+                                        Some(&new_cfg.labjack_name),
+                                        new_cfg.source_type.as_deref(),
+                                        new_cfg.source_id.as_deref(),
                                     );
                                     let calibration =
                                         new_cfg.calibrations.get(ch).cloned().unwrap_or_default();
@@ -505,6 +553,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         *ch,
                                         new_cfg.rotate_secs,
                                         calibration,
+                                        parquet_root.clone(),
                                     );
                                     active.insert(*ch, h);
                                 } else {
@@ -528,9 +577,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         if let Some(entry) = active.remove(ch) {
                                             entry.handle.abort();
                                         }
-                                        let subject = format!(
-                                            "{}.{:03}.data.ch{:02}",
-                                            new_cfg.nats_subject, new_cfg.asset_number, ch
+                                        let subject = subjects::live_labjack_channel_subject(
+                                            &new_cfg.nats_subject,
+                                            new_cfg.asset_number,
+                                            *ch,
+                                            new_cfg.site_id.as_deref(),
+                                            new_cfg.box_id.as_deref(),
+                                            Some(&new_cfg.labjack_name),
+                                            new_cfg.source_type.as_deref(),
+                                            new_cfg.source_id.as_deref(),
                                         );
                                         let h = spawn_channel_logger(
                                             nc.clone(),
@@ -539,6 +594,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             *ch,
                                             new_cfg.rotate_secs,
                                             calibration,
+                                            parquet_root.clone(),
                                         );
                                         active.insert(*ch, h);
                                     }

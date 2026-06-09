@@ -11,8 +11,10 @@ Rust binaries for LabJack streaming, parquet archiving, and export serving.
 
 ## Deployment
 
-- MU / edge host with the LabJack attached: run `streamer`
-- Remote server with storage and webapp support: run `archiver` and `exporter`
+- MU / edge host with the LabJack attached: run the local NATS leaf node,
+  `streamer`, and `archiver`
+- Remote server with webapp support: run the web app against the central OATS
+  NATS WebSocket endpoint
 
 `exporter` must run on the same host as the parquet directory it serves.
 For a simple setup, you can also run `archiver` and `exporter` on the MU and
@@ -86,6 +88,8 @@ starts.
 Important fields:
 
 - `NATS_CREDS_FILE`: path to the NATS creds file
+- `NATS_SERVERS`: local NATS leaf node URL, normally `nats://127.0.0.1:4222`
+- `JS_DOMAIN`: local JetStream domain, for example `edge-i69-mu2`
 - `CFG_BUCKET`: JetStream KV bucket
 - `CFG_KEY`: JetStream KV key for the LabJack config
 - `LABJACK_IP`: required direct LabJack IP for `streamer`
@@ -129,7 +133,11 @@ The JSON stored in JetStream KV should use the newer structure:
   "labjack_name": "Macbook",
   "asset_number": 1456,
   "max_channels": 14,
-  "nats_subject": "avenabox",
+  "site_id": "i69",
+  "box_id": "i69-mu2",
+  "source_type": "labjack",
+  "source_id": "i69-lj2",
+  "nats_subject": "avenars",
   "nats_stream": "labjacks",
   "rotate_secs": 300,
   "sensor_settings": {
@@ -147,6 +155,15 @@ The JSON stored in JetStream KV should use the newer structure:
   }
 }
 ```
+
+With the v1 namespace, channel 11 from this config publishes to:
+
+```text
+avenars.v1.i69.i69-mu2.live.labjack.i69-lj2.sample.ch11
+```
+
+Older configs using `avenabox.<asset>.data.ch##` still parse and publish with
+the legacy subject shape. New configs should use the `avenars.v1` fields above.
 
 Legacy KV configs using `scan_rate` and `sampling_rate` are still accepted on
 read, but new configs should use `scans_per_read` and `scan_rate_hz` so the

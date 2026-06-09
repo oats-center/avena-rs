@@ -6,14 +6,16 @@ use tokio::time::Duration;
 use ljmrs::handle::DeviceType;
 use ljmrs::{LJMError, LJMLibrary};
 
+use async_nats::ConnectOptions;
 use async_nats::jetstream::kv::Operation;
 use async_nats::jetstream::{self, kv, stream::Config as StreamConfig};
-use async_nats::{ConnectOptions, ServerAddr};
 use flatbuffers::FlatBufferBuilder;
 use futures_util::StreamExt;
 
 mod labjack;
 mod ljm_mode;
+mod nats_config;
+mod subjects;
 mod sample_data_generated {
     #![allow(dead_code, unused_imports)]
     include!("data_generated.rs");
@@ -26,6 +28,14 @@ struct NestedConfig {
     labjack_name: String,
     asset_number: u32,
     max_channels: u32,
+    #[serde(default)]
+    site_id: Option<String>,
+    #[serde(default)]
+    box_id: Option<String>,
+    #[serde(default)]
+    source_type: Option<String>,
+    #[serde(default)]
+    source_id: Option<String>,
     nats_subject: String,
     nats_stream: String,
     rotate_secs: u64,
@@ -52,6 +62,11 @@ struct SampleConfig {
     scan_rate_hz: f64,
     channels: Vec<u8>,
     asset_number: u32,
+    labjack_name: String,
+    site_id: Option<String>,
+    box_id: Option<String>,
+    source_type: Option<String>,
+    source_id: Option<String>,
     nats_subject: String,
     nats_stream: String,
     rotate_secs: u64,
@@ -64,6 +79,11 @@ fn sample_config_from_nested(nested: NestedConfig) -> SampleConfig {
         scan_rate_hz: raw.scan_rate_hz,
         channels: raw.channels_enabled,
         asset_number: nested.asset_number,
+        labjack_name: nested.labjack_name,
+        site_id: nested.site_id,
+        box_id: nested.box_id,
+        source_type: nested.source_type,
+        source_id: nested.source_id,
         nats_subject: nested.nats_subject,
         nats_stream: nested.nats_stream,
         rotate_secs: nested.rotate_secs,
@@ -87,35 +107,6 @@ impl Drop for LabJackGuard {
     }
 }
 
-fn pad_channel(ch: u8) -> String {
-    format!("ch{ch:02}")
-}
-
-fn pad_asset(n: u32) -> String {
-    format!("{n:03}")
-}
-
-fn channel_subject(prefix: &str, asset: u32, ch: u8) -> String {
-    format!("{}.{}.data.{}", prefix, pad_asset(asset), pad_channel(ch))
-}
-
-fn stream_subject_namespace(prefix: &str) -> String {
-    format!("{prefix}.*.data.*")
-}
-
-fn stream_subject_is_compatible(existing: &str, desired_namespace: &str) -> bool {
-    if existing == desired_namespace {
-        return true;
-    }
-
-    if let Some(prefix) = desired_namespace.strip_suffix(".*.data.*") {
-        return existing.starts_with(&format!("{prefix}."))
-            && existing.ends_with(".data.*");
-    }
-
-    false
-}
-
 async fn ensure_stream_exists(
     js: &jetstream::Context,
     stream_name: &str,
@@ -127,7 +118,7 @@ async fn ensure_stream_exists(
             .config
             .subjects
             .iter()
-            .any(|existing| stream_subject_is_compatible(existing, subject))
+            .any(|existing| subjects::stream_subject_is_compatible(existing, subject))
         {
             println!(
                 "JetStream stream '{}' already exists with compatible subjects {:?}.",
@@ -159,14 +150,12 @@ async fn ensure_stream_exists(
         ..Default::default()
     };
 
-    js.create_or_update_stream(config)
-        .await
-        .map_err(|e| {
-            LJMError::LibraryError(format!(
-                "Failed to create or update JetStream stream '{}': {}",
-                stream_name, e
-            ))
-        })?;
+    js.create_or_update_stream(config).await.map_err(|e| {
+        LJMError::LibraryError(format!(
+            "Failed to create or update JetStream stream '{}': {}",
+            stream_name, e
+        ))
+    })?;
 
     Ok(())
 }
@@ -345,7 +334,14 @@ async fn sample_with_config(
     ensure_stream_exists(
         &js,
         &cfg.nats_stream,
-        &stream_subject_namespace(&cfg.nats_subject),
+        &subjects::live_labjack_stream_subject(
+            &cfg.nats_subject,
+            cfg.site_id.as_deref(),
+            cfg.box_id.as_deref(),
+            Some(&cfg.labjack_name),
+            cfg.source_type.as_deref(),
+            cfg.source_id.as_deref(),
+        ),
     )
     .await?;
 
@@ -497,7 +493,16 @@ async fn sample_with_config(
                     let data = builder.finished_data().to_vec();
 
                     let ch_num: u8 = cfg.channels[i];
-                    let subject = channel_subject(&cfg.nats_subject, cfg.asset_number, ch_num);
+                    let subject = subjects::live_labjack_channel_subject(
+                        &cfg.nats_subject,
+                        cfg.asset_number,
+                        ch_num,
+                        cfg.site_id.as_deref(),
+                        cfg.box_id.as_deref(),
+                        Some(&cfg.labjack_name),
+                        cfg.source_type.as_deref(),
+                        cfg.source_id.as_deref(),
+                    );
 
                     if let Err(e) = js.publish(subject, data.into()).await {
                         eprintln!("[run #{run_id}] Failed to publish to NATS: {}", e);
@@ -571,17 +576,7 @@ async fn main() -> Result<(), LJMError> {
         .await
         .map_err(|e| LJMError::LibraryError(format!("Failed to load creds: {}", e)))?;
 
-    let servers: Vec<ServerAddr> = vec![
-        "nats://nats1.oats:4222"
-            .parse()
-            .map_err(|e| LJMError::LibraryError(format!("invalid server addr: {}", e)))?,
-        "nats://nats2.oats:4222"
-            .parse()
-            .map_err(|e| LJMError::LibraryError(format!("invalid server addr: {}", e)))?,
-        "nats://nats3.oats:4222"
-            .parse()
-            .map_err(|e| LJMError::LibraryError(format!("invalid server addr: {}", e)))?,
-    ];
+    let servers = nats_config::servers_from_env().map_err(LJMError::LibraryError)?;
 
     let nc = opts
         .connect(servers)
@@ -589,7 +584,7 @@ async fn main() -> Result<(), LJMError> {
         .map_err(|e| LJMError::LibraryError(format!("NATS connect failed: {}", e)))?;
 
     println!("Connected to NATS via creds!");
-    let js = jetstream::new(nc);
+    let js = nats_config::jetstream_context(nc);
 
     let bucket = std::env::var("CFG_BUCKET").unwrap_or_else(|_| "avenabox".into());
     let key = std::env::var("CFG_KEY").unwrap_or_else(|_| "labjackd.config.macbook".into());
@@ -634,7 +629,12 @@ async fn main() -> Result<(), LJMError> {
 mod tests {
     use super::*;
 
-    fn sample_kv_json(scans_field: &str, scans_value: &str, rate_field: &str, rate_value: &str) -> String {
+    fn sample_kv_json(
+        scans_field: &str,
+        scans_value: &str,
+        rate_field: &str,
+        rate_value: &str,
+    ) -> String {
         format!(
             r#"{{
   "labjack_name": "Unit A",

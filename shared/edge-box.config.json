@@ -1,0 +1,57 @@
+{
+  "site_id": "i69",
+  "box_id": "i69-mu2",
+  "run_exporter_on_edge": false,
+  "source": {
+    "type": "labjack",
+    "id": "i69-lj2"
+  },
+  "nats": {
+    "root_subject": "avenars",
+    "local_servers": "nats://127.0.0.1:4222",
+    "leaf_server_name": "i69-mu2-leaf",
+    "leaf_listen": "127.0.0.1:4222",
+    "monitor_listen": "127.0.0.1:8222",
+    "jetstream_domain": "edge-i69-mu2",
+    "jetstream_store_dir": "/var/lib/nats/jetstream",
+    "leaf_credentials_path": "/etc/nats/creds/leaf.creds",
+    "leaf_remotes": [
+      "nats://nats1.oats:7422",
+      "nats://nats2.oats:7422",
+      "nats://nats3.oats:7422"
+    ],
+    "kv_bucket": "avenabox",
+    "kv_key": "labjackd.config.i69-mu2",
+    "stream_name": "labjacks"
+  },
+  "paths": {
+    "rust_creds_file": "apt.creds",
+    "output_dir": "outputs",
+    "parquet_dir": "parquet",
+    "exporter_http_url": "http://127.0.0.1:9001"
+  },
+  "labjack": {
+    "name": "i69-lj2",
+    "asset_number": 1001,
+    "max_channels": 14,
+    "ip": "192.168.1.111",
+    "serial": "470036330",
+    "identifier": "",
+    "usb_id": "ANY",
+    "open_order": "ethernet",
+    "rotate_secs": 300,
+    "sensor_settings": {
+      "scans_per_read": 100,
+      "scan_rate_hz": 500,
+      "channels_enabled": [11, 13],
+      "gains": 1,
+      "data_formats": ["voltage", "voltage"],
+      "measurement_units": ["V", "V"],
+      "labjack_on_off": true,
+      "calibrations": {
+        "11": { "type": "identity" },
+        "13": { "type": "identity" }
+      }
+    }
+  }
+}
