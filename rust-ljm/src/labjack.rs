@@ -4,6 +4,8 @@ use std::str::FromStr;
 use ljmrs::handle::{ConnectionType, DeviceHandleInfo, DeviceType};
 use ljmrs::{LJMError, LJMLibrary};
 
+const STREAM_IS_ACTIVE_ERROR: i32 = 2605;
+
 fn env_var(name: &str) -> Option<String> {
     std::env::var(name)
         .ok()
@@ -34,6 +36,17 @@ fn required_labjack_ip_from_env() -> Result<String, LJMError> {
 
 fn requested_labjack_serial_from_env() -> Option<i32> {
     env_identifier("LABJACK_SERIAL").and_then(|value| value.parse::<i32>().ok())
+}
+
+fn ljm_error_code(err: &LJMError) -> Option<i32> {
+    match err {
+        LJMError::ErrorCode(code, _) => Some(code.into()),
+        _ => None,
+    }
+}
+
+fn is_stream_active_error(err: &LJMError) -> bool {
+    ljm_error_code(err) == Some(STREAM_IS_ACTIVE_ERROR)
 }
 
 pub fn open_labjack_from_env() -> Result<i32, LJMError> {
@@ -98,12 +111,35 @@ pub fn open_streamer_labjack_from_env() -> Result<i32, LJMError> {
             ))
         })?;
 
-        LJMLibrary::write_name(handle, "STREAM_SETTLING_US", settling_us).map_err(|err| {
-            LJMError::LibraryError(format!(
-                "LabJack self-test write failed for '{}': STREAM_SETTLING_US={}: {:?}",
-                requested_ip, settling_us, err
-            ))
-        })?;
+        match LJMLibrary::write_name(handle, "STREAM_SETTLING_US", settling_us) {
+            Ok(_) => {}
+            Err(err) if is_stream_active_error(&err) => {
+                eprintln!(
+                    "[labjack] stale active stream detected on '{}'; sending stream_stop and retrying self-test",
+                    requested_ip
+                );
+                LJMLibrary::stream_stop(handle).map_err(|stop_err| {
+                    LJMError::LibraryError(format!(
+                        "LabJack stream_stop failed for stale stream on '{}': {:?}",
+                        requested_ip, stop_err
+                    ))
+                })?;
+                LJMLibrary::write_name(handle, "STREAM_SETTLING_US", settling_us).map_err(
+                    |retry_err| {
+                        LJMError::LibraryError(format!(
+                            "LabJack self-test write failed after stream_stop for '{}': STREAM_SETTLING_US={}: {:?}",
+                            requested_ip, settling_us, retry_err
+                        ))
+                    },
+                )?;
+            }
+            Err(err) => {
+                return Err(LJMError::LibraryError(format!(
+                    "LabJack self-test write failed for '{}': STREAM_SETTLING_US={}: {:?}",
+                    requested_ip, settling_us, err
+                )));
+            }
+        }
 
         println!(
             "[labjack] connected via {:?}, serial {}, ip {}, self-test ok",
