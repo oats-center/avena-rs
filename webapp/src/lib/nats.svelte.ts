@@ -38,12 +38,13 @@ function buildServerCandidates(serverName: string): string[] {
   if (!normalized) return [];
 
   const candidates = new Set<string>([normalized]);
+  const explicitScheme = hasScheme(serverName.trim());
   try {
     const parsed = new URL(normalized);
-    if (parsed.protocol === "ws:") {
+    if (!explicitScheme && parsed.protocol === "ws:") {
       parsed.protocol = "wss:";
       candidates.add(stripTrailingSlash(parsed.toString()));
-    } else if (parsed.protocol === "wss:") {
+    } else if (!explicitScheme && parsed.protocol === "wss:") {
       parsed.protocol = "ws:";
       candidates.add(stripTrailingSlash(parsed.toString()));
     }
@@ -85,9 +86,11 @@ export async function connect(serverName: string, credentialsContent?: string): 
   let lastError: unknown = null;
   for (const server of servers) {
     try {
+      const parsed = new URL(server);
       const nc = await wsconnect({
         ...connectionOptions,
-        servers: server
+        servers: server,
+        tls: parsed.protocol === "ws:" ? false : undefined
       });
       const kvm = new Kvm(nc);
       return new NatsService(nc, kvm);
