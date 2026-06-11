@@ -6,7 +6,7 @@ The goal is:
 
 - local NATS leaf node on `127.0.0.1:4222`
 - local JetStream domain `edge-i69-mu2`
-- leaf connection from this box to OATS NATS at `nats1.oats:7422`, `nats2.oats:7422`, `nats3.oats:7422`
+- leaf connection from this box to OATS NATS at `nats1.oats:7422` and `nats2.oats:7422`
 - Rust `streamer` publishes LabJack data to the local leaf node
 - Rust `archiver` writes local Parquet files
 - Alloy sends host and local NATS metrics to OATS Prometheus
@@ -236,6 +236,8 @@ Validate key config values:
 sudo grep -n 'server_name: "i69-mu2-leaf"' /etc/containers/systemd/avena-rs/nats-leaf.conf
 sudo grep -n 'domain: "edge-i69-mu2"' /etc/containers/systemd/avena-rs/nats-leaf.conf
 sudo grep -n 'nats1.oats:7422' /etc/containers/systemd/avena-rs/nats-leaf.conf
+sudo grep -n 'nats2.oats:7422' /etc/containers/systemd/avena-rs/nats-leaf.conf
+! sudo grep -n 'nats3.oats:7422' /etc/containers/systemd/avena-rs/nats-leaf.conf
 ```
 
 If these fail, the wrong config was copied or edited.
@@ -283,7 +285,7 @@ If `leafnodes` is `0`, check OATS port reachability:
 
 ```bash
 for port in 4222 7422 8080; do
-  for host in nats1.oats nats2.oats nats3.oats; do
+  for host in nats1.oats nats2.oats; do
     echo "== $host:$port =="
     timeout 3 bash -lc "cat < /dev/null > /dev/tcp/$host/$port" && echo open || echo closed
   done
@@ -855,7 +857,7 @@ Then run the quick validation commands from the bring-online section.
 
 - OATS leaf port/creds/permissions are the issue
 - check `/etc/containers/systemd/avena-rs/creds/leaf.creds`
-- check `nats1.oats:7422`, `nats2.oats:7422`, `nats3.oats:7422`
+- check `nats1.oats:7422` and `nats2.oats:7422`
 
 `nats stream ls --js-domain edge-i69-mu2` fails:
 

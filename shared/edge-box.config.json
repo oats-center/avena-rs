@@ -17,8 +17,7 @@
     "leaf_credentials_path": "/etc/nats/creds/leaf.creds",
     "leaf_remotes": [
       "nats://nats1.oats:7422",
-      "nats://nats2.oats:7422",
-      "nats://nats3.oats:7422"
+      "nats://nats2.oats:7422"
     ],
     "kv_bucket": "avenabox",
     "kv_key": "labjackd.config.i69-mu2",
