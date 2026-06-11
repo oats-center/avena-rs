@@ -294,6 +294,7 @@ export async function downloadExportViaNats(
   options: ExportStreamOptions = {}
 ): Promise<ExportStreamResult> {
   const inbox = createInbox();
+  const ackSubject = createInbox();
   const sub = nats.connection.subscribe(inbox);
   const chunks: ArrayBuffer[] = [];
   let meta: MetaFrame | null = null;
@@ -327,7 +328,9 @@ export async function downloadExportViaNats(
   try {
     nats.connection.publish(
       requestSubject,
-      new TextEncoder().encode(JSON.stringify({ ...payload, format: "csv" as const })),
+      new TextEncoder().encode(
+        JSON.stringify({ ...payload, format: "csv" as const, ack_subject: ackSubject })
+      ),
       { reply: inbox }
     );
     if (typeof nats.connection.flush === "function") {
@@ -345,6 +348,10 @@ export async function downloadExportViaNats(
           : data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
         chunks.push(copy);
         totalBytes += data.byteLength;
+        nats.connection.publish(ackSubject);
+        if (typeof nats.connection.flush === "function") {
+          await nats.connection.flush();
+        }
         options.onProgress?.(totalBytes);
         continue;
       }

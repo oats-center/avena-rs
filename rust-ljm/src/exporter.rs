@@ -76,48 +76,7 @@ struct ExportRequest {
     #[serde(default = "default_format")]
     format: ExportFormat,
     download_name: Option<String>,
-    #[serde(default)]
-    box_id: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct NatsExportRequest {
-    job_id: String,
-    response_subject: String,
-    asset: u32,
-    channels: Vec<u8>,
-    start: String,
-    end: String,
-    #[serde(default = "default_format")]
-    format: ExportFormat,
-    download_name: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct MetaFrame<'a> {
-    #[serde(rename = "type")]
-    frame_type: &'static str,
-    #[serde(rename = "fileName")]
-    file_name: &'a str,
-    #[serde(rename = "contentType")]
-    content_type: &'a str,
-}
-
-#[derive(Debug, Serialize)]
-struct SummaryFrame<'a> {
-    #[serde(rename = "type")]
-    frame_type: &'static str,
-    #[serde(rename = "bytesSent")]
-    bytes_sent: usize,
-    #[serde(rename = "missingChannels")]
-    missing_channels: &'a [u8],
-}
-
-#[derive(Debug, Serialize)]
-struct ErrorFrame<'a> {
-    #[serde(rename = "type")]
-    frame_type: &'static str,
-    message: &'a str,
+    ack_subject: Option<String>,
 }
 
 fn default_format() -> ExportFormat {
@@ -397,7 +356,11 @@ async fn process_nats_request(
     )
     .await?;
 
-    let mut stream = NatsCsvStreamer::new(nc, reply, req.asset, start, end);
+    let ack_sub = match req.ack_subject.as_deref().filter(|s| !s.trim().is_empty()) {
+        Some(subject) => Some(nc.subscribe(subject.to_string()).await?),
+        None => None,
+    };
+    let mut stream = NatsCsvStreamer::new(nc, reply, ack_sub, req.asset, start, end);
     let missing = stream
         .stream_channels(&state.parquet_root, &req.channels)
         .await?;
@@ -668,8 +631,10 @@ struct CsvStreamer<'a, S: ExportSink + Send> {
 struct NatsCsvStreamer {
     client: async_nats::Client,
     reply: async_nats::Subject,
+    ack_sub: Option<async_nats::Subscriber>,
     chunk: Vec<u8>,
     chunks_since_flush: usize,
+    chunks_since_ack: usize,
     bytes_sent: usize,
     asset: u32,
     start: DateTime<Utc>,
@@ -677,11 +642,14 @@ struct NatsCsvStreamer {
 }
 
 impl NatsCsvStreamer {
-    const CHUNK_SIZE: usize = 128 * 1024;
+    const CHUNK_SIZE: usize = 512 * 1024;
+    const FLUSH_EVERY_CHUNKS: usize = 8;
+    const ACK_TIMEOUT_SECS: u64 = 30;
 
     fn new(
         client: async_nats::Client,
         reply: async_nats::Subject,
+        ack_sub: Option<async_nats::Subscriber>,
         asset: u32,
         start: DateTime<Utc>,
         end: DateTime<Utc>,
@@ -691,8 +659,10 @@ impl NatsCsvStreamer {
         Self {
             client,
             reply,
+            ack_sub,
             chunk,
             chunks_since_flush: 0,
+            chunks_since_ack: 0,
             bytes_sent: 0,
             asset,
             start,
@@ -726,11 +696,38 @@ impl NatsCsvStreamer {
             .publish_with_headers(self.reply.clone(), headers, data.into())
             .await?;
         self.chunks_since_flush += 1;
-        if self.chunks_since_flush >= 16 {
+        self.chunks_since_ack += 1;
+        if self.chunks_since_flush >= Self::FLUSH_EVERY_CHUNKS {
             self.client.flush().await?;
             self.chunks_since_flush = 0;
         }
+        if self.chunks_since_ack >= Self::FLUSH_EVERY_CHUNKS {
+            self.wait_for_acks().await?;
+        }
         self.chunk = Vec::with_capacity(Self::CHUNK_SIZE);
+        Ok(())
+    }
+
+    async fn wait_for_acks(&mut self) -> Result<()> {
+        let Some(ack_sub) = self.ack_sub.as_mut() else {
+            return Ok(());
+        };
+        let pending = self.chunks_since_ack;
+        if pending == 0 {
+            return Ok(());
+        }
+
+        self.client.flush().await?;
+        for _ in 0..pending {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(Self::ACK_TIMEOUT_SECS),
+                ack_sub.next(),
+            )
+            .await
+            .map_err(|_| anyhow!("timed out waiting for export chunk acknowledgement"))?
+            .ok_or_else(|| anyhow!("export acknowledgement subscription closed"))?;
+        }
+        self.chunks_since_ack = 0;
         Ok(())
     }
 
@@ -753,6 +750,7 @@ impl NatsCsvStreamer {
 
     async fn finish(mut self, mut missing_channels: Vec<u8>) -> Result<()> {
         self.flush().await?;
+        self.wait_for_acks().await?;
         missing_channels.sort_unstable();
         missing_channels.dedup();
         publish_nats_json(
