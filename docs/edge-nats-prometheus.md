@@ -423,34 +423,74 @@ What Alloy sends:
 Prometheus destination from the checked-in config:
 
 ```text
-http://prometheus.oats:9090/api/v1/write
+NATS_SERVERS = nats://127.0.0.1:4222
+JS_DOMAIN    = edge-i69-mu2
+CFG_NATS_SERVERS = nats://nats1.oats:4222,nats://nats2.oats:4222
+CFG_JS_DOMAIN    =
+CFG_BUCKET   = avenabox
+CFG_KEY      = labjackd.config.i69-mu2
+BOX_ID       = i69-mu2
+LABJACK_IP   = 192.168.1.111
+LABJACK_SERIAL = 470036330
 ```
 
-Expected Grafana usage:
+Validate with commands:
 
-- open the OATS dashboard URL
-- choose datasource `efo1upqlm33swc`
-- choose `job=avena-rs`
-- choose node `i69-mu1` or your new `box_id`
+```bash
+jq -r '.env.NATS_SERVERS, .env.JS_DOMAIN, .env.CFG_NATS_SERVERS, .env.CFG_JS_DOMAIN, .env.CFG_KEY, .env.BOX_ID, .env.LABJACK_IP, .env.LABJACK_SERIAL' rust-ljm/streamer.env.json
+jq -r '.env.NATS_SERVERS, .env.JS_DOMAIN, .env.CFG_KEY, .env.BOX_ID' rust-ljm/archiver.env.json
+```
 
-## 10. Build and Start the Rust Services
+## Step 7: Write The Current LabJack KV Config
 
-Build once:
+The LabJack KV payload is generated from `shared/edge-box.config.json` at:
+
+```text
+shared/labjack-kv.generated.json
+```
+
+Validate it before writing to NATS:
 
 ```bash
 cd /extstore/home/user/avena-rs/rust-ljm
 cargo build --release --bin streamer --bin archiver --bin exporter
 ```
 
-Start the three local processes:
+The web app writes LabJack configuration to the central OATS KV bucket. The streamer reads that central KV via `CFG_NATS_SERVERS`, while still publishing samples to the local leaf node via `NATS_SERVERS`.
+
+Create the central KV bucket if needed and write the config:
 
 ```bash
-./streamerctl.sh start
-./archiverctl.sh start
-./exporterctl.sh start
+nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds kv add avenabox --history=5 || true
+nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds kv put avenabox labjackd.config.i69-mu2 "$(cat shared/labjack-kv.generated.json)"
 ```
 
-Check status:
+Validate the central config that the streamer and web app will use:
+
+```bash
+nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds kv get avenabox labjackd.config.i69-mu2 --raw | jq .
+```
+
+Also seed the local edge KV bucket for local tools such as the archiver:
+
+```bash
+nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds --js-domain edge-i69-mu2 kv add avenabox --history=5 || true
+nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds --js-domain edge-i69-mu2 kv put avenabox labjackd.config.i69-mu2 "$(cat shared/labjack-kv.generated.json)"
+```
+
+Validate:
+
+```bash
+nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds --js-domain edge-i69-mu2 kv get avenabox labjackd.config.i69-mu2 | sed -n '/^{/,$p' | jq .
+```
+
+If the central command fails, the OATS NATS credentials/KV setup is the issue. If the local command fails, the local NATS/JetStream/KV setup is the issue. Do not start the Rust processes until the relevant KV read succeeds.
+
+## Step 8: Start Archiver
+
+Start archiver before streamer so local data is recorded as soon as samples begin:
+
+Check that no old managed binaries are already running:
 
 ```bash
 ./streamerctl.sh status

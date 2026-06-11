@@ -151,30 +151,30 @@ def streamer_env(config: dict) -> dict:
     paths = config["paths"]
     labjack = config["labjack"]
     source = config["source"]
-    env = {
-        "NATS_SUBJECT": nats["root_subject"],
-        "NATS_SERVERS": nats["local_servers"],
-        "JS_DOMAIN": nats["jetstream_domain"],
-        "ASSET_NUMBER": labjack["asset_number"],
-        "SITE_ID": config["site_id"],
-        "BOX_ID": config["box_id"],
-        "SOURCE_TYPE": source["type"],
-        "SOURCE_ID": source["id"],
-        "OUTPUT_DIR": paths["output_dir"],
-        "NATS_CREDS_FILE": paths["rust_creds_file"],
-        "CFG_BUCKET": nats["kv_bucket"],
-        "CFG_KEY": nats["kv_key"],
-        "CENTRAL_NATS_SERVERS": central_client_servers(nats),
-        "CENTRAL_NATS_CREDS_FILE": paths["rust_creds_file"],
-        "CENTRAL_CFG_BUCKET": nats["kv_bucket"],
-        "CENTRAL_CFG_KEY": nats["kv_key"],
-        "LABJACK_IDENTIFIER": labjack.get("identifier", ""),
-        "LABJACK_SERIAL": labjack["serial"],
-        "LABJACK_NAME": labjack["name"],
-        "LABJACK_IP": labjack["ip"],
-        "LABJACK_USB_ID": labjack.get("usb_id", "ANY"),
-        "LABJACK_OPEN_ORDER": labjack.get("open_order", "ethernet"),
-        "EXPORTER_HTTP_URL": paths["exporter_http_url"],
+    return {
+        "env": {
+            "NATS_SUBJECT": nats["root_subject"],
+            "NATS_SERVERS": nats["local_servers"],
+            "JS_DOMAIN": nats["jetstream_domain"],
+            "CFG_NATS_SERVERS": nats.get("config_servers", ""),
+            "CFG_JS_DOMAIN": nats.get("config_jetstream_domain", ""),
+            "ASSET_NUMBER": labjack["asset_number"],
+            "SITE_ID": config["site_id"],
+            "BOX_ID": config["box_id"],
+            "SOURCE_TYPE": source["type"],
+            "SOURCE_ID": source["id"],
+            "OUTPUT_DIR": paths["output_dir"],
+            "NATS_CREDS_FILE": paths["rust_creds_file"],
+            "CFG_BUCKET": nats["kv_bucket"],
+            "CFG_KEY": nats["kv_key"],
+            "LABJACK_IDENTIFIER": labjack.get("identifier", ""),
+            "LABJACK_SERIAL": labjack["serial"],
+            "LABJACK_NAME": labjack["name"],
+            "LABJACK_IP": labjack["ip"],
+            "LABJACK_USB_ID": labjack.get("usb_id", "ANY"),
+            "LABJACK_OPEN_ORDER": labjack.get("open_order", "ethernet"),
+            "EXPORTER_HTTP_URL": paths["exporter_http_url"],
+        }
     }
 
     stream_max_bytes = nats.get("stream_max_bytes")

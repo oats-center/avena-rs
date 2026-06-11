@@ -16,14 +16,22 @@ function nsToMs(timestampNs: bigint): number {
 export class FlatBufferParser {
     parse(buffer: ArrayBuffer | Uint8Array): ScanData | null {
         try {
-            const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+            const input = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+            const bytes =
+                input.byteOffset === 0 && input.byteLength === input.buffer.byteLength
+                    ? input
+                    : new Uint8Array(input);
             const bb = new flatbuffers.ByteBuffer(bytes);
             const scan = Scan.getRootAsScan(bb);
 
-            const values = extractValues(scan);
-            if (!values || values.length === 0) {
+            const valuesLength = scan.valuesLength();
+            if (valuesLength === 0) {
                 console.warn('No values found in FlatBuffer');
                 return null;
+            }
+            const values = new Float64Array(valuesLength);
+            for (let i = 0; i < valuesLength; i++) {
+                values[i] = scan.values(i) ?? Number.NaN;
             }
 
             return {

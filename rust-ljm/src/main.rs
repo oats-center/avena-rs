@@ -58,6 +58,7 @@ struct SensorSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct SampleConfig {
+    labjack_on_off: bool,
     scans_per_read: i32,
     scan_rate_hz: f64,
     channels: Vec<u8>,
@@ -75,6 +76,7 @@ struct SampleConfig {
 fn sample_config_from_nested(nested: NestedConfig) -> SampleConfig {
     let raw = nested.sensor_settings;
     SampleConfig {
+        labjack_on_off: raw.labjack_on_off,
         scans_per_read: raw.scans_per_read,
         scan_rate_hz: raw.scan_rate_hz,
         channels: raw.channels_enabled,
@@ -861,6 +863,25 @@ async fn run_sampler(
         }
         run_id += 1;
         let cfg = config_rx.borrow().clone();
+        if !cfg.labjack_on_off {
+            println!("[run_sampler] LabJack stream disabled; waiting for config update.");
+            tokio::select! {
+                changed = config_rx.changed() => {
+                    if changed.is_err() {
+                        eprintln!("[run_sampler] Config channel closed while disabled.");
+                        break;
+                    }
+                    continue;
+                }
+                _ = shutdown_rx.changed() => {
+                    if *shutdown_rx.borrow() {
+                        println!("[run_sampler] Sampler shutting down while disabled...");
+                        break;
+                    }
+                }
+            }
+            continue;
+        }
         println!(
             "[run_sampler] Starting sampler run #{run_id} with {:?}",
             cfg
@@ -882,49 +903,41 @@ async fn run_sampler(
 
 #[tokio::main]
 async fn main() -> Result<(), LJMError> {
-    let servers = nats_config::servers_from_env().map_err(LJMError::LibraryError)?;
-    let nc = connect_nats_with_creds(servers, local_creds_path_from_env()).await?;
+    let creds_path = std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| "apt.creds".into());
+    let sample_opts = ConnectOptions::with_credentials_file(creds_path.clone())
+        .await
+        .map_err(|e| LJMError::LibraryError(format!("Failed to load creds: {}", e)))?;
 
-    println!("Connected to NATS via creds!");
-    let js = nats_config::jetstream_context(nc);
+    let sample_servers = nats_config::servers_from_env().map_err(LJMError::LibraryError)?;
+
+    let sample_nc = sample_opts
+        .connect(sample_servers)
+        .await
+        .map_err(|e| LJMError::LibraryError(format!("NATS connect failed: {}", e)))?;
+
+    println!("Connected to sample NATS via creds!");
+    let sample_js = nats_config::jetstream_context(sample_nc);
+
+    let config_servers =
+        match std::env::var("CFG_NATS_SERVERS").ok().filter(|v| !v.trim().is_empty()) {
+            Some(_) => nats_config::servers_from_env_var("CFG_NATS_SERVERS", "")
+                .map_err(LJMError::LibraryError)?,
+            None => nats_config::servers_from_env().map_err(LJMError::LibraryError)?,
+        };
+    let config_opts = ConnectOptions::with_credentials_file(creds_path)
+        .await
+        .map_err(|e| LJMError::LibraryError(format!("Failed to load creds: {}", e)))?;
+    let config_nc = config_opts
+        .connect(config_servers)
+        .await
+        .map_err(|e| LJMError::LibraryError(format!("Config NATS connect failed: {}", e)))?;
+    println!("Connected to config NATS via creds!");
+    let config_js = nats_config::jetstream_context_from_env(config_nc, "CFG_JS_DOMAIN");
 
     let bucket = std::env::var("CFG_BUCKET").unwrap_or_else(|_| "avenabox".into());
     let key = std::env::var("CFG_KEY").unwrap_or_else(|_| "v1.macbook.unknown-source.config".into());
 
-    let store = ensure_kv_bucket(&js, &bucket).await?;
-    let central_sync_cfg = central_kv_sync_config_from_env()?;
-    if let Some(sync_cfg) = central_sync_cfg.as_ref() {
-        match connect_nats_with_creds(sync_cfg.servers.clone(), sync_cfg.creds_path.clone()).await {
-            Ok(remote_client) => {
-                let remote_js = nats_config::jetstream_context_for_domain(
-                    remote_client,
-                    sync_cfg.domain.as_deref(),
-                );
-                match ensure_kv_bucket(&remote_js, &sync_cfg.bucket).await {
-                    Ok(remote_store) => {
-                        if let Err(err) = mirror_remote_kv_entry_to_local(
-                            &remote_store,
-                            &sync_cfg.bucket,
-                            &sync_cfg.key,
-                            &store,
-                            &key,
-                        )
-                        .await
-                        {
-                            eprintln!("[central_kv_sync] bootstrap mirror failed: {:?}", err);
-                        }
-                    }
-                    Err(err) => {
-                        eprintln!("[central_kv_sync] bootstrap remote bucket failed: {:?}", err);
-                    }
-                }
-            }
-            Err(err) => {
-                eprintln!("[central_kv_sync] bootstrap connect failed: {:?}", err);
-            }
-        }
-    }
-
+    let store = ensure_kv_bucket(&config_js, &bucket).await?;
     let cfg = load_config_from_kv(&store, &key).await?;
     println!(
         "[bootstrap] Loaded initial config from KV '{}:{}': {:?}",
@@ -941,7 +954,7 @@ async fn main() -> Result<(), LJMError> {
     tokio::spawn(run_sampler(
         config_rx.clone(),
         shutdown_rx.clone(),
-        js.clone(),
+        sample_js.clone(),
     ));
     tokio::spawn(watch_kv_config(
         store.clone(),
@@ -1055,5 +1068,15 @@ mod tests {
         assert_eq!(config.scans_per_read, 200);
         assert_eq!(config.scan_rate_hz, 1000.0);
         assert_eq!(config.rotate_secs, 300);
+    }
+
+    #[test]
+    fn kv_config_preserves_labjack_enabled_state() {
+        let config = sample_config_from_json(
+            sample_kv_json("scans_per_read", "200", "scan_rate_hz", "5000").as_bytes(),
+        )
+        .expect("config should parse");
+
+        assert!(config.labjack_on_off);
     }
 }

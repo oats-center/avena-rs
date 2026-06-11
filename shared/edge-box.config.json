@@ -9,7 +9,9 @@
   "nats": {
     "root_subject": "avenars",
     "local_servers": "nats://127.0.0.1:4222",
-    "leaf_server_name": "i69-mu1-leaf",
+    "config_servers": "nats://nats1.oats:4222,nats://nats2.oats:4222",
+    "config_jetstream_domain": "",
+    "leaf_server_name": "i69-mu2-leaf",
     "leaf_listen": "127.0.0.1:4222",
     "monitor_listen": "127.0.0.1:8222",
     "jetstream_domain": "edge-i69-mu1",
