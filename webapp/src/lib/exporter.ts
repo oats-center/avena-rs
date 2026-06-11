@@ -21,6 +21,11 @@ export interface ExportStreamResult {
 export interface ExportStreamOptions {
   onProgress?: (received: number) => void;
   onSummary?: (missingChannels: number[]) => void;
+<<<<<<< HEAD
+=======
+  websocketUrl?: string;
+  idleTimeoutMs?: number;
+>>>>>>> fa61e89 (Keep large NATS exports alive)
 }
 
 type SummaryFrame = {
@@ -295,15 +300,29 @@ export async function downloadExportViaNats(
   let summary: SummaryFrame | null = null;
   let totalBytes = 0;
   let timedOut = false;
+  const idleTimeoutMs = options.idleTimeoutMs ?? 10 * 60_000;
+  let timeout: ReturnType<typeof setTimeout>;
 
-  const timeout = setTimeout(() => {
+  const resetIdleTimeout = () => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => {
+      timedOut = true;
+      try {
+        sub.unsubscribe();
+      } catch {
+        // Best-effort timeout cleanup.
+      }
+    }, idleTimeoutMs);
+  };
+
+  timeout = setTimeout(() => {
     timedOut = true;
     try {
       sub.unsubscribe();
     } catch {
       // Best-effort timeout cleanup.
     }
-  }, 120_000);
+  }, idleTimeoutMs);
 
   try {
     nats.connection.publish(
@@ -316,6 +335,7 @@ export async function downloadExportViaNats(
     }
 
     for await (const msg of sub) {
+      resetIdleTimeout();
       const frame = msg.headers?.get(EXPORT_FRAME_HEADER) ?? "chunk";
 
       if (frame === "chunk") {
@@ -369,7 +389,7 @@ export async function downloadExportViaNats(
     }
 
     if (timedOut) {
-      throw new Error("Timed out waiting for NATS export response");
+      throw new Error(`Timed out after ${Math.round(idleTimeoutMs / 1000)} seconds without NATS export data`);
     }
     throw new Error("NATS export response ended before completion");
   } finally {

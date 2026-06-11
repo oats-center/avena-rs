@@ -669,6 +669,7 @@ struct NatsCsvStreamer {
     client: async_nats::Client,
     reply: async_nats::Subject,
     chunk: Vec<u8>,
+    chunks_since_flush: usize,
     bytes_sent: usize,
     asset: u32,
     start: DateTime<Utc>,
@@ -691,6 +692,7 @@ impl NatsCsvStreamer {
             client,
             reply,
             chunk,
+            chunks_since_flush: 0,
             bytes_sent: 0,
             asset,
             start,
@@ -723,6 +725,11 @@ impl NatsCsvStreamer {
         self.client
             .publish_with_headers(self.reply.clone(), headers, data.into())
             .await?;
+        self.chunks_since_flush += 1;
+        if self.chunks_since_flush >= 16 {
+            self.client.flush().await?;
+            self.chunks_since_flush = 0;
+        }
         self.chunk = Vec::with_capacity(Self::CHUNK_SIZE);
         Ok(())
     }

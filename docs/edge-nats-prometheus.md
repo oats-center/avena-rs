@@ -833,6 +833,8 @@ From the web app, open a LabJack plot page, open the download/export dialog, cho
 journalctl --user -u avena-exporter.service -f
 ```
 
+Large CSV exports can be hundreds of MB because each sample row is expanded to text. The web app should continue as long as NATS data is still arriving; its timeout is an idle timeout, not a fixed maximum download duration.
+
 If the browser starts downloading bytes but never finishes, restart exporter after rebuilding and try a smaller time range first:
 
 ```bash
