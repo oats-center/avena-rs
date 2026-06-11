@@ -298,6 +298,65 @@ Expected:
 
 If `4222` and `8080` are open but `7422` is closed, the local box is healthy enough to reach OATS, but the OATS leaf-node listener/firewall is not reachable. Fix the OATS side before expecting central live data.
 
+If `7422` is open but `leafnodes` is still `0`, check for an authorization error:
+
+```bash
+journalctl -u nats-leaf --no-pager -n 120 | grep -E 'Leafnode|Authorization|Violation|account'
+```
+
+If the log shows `Leafnode connection created` followed by
+`Leafnode Error 'Authorization Violation'`, the network path is working but
+OATS is rejecting the credentials. Confirm the same creds against central NATS:
+
+```bash
+nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds rtt
+```
+
+If that also reports `Authorization Violation`, fix OATS account/JWT loading.
+The local NSC store may know about `i69-mu2-leaf`, but the running OATS servers
+also need the updated `avena-rs` account JWT in their account resolver.
+
+Useful local checks:
+
+```bash
+cd /home/user/avena-rs/shared
+nsc env
+nsc describe account avena-rs
+nsc describe user --account avena-rs --name i69-mu2-leaf
+find ~/.local/share/nats/nsc/stores/OATS/accounts/avena-rs -maxdepth 2 -type f -print
+```
+
+For this box, the local JWT files are normally:
+
+```text
+~/.local/share/nats/nsc/stores/OATS/accounts/avena-rs/avena-rs.jwt
+~/.local/share/nats/nsc/stores/OATS/accounts/avena-rs/users/i69-mu2-leaf.jwt
+```
+
+An OATS NATS admin should push or install the updated `avena-rs` account JWT
+into the OATS account resolver, then make sure `nats1`, `nats2`, and `nats3`
+have loaded it. The exact command depends on how OATS is configured:
+
+```bash
+# If OATS uses a NATS account resolver and the admin has system-account access:
+nsc push -a avena-rs -u nats://nats1.oats:4222
+
+# If OATS uses a resolver directory, copy the updated account JWT into the
+# configured resolver directory on OATS, then reload/restart the NATS servers.
+```
+
+After OATS loads the updated account JWT, verify from `i69-mu2`:
+
+```bash
+nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds rtt
+curl -fsS http://127.0.0.1:8222/leafz | jq '{leafnodes, leafs}'
+```
+
+Expected:
+
+- central `nats rtt` no longer reports `Authorization Violation`
+- local `leafz.leafnodes` is greater than `0`
+
 ## Step 4: Validate Local NATS And JetStream With CLI
 
 Run:
