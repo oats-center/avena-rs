@@ -1,6 +1,4 @@
 use async_nats;
-use async_nats::jetstream;
-use async_nats::jetstream::consumer::pull;
 use async_nats::ConnectOptions;
 use async_nats::jetstream::kv::Operation;
 use chrono::{DateTime, NaiveDate, Utc};
@@ -569,24 +567,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let parquet_root =
         PathBuf::from(std::env::var("PARQUET_DIR").unwrap_or_else(|_| "parquet".into()));
 
-    // Connect using creds
     let creds_path = std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| "apt.creds".into());
-    let opts = ConnectOptions::with_credentials_file(creds_path)
+    let sample_opts = ConnectOptions::with_credentials_file(creds_path.clone())
         .await
         .map_err(|e| format!("Failed to load creds: {}", e))?;
 
-    let nc = opts
+    let nc = sample_opts
         .connect(servers)
         .await
         .map_err(|e| format!("NATS connect failed: {}", e))?;
 
-    println!("Connected to NATS via creds!");
-    let js = nats_config::jetstream_context(nc.clone());
+    println!("Connected to sample NATS via creds!");
+
+    let config_servers = match std::env::var("CFG_NATS_SERVERS")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+    {
+        Some(_) => nats_config::servers_from_env_var("CFG_NATS_SERVERS", "")
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?,
+        None => nats_config::servers_from_env()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?,
+    };
+    let config_opts = ConnectOptions::with_credentials_file(creds_path)
+        .await
+        .map_err(|e| format!("Failed to load creds: {}", e))?;
+    let config_nc = config_opts
+        .connect(config_servers)
+        .await
+        .map_err(|e| format!("Config NATS connect failed: {}", e))?;
+
+    println!("Connected to config NATS via creds!");
+    let config_js = nats_config::jetstream_context_from_env(config_nc, "CFG_JS_DOMAIN");
 
     // Step 2: load config from KV
     let bucket = std::env::var("CFG_BUCKET").unwrap_or_else(|_| "avenabox".into());
-    let key = std::env::var("CFG_KEY").unwrap_or_else(|_| "v1.macbook.unknown-source.config".into());
-    let store = js.get_key_value(bucket.as_str()).await?;
+    let key = std::env::var("CFG_KEY").unwrap_or_else(|_| "labjackd.config.macbook".into());
+    let store = config_js.get_key_value(bucket.as_str()).await?;
     let entry = store.entry(key.as_str()).await?.ok_or("KV key not found")?;
 
     let nested = serde_json::from_slice::<NestedConfig>(&entry.value)?;

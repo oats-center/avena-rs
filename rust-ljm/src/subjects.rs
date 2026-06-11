@@ -85,6 +85,22 @@ pub fn live_labjack_stream_subject(
     format!("{root}.v1.{box_id}.{source_id}.*")
 }
 
+pub fn archive_export_request_subject(
+    nats_subject: &str,
+    site_id: Option<&str>,
+    box_id: Option<&str>,
+    source_type: Option<&str>,
+    source_id: Option<&str>,
+) -> String {
+    let root = sanitize_token(nats_subject);
+    let site = sanitize_token(site_id.unwrap_or("unknown-site"));
+    let box_id = sanitize_token(box_id.unwrap_or("unknown-box"));
+    let source_type = sanitize_token(source_type.unwrap_or("labjack"));
+    let source_id = sanitize_token(source_id.unwrap_or("unknown-source"));
+
+    format!("{root}.v1.{site}.{box_id}.archive.{source_type}.{source_id}.export.request")
+}
+
 pub fn stream_subject_is_compatible(existing: &str, desired_namespace: &str) -> bool {
     if existing == desired_namespace {
         return true;

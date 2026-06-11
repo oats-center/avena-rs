@@ -6,7 +6,6 @@ use std::{
 
 use anyhow::{Context, Result, anyhow};
 use async_nats::{ConnectOptions, HeaderMap};
-use async_trait::async_trait;
 use axum::{
     Router,
     extract::{
@@ -26,18 +25,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 mod calibration;
 mod nats_config;
+mod subjects;
 
 use calibration::CalibrationSpec;
 
-const DEFAULT_EXPORTER_ADDR: &str = "0.0.0.0:9001";
-const DEFAULT_EXPORTER_MODE: &str = "direct";
-const DEFAULT_EXPORT_SUBJECT_PREFIX: &str = "avenars.export";
-const EXPORT_FRAME_HEADER: &str = "X-Avena-Export-Frame";
-const EXPORT_FRAME_META: &str = "meta";
-const EXPORT_FRAME_CHUNK: &str = "chunk";
-const EXPORT_FRAME_SUMMARY: &str = "summary";
-const EXPORT_FRAME_COMPLETE: &str = "complete";
-const EXPORT_FRAME_ERROR: &str = "error";
+const EXPORT_FRAME_HEADER: &str = "Avena-Export-Frame";
 
 #[derive(Clone)]
 struct AppState {
@@ -269,16 +261,160 @@ async fn handle_worker_request(
         box_id: None,
     };
 
-    let mut sink = NatsReplySink::new(client, req.response_subject.clone());
-    if let Err(err) = serve_export_request(&parquet_root, &mut sink, &export_req).await {
-        eprintln!(
-            "[exporter] job {} failed for response subject {}: {err:#}",
-            req.job_id, req.response_subject
-        );
-        sink.send_error(&err.to_string()).await.ok();
-        sink.send_complete().await.ok();
+    if std::env::var("NATS_SERVERS").is_ok() {
+        let nats_state = state.clone();
+        tokio::spawn(async move {
+            if let Err(err) = run_nats_exporter(nats_state).await {
+                eprintln!("[exporter] NATS exporter stopped: {err:?}");
+            }
+        });
     }
 
+    let app = Router::new()
+        .route("/export", get(handle_ws))
+        .with_state(state);
+
+    Ok(())
+}
+
+async fn run_nats_exporter(state: AppState) -> Result<()> {
+    let creds_path = std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| "apt.creds".into());
+    let opts = ConnectOptions::with_credentials_file(creds_path)
+        .await
+        .map_err(|e| anyhow!("failed to load NATS creds: {e}"))?;
+    let servers = nats_config::servers_from_env().map_err(|e| anyhow!(e))?;
+    let nc = opts
+        .connect(servers)
+        .await
+        .map_err(|e| anyhow!("NATS connect failed: {e}"))?;
+
+    let nats_subject = std::env::var("NATS_SUBJECT").unwrap_or_else(|_| "avenars".to_string());
+    let site_id = std::env::var("SITE_ID").unwrap_or_else(|_| "unknown-site".to_string());
+    let box_id = std::env::var("BOX_ID").unwrap_or_else(|_| "unknown-box".to_string());
+    let source_type = std::env::var("SOURCE_TYPE").unwrap_or_else(|_| "labjack".to_string());
+    let source_id = std::env::var("SOURCE_ID").unwrap_or_else(|_| "unknown-source".to_string());
+    let request_subject = subjects::archive_export_request_subject(
+        &nats_subject,
+        Some(&site_id),
+        Some(&box_id),
+        Some(&source_type),
+        Some(&source_id),
+    );
+
+    let mut sub = nc.subscribe(request_subject.clone()).await?;
+    println!("[exporter] Listening for NATS exports on {request_subject}");
+
+    while let Some(msg) = sub.next().await {
+        let Some(reply) = msg.reply.clone() else {
+            eprintln!("[exporter] ignoring NATS export request without reply subject");
+            continue;
+        };
+
+        let nc = nc.clone();
+        let state = state.clone();
+        tokio::spawn(async move {
+            if let Err(err) =
+                process_nats_request(nc.clone(), reply.clone(), msg.payload.to_vec(), state).await
+            {
+                eprintln!("[exporter] NATS export error: {err:?}");
+                let _ = publish_nats_json(
+                    &nc,
+                    reply,
+                    "error",
+                    &json!({"type":"error","message": err.to_string()}),
+                )
+                .await;
+            }
+        });
+    }
+
+    Ok(())
+}
+
+async fn process_nats_request(
+    nc: async_nats::Client,
+    reply: async_nats::Subject,
+    payload: Vec<u8>,
+    state: AppState,
+) -> Result<()> {
+    let mut req: ExportRequest =
+        serde_json::from_slice(&payload).map_err(|e| anyhow!("invalid request payload: {e}"))?;
+
+    if req.channels.is_empty() {
+        publish_nats_json(
+            &nc,
+            reply,
+            "error",
+            &json!({"type":"error","message":"no channels requested"}),
+        )
+        .await?;
+        return Ok(());
+    }
+    req.channels.sort_unstable();
+    req.channels.dedup();
+
+    let (start, end) = parse_range(&req.start, &req.end)?;
+    if end < start {
+        publish_nats_json(
+            &nc,
+            reply,
+            "error",
+            &json!({"type":"error","message":"end must be after start"}),
+        )
+        .await?;
+        return Ok(());
+    }
+
+    if !matches!(req.format, ExportFormat::Csv) {
+        publish_nats_json(
+            &nc,
+            reply,
+            "error",
+            &json!({"type":"error","message":"parquet streaming not yet supported"}),
+        )
+        .await?;
+        return Ok(());
+    }
+
+    let file_name = req.download_name.clone().unwrap_or_else(|| {
+        format!(
+            "labjack_asset{:03}_{}_{}.csv",
+            req.asset,
+            start.format("%Y%m%dT%H%M%S"),
+            end.format("%Y%m%dT%H%M%S"),
+        )
+    });
+
+    publish_nats_json(
+        &nc,
+        reply.clone(),
+        "meta",
+        &json!({
+            "type": "meta",
+            "fileName": file_name,
+            "contentType": "text/csv"
+        }),
+    )
+    .await?;
+
+    let mut stream = NatsCsvStreamer::new(nc, reply, req.asset, start, end);
+    let missing = stream
+        .stream_channels(&state.parquet_root, &req.channels)
+        .await?;
+    stream.finish(missing).await?;
+    Ok(())
+}
+
+async fn publish_nats_json(
+    nc: &async_nats::Client,
+    reply: async_nats::Subject,
+    frame: &str,
+    value: &serde_json::Value,
+) -> Result<()> {
+    let mut headers = HeaderMap::new();
+    headers.insert(EXPORT_FRAME_HEADER, frame);
+    nc.publish_with_headers(reply, headers, serde_json::to_vec(value)?.into())
+        .await?;
     Ok(())
 }
 
@@ -529,7 +665,181 @@ struct CsvStreamer<'a, S: ExportSink + Send> {
     end: DateTime<Utc>,
 }
 
-impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
+struct NatsCsvStreamer {
+    client: async_nats::Client,
+    reply: async_nats::Subject,
+    chunk: Vec<u8>,
+    bytes_sent: usize,
+    asset: u32,
+    start: DateTime<Utc>,
+    end: DateTime<Utc>,
+}
+
+impl NatsCsvStreamer {
+    const CHUNK_SIZE: usize = 128 * 1024;
+
+    fn new(
+        client: async_nats::Client,
+        reply: async_nats::Subject,
+        asset: u32,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    ) -> Self {
+        let mut chunk = Vec::with_capacity(Self::CHUNK_SIZE);
+        chunk.extend_from_slice(b"timestamp,channel,raw_value,calibrated_value,calibration_id\n");
+        Self {
+            client,
+            reply,
+            chunk,
+            bytes_sent: 0,
+            asset,
+            start,
+            end,
+        }
+    }
+
+    async fn stream_channels(&mut self, parquet_root: &Path, channels: &[u8]) -> Result<Vec<u8>> {
+        let mut missing = Vec::new();
+        for &channel in channels {
+            let found = self
+                .stream_channel(parquet_root, channel)
+                .await
+                .map_err(|e| anyhow!("channel {channel:02}: {e}"))?;
+            if !found {
+                missing.push(channel);
+            }
+        }
+        Ok(missing)
+    }
+
+    async fn flush(&mut self) -> Result<()> {
+        if self.chunk.is_empty() {
+            return Ok(());
+        }
+        let data = std::mem::take(&mut self.chunk);
+        self.bytes_sent += data.len();
+        let mut headers = HeaderMap::new();
+        headers.insert(EXPORT_FRAME_HEADER, "chunk");
+        self.client
+            .publish_with_headers(self.reply.clone(), headers, data.into())
+            .await?;
+        self.chunk = Vec::with_capacity(Self::CHUNK_SIZE);
+        Ok(())
+    }
+
+    async fn push_record(
+        &mut self,
+        timestamp: &str,
+        channel: u8,
+        raw_value: f64,
+        calibrated_value: f64,
+        calibration_id: &str,
+    ) -> Result<()> {
+        let line =
+            format!("{timestamp},ch{channel:02},{raw_value},{calibrated_value},{calibration_id}\n");
+        self.chunk.extend_from_slice(line.as_bytes());
+        if self.chunk.len() >= Self::CHUNK_SIZE {
+            self.flush().await?;
+        }
+        Ok(())
+    }
+
+    async fn finish(mut self, mut missing_channels: Vec<u8>) -> Result<()> {
+        self.flush().await?;
+        missing_channels.sort_unstable();
+        missing_channels.dedup();
+        publish_nats_json(
+            &self.client,
+            self.reply.clone(),
+            "summary",
+            &json!({
+                "type": "summary",
+                "bytesSent": self.bytes_sent,
+                "missingChannels": missing_channels
+            }),
+        )
+        .await?;
+        publish_nats_json(
+            &self.client,
+            self.reply.clone(),
+            "complete",
+            &json!({"type":"complete"}),
+        )
+        .await?;
+        self.client.flush().await?;
+        Ok(())
+    }
+
+    async fn stream_channel(&mut self, root: &Path, channel: u8) -> Result<bool> {
+        let mut found = false;
+        for day in date_range(self.start.date_naive(), self.end.date_naive()) {
+            let day_dir = root
+                .join(format!("asset{:03}", self.asset))
+                .join(day.format("%Y-%m-%d").to_string())
+                .join(format!("ch{:02}", channel));
+            if !day_dir.exists() {
+                continue;
+            }
+
+            let mut files: Vec<PathBuf> = fs::read_dir(&day_dir)?
+                .filter_map(|entry| entry.ok())
+                .map(|entry| entry.path())
+                .filter(|path| {
+                    path.file_name()
+                        .and_then(|name| name.to_str())
+                        .map(|name| name.ends_with(".parquet"))
+                        .unwrap_or(false)
+                })
+                .collect();
+            files.sort();
+
+            for path in files {
+                if let Err(err) = self.stream_parquet_file(&path, channel, &mut found).await {
+                    eprintln!("[exporter] skipping {} due to error: {err}", path.display());
+                }
+            }
+        }
+        Ok(found)
+    }
+
+    async fn stream_parquet_file(
+        &mut self,
+        path: &Path,
+        channel: u8,
+        found: &mut bool,
+    ) -> Result<()> {
+        let file = fs::File::open(path)
+            .with_context(|| format!("failed to open parquet file {}", path.display()))?;
+        let reader = SerializedFileReader::new(file)
+            .with_context(|| format!("failed to create reader for {}", path.display()))?;
+        let calibration = read_calibration_from_metadata(&reader, path);
+        let calibration_id = calibration.id_or_default().to_string();
+        let mut iter = reader.get_row_iter(None)?;
+        while let Some(row) = iter.next() {
+            let row = row?;
+            let timestamp_unix_ns = row.get_long(0)?;
+            let ts = match timestamp_unix_ns_to_rfc3339(timestamp_unix_ns) {
+                Some(ts) => ts,
+                None => continue,
+            };
+            let ts_parsed = match DateTime::parse_from_rfc3339(&ts) {
+                Ok(dt) => dt.with_timezone(&Utc),
+                Err(_) => continue,
+            };
+            if ts_parsed < self.start || ts_parsed > self.end {
+                continue;
+            }
+            let raw_value = row.get_double(1)?;
+            let calibrated_value = calibration.apply(raw_value);
+            *found = true;
+            self.push_record(&ts, channel, raw_value, calibrated_value, &calibration_id)
+                .await?;
+        }
+        Ok(())
+    }
+}
+
+impl CsvStreamer {
     const CHUNK_SIZE: usize = 128 * 1024;
 
     fn new(sink: &'a mut S, asset: u32, start: DateTime<Utc>, end: DateTime<Utc>) -> Self {

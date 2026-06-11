@@ -68,3 +68,15 @@ export function labjackConfigKey(config: {
   const sourceId = sanitizeToken(config.source_id || config.labjack_name || "unknown-source");
   return `v1.${boxId}.${sourceId}.config`;
 }
+
+export function archiveExportRequestSubject(config: LabJackSubjectConfig): string {
+  const root = sanitizeToken(config.nats_subject);
+  const siteId = sanitizeToken(config.site_id || "unknown-site");
+  const boxId = sanitizeToken(config.box_id || "unknown-box");
+  const sourceType = sanitizeToken(config.source_type || "labjack");
+  const sourceId = sanitizeToken(
+    config.source_id || config.labjack_name || `asset${padAsset(config.asset_number)}`
+  );
+
+  return `${root}.v1.${siteId}.${boxId}.archive.${sourceType}.${sourceId}.export.request`;
+}

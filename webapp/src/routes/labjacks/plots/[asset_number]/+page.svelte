@@ -4,7 +4,7 @@
     import { connect, getKeyValue, getKeys } from "$lib/nats.svelte";
     import { downloadExportViaNats, type ExportRequestPayload } from "$lib/exporter";
     import { applyCalibration, normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
-    import { liveLabJackChannelPattern, liveLabJackChannelSubject } from "$lib/subjects";
+    import { archiveExportRequestSubject, liveLabJackChannelPattern, liveLabJackChannelSubject } from "$lib/subjects";
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
     import {
         FlatBufferParser
@@ -1027,7 +1027,7 @@
                     : undefined,
             };
 
-            const result = await downloadExportViaNats(natsService, payload, {
+            const result = await downloadExportViaNats(natsService, archiveExportRequestSubject(labjackConfig), payload, {
                 onProgress: (received) => {
                     exportProgress = received;
                 },

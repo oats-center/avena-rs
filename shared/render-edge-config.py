@@ -193,6 +193,8 @@ def archiver_env(config: dict) -> dict:
             "NATS_SUBJECT": nats["root_subject"],
             "NATS_SERVERS": nats["local_servers"],
             "JS_DOMAIN": nats["jetstream_domain"],
+            "CFG_NATS_SERVERS": nats.get("config_servers", ""),
+            "CFG_JS_DOMAIN": nats.get("config_jetstream_domain", ""),
             "SITE_ID": config["site_id"],
             "BOX_ID": config["box_id"],
             "SOURCE_TYPE": source["type"],
@@ -201,6 +203,26 @@ def archiver_env(config: dict) -> dict:
             "CFG_BUCKET": nats["kv_bucket"],
             "CFG_KEY": nats["kv_key"],
             "PARQUET_DIR": paths["parquet_dir"],
+        }
+    }
+
+
+def exporter_env(config: dict) -> dict:
+    nats = config["nats"]
+    paths = config["paths"]
+    source = config["source"]
+    return {
+        "env": {
+            "NATS_SUBJECT": nats["root_subject"],
+            "NATS_SERVERS": nats["local_servers"],
+            "JS_DOMAIN": nats["jetstream_domain"],
+            "SITE_ID": config["site_id"],
+            "BOX_ID": config["box_id"],
+            "SOURCE_TYPE": source["type"],
+            "SOURCE_ID": source["id"],
+            "NATS_CREDS_FILE": paths["rust_creds_file"],
+            "PARQUET_DIR": paths["parquet_dir"],
+            "EXPORTER_ADDR": "0.0.0.0:9001",
         }
     }
 
@@ -273,6 +295,7 @@ def main():
     write_text(repo / "shared/alloy.container", render_alloy_container(config))
     write_json(repo / "rust-ljm/streamer.env.json", streamer_env(config))
     write_json(repo / "rust-ljm/archiver.env.json", archiver_env(config))
+    write_json(repo / "rust-ljm/exporter.env.json", exporter_env(config))
     write_json(repo / "shared/labjack-kv.generated.json", labjack_kv_config(config))
 
     print("Rendered edge config files:")
@@ -280,6 +303,7 @@ def main():
     print("  shared/alloy.container")
     print("  rust-ljm/streamer.env.json")
     print("  rust-ljm/archiver.env.json")
+    print("  rust-ljm/exporter.env.json")
     print("  shared/labjack-kv.generated.json")
     print()
     print(f"Box: {config['box_id']}")

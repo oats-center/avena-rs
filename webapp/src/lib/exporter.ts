@@ -1,4 +1,5 @@
-import type { NatsService } from "$lib/nats.svelte";
+import { createInbox } from "@nats-io/nats-core";
+import type { NatsService } from "./nats.svelte";
 
 export interface ExportRequestPayload {
   asset: number;
@@ -45,6 +46,7 @@ type CompleteFrame = {
 
 type Frame = SummaryFrame | MetaFrame | ErrorFrame | CompleteFrame | Record<string, unknown>;
 
+<<<<<<< HEAD
 const DEFAULT_EXPORT_SUBJECT_PREFIX = "avenars.export";
 const DEFAULT_EXPORT_TIMEOUT_MS = 30_000;
 const EXPORT_FRAME_HEADER = "X-Avena-Export-Frame";
@@ -63,6 +65,12 @@ function sanitizeToken(raw: string): string {
     .replace(/^-+|-+$/g, "");
 
   return normalized || "unknown";
+=======
+const EXPORT_FRAME_HEADER = "Avena-Export-Frame";
+
+function stripTrailingSlash(url: string): string {
+  return url.endsWith("/") ? url.slice(0, -1) : url;
+>>>>>>> 63ebd58 (Wire edge archive exports over NATS)
 }
 
 function exportSubjectPrefix(): string {
@@ -253,4 +261,123 @@ export async function downloadExportViaNats(
         fail(error instanceof Error ? error.message : "Failed to publish export request.");
       });
   });
+}
+
+export async function downloadExportViaWebSocket(
+  payload: ExportRequestPayload,
+  options: ExportStreamOptions = {}
+): Promise<ExportStreamResult> {
+  const candidates = buildExportCandidates(options.websocketUrl);
+  let lastError: Error | null = null;
+
+  for (const url of candidates) {
+    try {
+      return await streamExportFromUrl(url, payload, options);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.error(`Export attempt failed for ${url}`, lastError);
+    }
+  }
+
+  throw lastError ?? new Error("No export WebSocket endpoint is configured.");
+}
+
+export async function downloadExportViaNats(
+  nats: NatsService,
+  requestSubject: string,
+  payload: ExportRequestPayload,
+  options: ExportStreamOptions = {}
+): Promise<ExportStreamResult> {
+  const inbox = createInbox();
+  const sub = nats.connection.subscribe(inbox);
+  const chunks: ArrayBuffer[] = [];
+  let meta: MetaFrame | null = null;
+  let summary: SummaryFrame | null = null;
+  let totalBytes = 0;
+  let timedOut = false;
+
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    try {
+      sub.unsubscribe();
+    } catch {
+      // Best-effort timeout cleanup.
+    }
+  }, 120_000);
+
+  try {
+    nats.connection.publish(
+      requestSubject,
+      new TextEncoder().encode(JSON.stringify({ ...payload, format: "csv" as const })),
+      { reply: inbox }
+    );
+    if (typeof nats.connection.flush === "function") {
+      await nats.connection.flush();
+    }
+
+    for await (const msg of sub) {
+      const frame = msg.headers?.get(EXPORT_FRAME_HEADER) ?? "chunk";
+
+      if (frame === "chunk") {
+        const data = msg.data instanceof Uint8Array ? msg.data : new Uint8Array(msg.data);
+        const copy = data.byteOffset === 0 && data.byteLength === data.buffer.byteLength
+          ? data.buffer.slice(0)
+          : data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+        chunks.push(copy);
+        totalBytes += data.byteLength;
+        options.onProgress?.(totalBytes);
+        continue;
+      }
+
+      let parsed: Frame;
+      try {
+        parsed = JSON.parse(new TextDecoder().decode(msg.data)) as Frame;
+      } catch (err) {
+        throw new Error(
+          err instanceof Error
+            ? `Failed to parse export ${frame} frame: ${err.message}`
+            : `Failed to parse export ${frame} frame`
+        );
+      }
+
+      if (frame === "meta" && parsed.type === "meta") {
+        meta = parsed;
+        continue;
+      }
+
+      if (frame === "summary" && parsed.type === "summary") {
+        summary = parsed;
+        options.onSummary?.(parsed.missingChannels ?? []);
+        continue;
+      }
+
+      if (frame === "error" && parsed.type === "error") {
+        throw new Error(`Export server error: ${parsed.message}`);
+      }
+
+      if (frame === "complete") {
+        const fileName = meta?.fileName ?? payload.download_name ?? "labjack_export.csv";
+        const mime = meta?.contentType ?? "text/csv";
+        const blob = new Blob(chunks, { type: mime });
+        return {
+          blob,
+          fileName,
+          size: summary?.bytesSent ?? totalBytes ?? blob.size,
+          missingChannels: summary?.missingChannels ?? [],
+        };
+      }
+    }
+
+    if (timedOut) {
+      throw new Error("Timed out waiting for NATS export response");
+    }
+    throw new Error("NATS export response ended before completion");
+  } finally {
+    clearTimeout(timeout);
+    try {
+      sub.unsubscribe();
+    } catch {
+      // Subscription may already be closed.
+    }
+  }
 }
