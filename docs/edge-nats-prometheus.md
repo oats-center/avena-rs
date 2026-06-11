@@ -53,6 +53,34 @@ Common hardware/config changes and where to edit them:
 - Local NATS or monitoring ports changed: edit `nats.local_servers`, `nats.leaf_listen`, or `nats.monitor_listen`.
 - Parquet path changed: edit `paths.parquet_dir`.
 
+To replicate this setup on another box:
+
+1. Copy or clone this repo onto the new box.
+2. Edit `shared/edge-box.config.json` for the new hardware.
+3. Generate a new leaf user/creds name for that box, for example `<box_id>-leaf`.
+4. Run this guide from Step 0 through Step 11.
+5. Do not reuse the `i69-mu2` `box_id`, `nats.jetstream_domain`, or `nats.kv_key` on another physical box.
+
+Minimum values that must be unique per box:
+
+```text
+box_id
+nats.leaf_server_name
+nats.jetstream_domain
+nats.kv_key
+source.id
+labjack.name
+```
+
+Minimum values that must match the physical LabJack:
+
+```text
+labjack.ip
+labjack.serial
+labjack.asset_number
+labjack.sensor_settings.channels_enabled
+```
+
 After editing `shared/edge-box.config.json`, always render generated files:
 
 ```bash
@@ -128,7 +156,7 @@ Expected:
 Confirm OATS names resolve:
 
 ```bash
-getent hosts nats1.oats nats2.oats nats3.oats prometheus.oats
+getent hosts nats1.oats nats2.oats prometheus.oats
 ```
 
 If this fails, Tailscale/DNS is the problem. Do not continue until OATS names resolve.
@@ -145,6 +173,63 @@ command -v jq
 ```
 
 If only `jq` is missing, install it or omit the `| jq ...` parts in validation commands. If `nsc` or `nats` is missing, install the NATS tools before continuing.
+
+## Storage Check
+
+Parquet archives, local JetStream storage, Podman container volumes, and repo data
+all live under `/` for this deployment. On `i69-mu2`, `/` should be backed by
+the 1 TB NVMe SSD, not the small eMMC device.
+
+Check disks and mounted filesystems:
+
+```bash
+lsblk -o NAME,MODEL,SERIAL,SIZE,TYPE,FSTYPE,LABEL,UUID,MOUNTPOINTS
+df -hT /
+```
+
+Expected on `i69-mu2` after storage expansion:
+
+```text
+nvme0n1                     CT1000P310SSD2  931.5G disk
+fedora_fw--77--231-root                    928.9G lvm  xfs  /
+/dev/mapper/fedora_fw--77--231-root xfs    929G        /
+```
+
+If `df -hT /` shows only about `115G`, the SSD is present but most of the LVM
+space has not been allocated to `/`. Confirm available LVM space:
+
+```bash
+sudo pvs
+sudo vgs
+sudo lvs
+```
+
+If the `fedora_fw-77-231` volume group shows a large `VFree` value, grow `/` to
+use the rest of the SSD:
+
+```bash
+sudo lvextend -r -l +100%FREE /dev/fedora_fw-77-231/root
+```
+
+Validate:
+
+```bash
+df -hT /
+lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS
+```
+
+Expected result:
+
+- `/` is about `929G`
+- `/home/user/avena-rs/rust-ljm/parquet` is on `/`
+- local NATS JetStream storage is on `/` through the Podman volume
+- free space is hundreds of GB, not tens of GB
+
+Check current Parquet usage:
+
+```bash
+du -sh /home/user/avena-rs/rust-ljm/parquet
+```
 
 ## Step 0: Render The Config Files
 
@@ -358,6 +443,29 @@ Expected:
 
 - central `nats rtt` no longer reports `Authorization Violation`
 - local `leafz.leafnodes` is greater than `0`
+
+No local config change is needed for the current `nats1`/`nats2` setup. The
+rendered config already uses only:
+
+```text
+nats://nats1.oats:7422
+nats://nats2.oats:7422
+```
+
+If the services are already running, the leaf will keep retrying automatically.
+After the OATS-side account/auth fix, validate first:
+
+```bash
+curl -fsS http://127.0.0.1:8222/leafz | jq '{leafnodes, leafs}'
+nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds rtt
+```
+
+If it still has not connected after a minute, restart only the local leaf:
+
+```bash
+sudo systemctl restart nats-leaf
+curl -fsS http://127.0.0.1:8222/leafz | jq '{leafnodes, leafs}'
+```
 
 ## Step 4: Validate Local NATS And JetStream With CLI
 
