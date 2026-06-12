@@ -6,7 +6,7 @@ Rust binaries for LabJack streaming, parquet archiving, and export serving.
 
 - `streamer`: reads from the LabJack and publishes samples to NATS
 - `archiver`: subscribes to NATS and writes parquet files
-- `exporter`: serves parquet-backed exports over WebSocket
+- `exporter`: serves parquet-backed exports over WebSocket, or runs an edge export worker over NATS
 - `subscriber`: diagnostic NATS subscriber
 
 ## Deployment
@@ -16,9 +16,30 @@ Rust binaries for LabJack streaming, parquet archiving, and export serving.
 - Remote server with webapp support: run the web app against the central OATS
   NATS WebSocket endpoint
 
-`exporter` must run on the same host as the parquet directory it serves.
-For a simple setup, you can also run `archiver` and `exporter` on the MU and
-point the laptop webapp at the MU's exporter address.
+`exporter` now supports two modes:
+
+- `direct`: read local parquet and serve `/export` over WebSocket
+- `worker`: subscribe for export jobs over core NATS, read local parquet, and
+  publish chunked CSV responses back over core NATS
+
+In `direct` mode, `exporter` must run on the same host as the parquet
+directory it serves. For a simple setup, you can also run `archiver` and
+`exporter` on the MU and point the laptop webapp at the MU's exporter address.
+
+For central-webapp exports backed by edge-local parquet:
+
+- run `exporter` in `worker` mode on the MU with access to local parquet
+- point the webapp at central OATS NATS as usual
+- the browser publishes export requests over its existing NATS WebSocket session
+- the webapp includes `box_id` in export requests so the correct edge worker is targeted
+
+The browser-to-worker path uses core NATS subjects, not JetStream, for export chunks:
+
+- request subject: `avenars.export.request.<box_id>`
+- reply subject: `avenars.export.reply.<job_id>`
+
+The local LabJack KV config and live sample stream remain on JetStream-backed
+subjects as before.
 
 ## Streamer Control
 
@@ -76,6 +97,31 @@ Set `EXPORTER_ADDR` to an address reachable from the laptop, for example:
   "env": {
     "PARQUET_DIR": "parquet",
     "EXPORTER_ADDR": "0.0.0.0:9001"
+  }
+}
+```
+
+`exporter.env.json` fields:
+
+- `EXPORTER_MODE`: `direct` or `worker`
+- `EXPORTER_ADDR`: WebSocket listen address for `direct`
+- `PARQUET_DIR`: local parquet root for `direct` and `worker`
+- `NATS_SERVERS`: NATS URL list for `worker`
+- `NATS_CREDS_FILE`: creds file for `worker`
+- `EXPORT_NATS_SUBJECT_PREFIX`: export subject prefix, default `avenars.export`
+- `BOX_ID` or `EXPORT_BOX_ID`: worker target box id for subject binding
+
+Example `worker` config:
+
+```json
+{
+  "env": {
+    "EXPORTER_MODE": "worker",
+    "PARQUET_DIR": "parquet",
+    "NATS_SERVERS": "nats://127.0.0.1:4222",
+    "NATS_CREDS_FILE": "apt.creds",
+    "BOX_ID": "i69-mu1",
+    "EXPORT_NATS_SUBJECT_PREFIX": "avenars.export"
   }
 }
 ```

@@ -15,7 +15,12 @@ pub fn load_example_env() -> Result<Option<PathBuf>, String> {
         .get("env")
         .unwrap_or(&json)
         .as_object()
-        .ok_or_else(|| format!("{} must contain an object or env object", config_path.display()))?;
+        .ok_or_else(|| {
+            format!(
+                "{} must contain an object or env object",
+                config_path.display()
+            )
+        })?;
 
     for (key, value) in env_obj {
         let value = match value {

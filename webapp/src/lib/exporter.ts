@@ -1,3 +1,5 @@
+import type { NatsService } from "$lib/nats.svelte";
+
 export interface ExportRequestPayload {
   asset: number;
   channels: number[];
@@ -5,6 +7,7 @@ export interface ExportRequestPayload {
   end: string;
   format?: "csv";
   download_name?: string;
+  box_id?: string;
 }
 
 export interface ExportStreamResult {
@@ -17,7 +20,6 @@ export interface ExportStreamResult {
 export interface ExportStreamOptions {
   onProgress?: (received: number) => void;
   onSummary?: (missingChannels: number[]) => void;
-  websocketUrl?: string;
 }
 
 type SummaryFrame = {
@@ -43,133 +45,116 @@ type CompleteFrame = {
 
 type Frame = SummaryFrame | MetaFrame | ErrorFrame | CompleteFrame | Record<string, unknown>;
 
-function stripTrailingSlash(url: string): string {
-  return url.endsWith("/") ? url.slice(0, -1) : url;
+const DEFAULT_EXPORT_SUBJECT_PREFIX = "avenars.export";
+const DEFAULT_EXPORT_TIMEOUT_MS = 30_000;
+const EXPORT_FRAME_HEADER = "X-Avena-Export-Frame";
+const EXPORT_FRAME_META = "meta";
+const EXPORT_FRAME_CHUNK = "chunk";
+const EXPORT_FRAME_SUMMARY = "summary";
+const EXPORT_FRAME_COMPLETE = "complete";
+const EXPORT_FRAME_ERROR = "error";
+
+function sanitizeToken(raw: string): string {
+  const normalized = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[\s./]+/g, "-")
+    .replace(/[^a-z0-9_-]/g, "")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized || "unknown";
 }
 
-function defaultWebsocketScheme(): "ws" | "wss" {
-  if (typeof window !== "undefined" && window.location.protocol === "https:") {
-    return "wss";
-  }
-  return "ws";
+function exportSubjectPrefix(): string {
+  return import.meta.env.VITE_EXPORT_NATS_SUBJECT_PREFIX?.trim() || DEFAULT_EXPORT_SUBJECT_PREFIX;
 }
 
-function normalizeWebsocketUrl(url: string): string {
-  const trimmed = url.trim();
-  if (!trimmed) return "";
-
-  const withScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed)
-    ? trimmed
-    : `${defaultWebsocketScheme()}://${trimmed}`;
-
-  try {
-    const parsed = new URL(withScheme);
-    if (parsed.protocol === "http:") parsed.protocol = "ws:";
-    if (parsed.protocol === "https:") parsed.protocol = "wss:";
-    if (!parsed.pathname || parsed.pathname === "/") {
-      parsed.pathname = "/export";
-    }
-    return stripTrailingSlash(parsed.toString());
-  } catch {
-    return withScheme;
-  }
+function requestSubject(boxId: string): string {
+  return `${exportSubjectPrefix()}.request.${sanitizeToken(boxId)}`;
 }
 
-function buildDefaultExportCandidates(): string[] {
-  if (typeof window === "undefined") {
-    return ["ws://127.0.0.1:9001/export"];
-  }
-
-  const candidates = new Set<string>();
-  const scheme = defaultWebsocketScheme();
-  const { hostname, host, origin } = window.location;
-
-  candidates.add(`${scheme}://${hostname}:9001/export`);
-  candidates.add(`${scheme}://${host}/export`);
-
-  try {
-    const originUrl = new URL(origin);
-    originUrl.protocol = scheme === "wss" ? "wss:" : "ws:";
-    originUrl.pathname = "/export";
-    originUrl.search = "";
-    originUrl.hash = "";
-    candidates.add(stripTrailingSlash(originUrl.toString()));
-  } catch {
-    // Keep the simpler candidates if URL construction fails.
-  }
-
-  if (hostname === "localhost" || hostname === "127.0.0.1") {
-    candidates.add("ws://127.0.0.1:9001/export");
-  }
-
-  return Array.from(candidates);
+function replySubject(jobId: string): string {
+  return `${exportSubjectPrefix()}.reply.${sanitizeToken(jobId)}`;
 }
 
-function buildExportCandidates(override?: string): string[] {
-  const configured = override?.trim() || import.meta.env.VITE_EXPORT_WS_URL?.trim() || "";
-  if (configured) {
-    return [normalizeWebsocketUrl(configured)];
+function randomJobId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
   }
-  return buildDefaultExportCandidates();
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function buildWebSocketHint(url: string): string {
-  if (typeof window === "undefined") {
-    return "";
-  }
+function textDecoder(): TextDecoder {
+  return new TextDecoder();
+}
 
-  if (window.location.protocol === "https:" && url.startsWith("ws://")) {
-    return " The app is loaded over HTTPS, so the browser will block insecure ws:// connections. Use a wss:// endpoint or proxy /export through HTTPS.";
-  }
+function textEncoder(): TextEncoder {
+  return new TextEncoder();
+}
 
-  try {
-    const parsed = new URL(url);
-    const isLoopback = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost";
-    const currentHost = window.location.hostname;
-    if (isLoopback && currentHost !== "127.0.0.1" && currentHost !== "localhost") {
-      return " The exporter URL points at localhost, which means the browser is trying to connect to its own machine rather than the remote host running Avena.";
-    }
-  } catch {
-    // Ignore malformed URLs and fall back to the base error message.
-  }
-
+function frameTypeFromHeaders(headers: any): string {
+  if (!headers) return "";
+  const value = headers.get?.(EXPORT_FRAME_HEADER);
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && value.length > 0) return String(value[0]);
   return "";
 }
 
-async function streamExportFromUrl(
-  url: string,
+export async function downloadExportViaNats(
+  natsService: NatsService,
   payload: ExportRequestPayload,
-  options: ExportStreamOptions
+  options: ExportStreamOptions = {}
 ): Promise<ExportStreamResult> {
-  const ws = new WebSocket(url);
-  ws.binaryType = "arraybuffer";
+  const boxId = payload.box_id?.trim();
+  if (!boxId) {
+    throw new Error("Export requires box_id so the request can be routed to the correct edge box.");
+  }
 
-  const chunks: ArrayBuffer[] = [];
+  const nc = natsService.connection;
+  const jobId = randomJobId();
+  const reply = replySubject(jobId);
+  const request = requestSubject(boxId);
+  const sub = nc.subscribe(reply);
+  const encoder = textEncoder();
+  const decoder = textDecoder();
+
+  const chunks: Uint8Array[] = [];
   let meta: MetaFrame | null = null;
   let summary: SummaryFrame | null = null;
   let totalBytes = 0;
+  let settled = false;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  const timeoutMs = Number(import.meta.env.VITE_EXPORT_NATS_TIMEOUT_MS ?? DEFAULT_EXPORT_TIMEOUT_MS);
+
+  const clearTimer = () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+  };
+
+  const resetTimer = (reject: (reason?: unknown) => void) => {
+    clearTimer();
+    timeoutId = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      sub.unsubscribe();
+      reject(new Error(`Timed out waiting for export response after ${timeoutMs}ms.`));
+    }, timeoutMs);
+  };
 
   return new Promise<ExportStreamResult>((resolve, reject) => {
-    let settled = false;
-
     const cleanup = () => {
-      ws.onerror = null;
-      ws.onclose = null;
-      ws.onmessage = null;
-      ws.onopen = null;
+      clearTimer();
+      sub.unsubscribe();
     };
 
     const fail = (message: string) => {
       if (settled) return;
       settled = true;
       cleanup();
-      try {
-        if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
-          ws.close();
-        }
-      } catch {
-        // Best-effort cleanup only.
-      }
       reject(new Error(message));
     };
 
@@ -177,111 +162,95 @@ async function streamExportFromUrl(
       if (settled) return;
       settled = true;
       cleanup();
-      try {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.close(1000, "complete");
-        }
-      } catch {
-        // Best-effort cleanup only.
-      }
       resolve(result);
     };
 
-    ws.onerror = () => {
-      fail(`WebSocket connection failed for ${url}.${buildWebSocketHint(url)}`);
-    };
+    (async () => {
+      try {
+        resetTimer(reject);
 
-    ws.onclose = (event) => {
-      if (settled || event.code === 1000) {
-        return;
-      }
-      const suffix = event.reason ? `: ${event.reason}` : "";
-      fail(`WebSocket closed unexpectedly for ${url} (${event.code}${suffix}).${buildWebSocketHint(url)}`);
-    };
+        for await (const message of sub) {
+          resetTimer(reject);
 
-    ws.onmessage = async (event) => {
-      if (typeof event.data === "string") {
-        try {
-          const frame = JSON.parse(event.data) as Frame;
-          if (frame.type === "meta") {
-            meta = frame;
+          const frameType = frameTypeFromHeaders(message.headers);
+          if (!frameType) {
+            fail("Export response was missing frame headers.");
             return;
           }
 
-          if (frame.type === "summary") {
-            summary = frame;
-            options.onSummary?.(frame.missingChannels ?? []);
+          if (frameType === EXPORT_FRAME_CHUNK) {
+            const data = message.data.slice();
+            totalBytes += data.length;
+            chunks.push(data);
+            options.onProgress?.(totalBytes);
+            continue;
+          }
+
+          const text = decoder.decode(message.data);
+          let frame: Frame;
+          try {
+            frame = JSON.parse(text) as Frame;
+          } catch {
+            fail("Export response contained invalid JSON metadata.");
             return;
           }
 
-          if (frame.type === "complete") {
+          if (frameType === EXPORT_FRAME_META) {
+            meta = frame as MetaFrame;
+            continue;
+          }
+
+          if (frameType === EXPORT_FRAME_SUMMARY) {
+            summary = frame as SummaryFrame;
+            options.onSummary?.(summary.missingChannels ?? []);
+            continue;
+          }
+
+          if (frameType === EXPORT_FRAME_ERROR) {
+            fail((frame as ErrorFrame).message || "Export failed.");
+            return;
+          }
+
+          if (frameType === EXPORT_FRAME_COMPLETE) {
             const fileName = meta?.fileName ?? payload.download_name ?? "labjack_export.csv";
             const mime = meta?.contentType ?? "text/csv";
             const blob = new Blob(chunks, { type: mime });
             succeed({
               blob,
               fileName,
-              size: summary?.bytesSent ?? totalBytes ?? blob.size,
+              size: totalBytes,
               missingChannels: summary?.missingChannels ?? [],
             });
             return;
           }
-
-          if (frame.type === "error") {
-            fail(`Export server error from ${url}: ${frame.message}`);
-          }
-        } catch (err) {
-          fail(
-            err instanceof Error
-              ? `Failed to parse export frame from ${url}: ${err.message}`
-              : `Failed to parse export frame from ${url}`
-          );
         }
-        return;
-      }
 
-      try {
-        const buffer =
-          event.data instanceof ArrayBuffer
-            ? event.data
-            : await (event.data as Blob).arrayBuffer();
-        chunks.push(buffer);
-        totalBytes += buffer.byteLength;
-        options.onProgress?.(totalBytes);
-      } catch (err) {
-        fail(
-          err instanceof Error
-            ? `Failed to read export data from ${url}: ${err.message}`
-            : `Failed to read export data from ${url}`
-        );
+        fail("Export response stream ended unexpectedly.");
+      } catch (error) {
+        fail(error instanceof Error ? error.message : "Export failed.");
       }
+    })().catch((error) => {
+      fail(error instanceof Error ? error.message : "Export failed.");
+    });
+
+    const requestBody = {
+      job_id: jobId,
+      response_subject: reply,
+      asset: payload.asset,
+      channels: payload.channels,
+      start: payload.start,
+      end: payload.end,
+      format: payload.format ?? "csv",
+      download_name: payload.download_name,
     };
 
-    ws.onopen = () => {
-      const requestPayload = {
-        ...payload,
-        format: "csv" as const,
-      };
-      ws.send(JSON.stringify(requestPayload));
-    };
+    nc.publish(request, encoder.encode(JSON.stringify(requestBody)));
+    nc.flush()
+      .then(() => {
+        resetTimer(reject);
+      })
+      .catch((error) => {
+        fail(error instanceof Error ? error.message : "Failed to publish export request.");
+      });
   });
-}
-
-export async function downloadExportViaWebSocket(
-  payload: ExportRequestPayload,
-  options: ExportStreamOptions = {}
-): Promise<ExportStreamResult> {
-  const candidates = buildExportCandidates(options.websocketUrl);
-  let lastError: Error | null = null;
-
-  for (const url of candidates) {
-    try {
-      return await streamExportFromUrl(url, payload, options);
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      console.error(`Export attempt failed for ${url}`, lastError);
-    }
-  }
-
-  throw lastError ?? new Error("No export WebSocket endpoint is configured.");
 }

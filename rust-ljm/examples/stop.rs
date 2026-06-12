@@ -1,5 +1,5 @@
-use ljmrs::{LJMError, LJMLibrary};
 use ljmrs::handle::{ConnectionType, DeviceType};
+use ljmrs::{LJMError, LJMLibrary};
 
 #[path = "common/example_env.rs"]
 mod example_env;

@@ -9,10 +9,12 @@ The goal is:
 - leaf connection from this box to OATS NATS at `nats1.oats:7422` and `nats2.oats:7422`
 - Rust `streamer` publishes LabJack data to the local leaf node
 - Rust `archiver` writes local Parquet files
+- optional Rust `exporter` worker serves export requests over NATS using local parquet
 - Alloy sends host and local NATS metrics to OATS Prometheus
 - the web app connects to central OATS NATS, not directly to this box
 
-For this deployment, do not run the Rust `exporter` on `i69-mu2`. The central exporter/archive path runs on OATS and serves the web app from central-side data access.
+For the current deployment, the browser talks to central OATS NATS and can
+request CSV exports over NATS from an `exporter` worker running on this box.
 
 ## Single Config File
 
@@ -124,10 +126,10 @@ Run these on `i69-mu2`:
 - `alloy.service`: host/NATS metrics collector and remote writer
 - `rust-ljm/archiver`: local Parquet writer
 - `rust-ljm/streamer`: LabJack reader and NATS publisher
+- optional `rust-ljm/exporter`: edge export worker for browser-initiated NATS export requests
 
 Do not run these on `i69-mu2` for this deployment:
 
-- `rust-ljm/exporter`: central/OATS owns the export-to-web path
 - `webapp`: the browser-facing app connects to central OATS NATS
 
 ## Before You Start
@@ -170,6 +172,12 @@ command -v curl
 command -v nsc
 command -v nats
 command -v jq
+```
+
+If `podman` is missing on Fedora, install it before continuing:
+
+```bash
+sudo dnf install -y podman
 ```
 
 If only `jq` is missing, install it or omit the `| jq ...` parts in validation commands. If `nsc` or `nats` is missing, install the NATS tools before continuing.
@@ -292,37 +300,37 @@ If `nsc env -o OATS.jwt` appears anywhere in older notes, do not use it. `nsc en
 
 ## Step 2: Install Local Service Configs
 
-Install the Quadlet files and credentials:
+Install the Quadlet files and credentials into the rootful Quadlet search path:
 
 ```bash
-sudo install -d -m 0755 /etc/containers/systemd/avena-rs/creds
-sudo install -m 0644 shared/nats-leaf.conf /etc/containers/systemd/avena-rs/nats-leaf.conf
-sudo install -m 0644 shared/nats-leaf.container /etc/containers/systemd/avena-rs/nats-leaf.container
-sudo install -m 0644 shared/nats-jetstream.volume /etc/containers/systemd/avena-rs/nats-jetstream.volume
-sudo install -m 0644 shared/nats-exporter.container /etc/containers/systemd/avena-rs/nats-exporter.container
-sudo install -m 0644 shared/alloy.container /etc/containers/systemd/avena-rs/alloy.container
-sudo install -m 0644 shared/alloy.volume /etc/containers/systemd/avena-rs/alloy.volume
-sudo install -m 0644 shared/config.alloy /etc/containers/systemd/avena-rs/config.alloy
-sudo install -m 0600 /tmp/i69-mu2-leaf.creds /etc/containers/systemd/avena-rs/creds/leaf.creds
+sudo install -d -m 0755 /etc/containers/systemd/creds
+sudo install -m 0644 shared/nats-leaf.conf /etc/containers/systemd/nats-leaf.conf
+sudo install -m 0644 shared/nats-leaf.container /etc/containers/systemd/nats-leaf.container
+sudo install -m 0644 shared/nats-jetstream.volume /etc/containers/systemd/nats-jetstream.volume
+sudo install -m 0644 shared/nats-exporter.container /etc/containers/systemd/nats-exporter.container
+sudo install -m 0644 shared/alloy.container /etc/containers/systemd/alloy.container
+sudo install -m 0644 shared/alloy.volume /etc/containers/systemd/alloy.volume
+sudo install -m 0644 shared/config.alloy /etc/containers/systemd/config.alloy
+sudo install -m 0600 /tmp/i69-mu2-leaf.creds /etc/containers/systemd/creds/leaf.creds
 install -m 0600 /tmp/i69-mu2-leaf.creds rust-ljm/apt.creds
 ```
 
 Validate files:
 
 ```bash
-sudo test -s /etc/containers/systemd/avena-rs/nats-leaf.conf && echo "nats config installed"
-sudo test -s /etc/containers/systemd/avena-rs/creds/leaf.creds && echo "leaf creds installed"
+sudo test -s /etc/containers/systemd/nats-leaf.conf && echo "nats config installed"
+sudo test -s /etc/containers/systemd/creds/leaf.creds && echo "leaf creds installed"
 test -s rust-ljm/apt.creds && echo "rust creds installed"
 ```
 
 Validate key config values:
 
 ```bash
-sudo grep -n 'server_name: "i69-mu2-leaf"' /etc/containers/systemd/avena-rs/nats-leaf.conf
-sudo grep -n 'domain: "edge-i69-mu2"' /etc/containers/systemd/avena-rs/nats-leaf.conf
-sudo grep -n 'nats1.oats:7422' /etc/containers/systemd/avena-rs/nats-leaf.conf
-sudo grep -n 'nats2.oats:7422' /etc/containers/systemd/avena-rs/nats-leaf.conf
-! sudo grep -n 'nats3.oats:7422' /etc/containers/systemd/avena-rs/nats-leaf.conf
+sudo grep -n 'server_name: "i69-mu2-leaf"' /etc/containers/systemd/nats-leaf.conf
+sudo grep -n 'domain: "edge-i69-mu2"' /etc/containers/systemd/nats-leaf.conf
+sudo grep -n 'nats1.oats:7422' /etc/containers/systemd/nats-leaf.conf
+sudo grep -n 'nats2.oats:7422' /etc/containers/systemd/nats-leaf.conf
+! sudo grep -n 'nats3.oats:7422' /etc/containers/systemd/nats-leaf.conf
 ```
 
 If these fail, the wrong config was copied or edited.
@@ -336,7 +344,7 @@ sudo systemctl daemon-reload
 sudo systemctl start nats-leaf
 ```
 
-Do not use `sudo systemctl enable --now nats-leaf` for these Quadlet units on this host. They are generated by Podman from `/etc/containers/systemd/avena-rs/*.container`, and `enable` can fail with `Unit ... is transient or generated`. The `[Install]` section in the Quadlet file is enough for the generator to create the boot-time wants link.
+Do not use `sudo systemctl enable --now nats-leaf` for these Quadlet units on this host. They are generated by Podman from `/etc/containers/systemd/*.container`, and `enable` can fail with `Unit ... is transient or generated`. The `[Install]` section in the Quadlet file is enough for the generator to create the boot-time wants link.
 
 Validate local NATS monitor:
 
@@ -559,13 +567,13 @@ If the `instance="i69-mu2"` queries do not return data, confirm the installed Al
 
 ```bash
 grep -n 'Environment=NODE_NAME=i69-mu2' shared/alloy.container
-sudo grep -n 'Environment=NODE_NAME=i69-mu2' /etc/containers/systemd/avena-rs/alloy.container
+sudo grep -n 'Environment=NODE_NAME=i69-mu2' /etc/containers/systemd/alloy.container
 ```
 
 If the installed file still uses `NODE_NAME=%H`, reinstall the rendered Alloy file and restart Alloy:
 
 ```bash
-sudo install -m 0644 shared/alloy.container /etc/containers/systemd/avena-rs/alloy.container
+sudo install -m 0644 shared/alloy.container /etc/containers/systemd/alloy.container
 sudo systemctl daemon-reload
 sudo systemctl restart alloy
 ```
@@ -584,7 +592,7 @@ old Alloy process or stale installed config:
 
 ```bash
 systemctl is-active alloy
-sudo grep -n 'Environment=NODE_NAME=' /etc/containers/systemd/avena-rs/alloy.container
+sudo grep -n 'Environment=NODE_NAME=' /etc/containers/systemd/alloy.container
 pgrep -af 'grafana/alloy|alloy run' || true
 ```
 
@@ -964,7 +972,7 @@ Then run the quick validation commands from the bring-online section.
 `leafz` shows no OATS connection:
 
 - OATS leaf port/creds/permissions are the issue
-- check `/etc/containers/systemd/avena-rs/creds/leaf.creds`
+- check `/etc/containers/systemd/creds/leaf.creds`
 - check `nats1.oats:7422` and `nats2.oats:7422`
 
 `nats stream ls --js-domain edge-i69-mu2` fails:

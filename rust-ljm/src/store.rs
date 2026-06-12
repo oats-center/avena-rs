@@ -1,6 +1,6 @@
+use async_nats;
 use async_nats::ConnectOptions;
 use async_nats::jetstream::kv::Operation;
-use async_nats;
 use chrono::{DateTime, NaiveDate, Utc};
 use futures_util::StreamExt;
 use parquet::{

@@ -6,6 +6,9 @@ For the LabJack pipeline:
 - Start or restart the edge streamer with `rust-ljm/streamerctl.sh`
 - Run `archiver` and `exporter` on the remote server, or run `rust-ljm/archiverctl.sh`
   and `rust-ljm/exporterctl.sh` on the MU for a single-host setup
+- For central-webapp exports backed by edge-local parquet, use the browser's
+  central NATS connection with `rust-ljm/exporter` in `worker` mode on the
+  edge host
 
 See `rust-ljm/README.md` for the current workflow and config format.
 

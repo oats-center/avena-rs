@@ -2,7 +2,7 @@
     import { onMount, onDestroy } from "svelte";
     import { page } from "$app/stores";
     import { connect, getKeyValue, getKeys } from "$lib/nats.svelte";
-    import { downloadExportViaWebSocket, type ExportRequestPayload } from "$lib/exporter";
+    import { downloadExportViaNats, type ExportRequestPayload } from "$lib/exporter";
     import { applyCalibration, normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
     import { liveLabJackChannelPattern, liveLabJackChannelSubject } from "$lib/subjects";
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
@@ -1004,12 +1004,13 @@
                 channels: Array.from(exportChannels).sort((a, b) => a - b),
                 start: startIso,
                 end: endIso,
+                box_id: labjackConfig.box_id || undefined,
                 download_name: labjackConfig.labjack_name
                     ? `${labjackConfig.labjack_name.replace(/\s+/g, "_")}.csv`
                     : undefined,
             };
 
-            const result = await downloadExportViaWebSocket(payload, {
+            const result = await downloadExportViaNats(natsService, payload, {
                 onProgress: (received) => {
                     exportProgress = received;
                 },

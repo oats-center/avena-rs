@@ -3,7 +3,7 @@
   "asset_number": 1001,
   "max_channels": 14,
   "site_id": "i69",
-  "box_id": "i69-mu2",
+  "box_id": "i69-mu1",
   "source_type": "labjack",
   "source_id": "i69-lj2",
   "nats_subject": "avenars",

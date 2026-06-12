@@ -1,6 +1,6 @@
 {
   "site_id": "i69",
-  "box_id": "i69-mu2",
+  "box_id": "i69-mu1",
   "run_exporter_on_edge": false,
   "source": {
     "type": "labjack",
@@ -9,10 +9,10 @@
   "nats": {
     "root_subject": "avenars",
     "local_servers": "nats://127.0.0.1:4222",
-    "leaf_server_name": "i69-mu2-leaf",
+    "leaf_server_name": "i69-mu1-leaf",
     "leaf_listen": "127.0.0.1:4222",
     "monitor_listen": "127.0.0.1:8222",
-    "jetstream_domain": "edge-i69-mu2",
+    "jetstream_domain": "edge-i69-mu1",
     "jetstream_store_dir": "/var/lib/nats/jetstream",
     "leaf_credentials_path": "/etc/nats/creds/leaf.creds",
     "leaf_remotes": [
@@ -20,7 +20,7 @@
       "nats://nats2.oats:7422"
     ],
     "kv_bucket": "avenabox",
-    "kv_key": "labjackd.config.i69-mu2",
+    "kv_key": "labjackd.config.i69-mu1",
     "stream_name": "labjacks"
   },
   "paths": {

@@ -63,14 +63,17 @@ pub fn open_streamer_labjack_from_env() -> Result<i32, LJMError> {
         println!("[labjack] requested logical device name '{name}'");
     }
 
-    let handle =
-        LJMLibrary::open_jack(DeviceType::T7, ConnectionType::ETHERNET, requested_ip.as_str())
-            .map_err(|err| {
-                LJMError::LibraryError(format!(
-                    "Could not open LabJack via LABJACK_IP='{}': {:?}",
-                    requested_ip, err
-                ))
-            })?;
+    let handle = LJMLibrary::open_jack(
+        DeviceType::T7,
+        ConnectionType::ETHERNET,
+        requested_ip.as_str(),
+    )
+    .map_err(|err| {
+        LJMError::LibraryError(format!(
+            "Could not open LabJack via LABJACK_IP='{}': {:?}",
+            requested_ip, err
+        ))
+    })?;
 
     let verification = (|| -> Result<DeviceHandleInfo, LJMError> {
         let info = handle_info(handle).map_err(|err| {
