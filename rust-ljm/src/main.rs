@@ -96,6 +96,15 @@ fn sample_config_from_json(bytes: &[u8]) -> Result<SampleConfig, LJMError> {
     Ok(sample_config_from_nested(nested_cfg))
 }
 
+#[derive(Debug, Clone)]
+struct CentralKvSyncConfig {
+    servers: Vec<async_nats::ServerAddr>,
+    creds_path: String,
+    bucket: String,
+    key: String,
+    domain: Option<String>,
+}
+
 struct LabJackGuard {
     handle: i32,
 }
@@ -187,6 +196,274 @@ async fn load_config_from_kv(store: &kv::Store, key: &str) -> Result<SampleConfi
             "KV entry error for '{}': {}",
             key, e
         ))),
+    }
+}
+
+fn env_nonempty(name: &str) -> Option<String> {
+    std::env::var(name)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn local_creds_path_from_env() -> String {
+    std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| "apt.creds".into())
+}
+
+fn central_kv_sync_config_from_env() -> Result<Option<CentralKvSyncConfig>, LJMError> {
+    let Some(raw_servers) = env_nonempty("CENTRAL_NATS_SERVERS") else {
+        return Ok(None);
+    };
+
+    let servers =
+        nats_config::servers_from_env_var("CENTRAL_NATS_SERVERS", Some(raw_servers.as_str()))
+            .map_err(LJMError::LibraryError)?;
+    let creds_path = env_nonempty("CENTRAL_NATS_CREDS_FILE").unwrap_or_else(local_creds_path_from_env);
+    let bucket = env_nonempty("CENTRAL_CFG_BUCKET")
+        .or_else(|| env_nonempty("CFG_BUCKET"))
+        .unwrap_or_else(|| "avenabox".to_string());
+    let key = env_nonempty("CENTRAL_CFG_KEY")
+        .or_else(|| env_nonempty("CFG_KEY"))
+        .unwrap_or_else(|| "labjackd.config.macbook".to_string());
+    let domain = env_nonempty("CENTRAL_JS_DOMAIN");
+
+    Ok(Some(CentralKvSyncConfig {
+        servers,
+        creds_path,
+        bucket,
+        key,
+        domain,
+    }))
+}
+
+async fn connect_nats_with_creds(
+    servers: Vec<async_nats::ServerAddr>,
+    creds_path: String,
+) -> Result<async_nats::Client, LJMError> {
+    let opts = ConnectOptions::with_credentials_file(creds_path)
+        .await
+        .map_err(|e| LJMError::LibraryError(format!("Failed to load creds: {}", e)))?;
+
+    opts.connect(servers)
+        .await
+        .map_err(|e| LJMError::LibraryError(format!("NATS connect failed: {}", e)))
+}
+
+async fn mirror_remote_kv_entry_to_local(
+    remote_store: &kv::Store,
+    remote_bucket: &str,
+    remote_key: &str,
+    local_store: &kv::Store,
+    local_key: &str,
+) -> Result<bool, LJMError> {
+    let remote_entry = match remote_store.entry(remote_key).await {
+        Ok(Some(entry)) => entry,
+        Ok(None) => {
+            return Err(LJMError::LibraryError(format!(
+                "Remote KV key '{}' not found",
+                remote_key
+            )));
+        }
+        Err(e) => {
+            return Err(LJMError::LibraryError(format!(
+                "Remote KV entry error for '{}': {}",
+                remote_key, e
+            )));
+        }
+    };
+
+    sample_config_from_json(remote_entry.value.as_ref())?;
+
+    let local_matches = match local_store.entry(local_key).await {
+        Ok(Some(local_entry)) => local_entry.value.as_ref() == remote_entry.value.as_ref(),
+        Ok(None) => false,
+        Err(e) => {
+            return Err(LJMError::LibraryError(format!(
+                "Local KV entry error for '{}': {}",
+                local_key, e
+            )));
+        }
+    };
+
+    if local_matches {
+        return Ok(false);
+    }
+
+    local_store
+        .put(local_key, remote_entry.value.clone())
+        .await
+        .map_err(|e| {
+            LJMError::LibraryError(format!(
+                "Failed to mirror remote KV '{}' into local key '{}': {}",
+                remote_key, local_key, e
+            ))
+        })?;
+
+    println!(
+        "[central_kv_sync] mirrored '{}:{}' into local '{}'",
+        remote_bucket,
+        remote_key,
+        local_key
+    );
+    Ok(true)
+}
+
+async fn run_central_kv_sync(
+    sync_cfg: CentralKvSyncConfig,
+    local_store: kv::Store,
+    local_key: String,
+    mut shutdown_rx: watch::Receiver<bool>,
+) {
+    loop {
+        if *shutdown_rx.borrow() {
+            println!("[central_kv_sync] shutdown");
+            break;
+        }
+
+        let connect_result =
+            connect_nats_with_creds(sync_cfg.servers.clone(), sync_cfg.creds_path.clone()).await;
+        let client = match connect_result {
+            Ok(client) => client,
+            Err(err) => {
+                eprintln!("[central_kv_sync] connect failed: {:?}", err);
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_secs(5)) => {}
+                    _ = shutdown_rx.changed() => {
+                        if *shutdown_rx.borrow() {
+                            println!("[central_kv_sync] shutdown");
+                            break;
+                        }
+                    }
+                }
+                continue;
+            }
+        };
+
+        let remote_js =
+            nats_config::jetstream_context_for_domain(client, sync_cfg.domain.as_deref());
+        let remote_store = match ensure_kv_bucket(&remote_js, &sync_cfg.bucket).await {
+            Ok(store) => store,
+            Err(err) => {
+                eprintln!("[central_kv_sync] remote bucket setup failed: {:?}", err);
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_secs(5)) => {}
+                    _ = shutdown_rx.changed() => {
+                        if *shutdown_rx.borrow() {
+                            println!("[central_kv_sync] shutdown");
+                            break;
+                        }
+                    }
+                }
+                continue;
+            }
+        };
+
+        if let Err(err) =
+            mirror_remote_kv_entry_to_local(
+                &remote_store,
+                &sync_cfg.bucket,
+                &sync_cfg.key,
+                &local_store,
+                &local_key,
+            )
+                .await
+        {
+            eprintln!("[central_kv_sync] initial mirror failed: {:?}", err);
+        }
+
+        let mut watch = match remote_store.watch(&sync_cfg.key).await {
+            Ok(watch) => watch,
+            Err(err) => {
+                eprintln!("[central_kv_sync] watch setup failed: {}", err);
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_secs(5)) => {}
+                    _ = shutdown_rx.changed() => {
+                        if *shutdown_rx.borrow() {
+                            println!("[central_kv_sync] shutdown");
+                            break;
+                        }
+                    }
+                }
+                continue;
+            }
+        };
+
+        println!(
+            "[central_kv_sync] watching remote '{}:{}' for local key '{}'",
+            sync_cfg.bucket, sync_cfg.key, local_key
+        );
+
+        loop {
+            tokio::select! {
+                maybe = watch.next() => {
+                    match maybe {
+                        Some(Ok(entry)) => {
+                            if entry.operation == Operation::Put {
+                                if let Err(err) = sample_config_from_json(entry.value.as_ref()) {
+                                    eprintln!(
+                                        "[central_kv_sync] ignoring invalid remote config for key '{}': {:?}",
+                                        entry.key, err
+                                    );
+                                    continue;
+                                }
+
+                                match local_store.entry(local_key.as_str()).await {
+                                    Ok(Some(local_entry)) if local_entry.value.as_ref() == entry.value.as_ref() => {}
+                                    Ok(_) => {
+                                        if let Err(err) = local_store.put(local_key.as_str(), entry.value.clone()).await {
+                                            eprintln!(
+                                                "[central_kv_sync] failed to mirror remote update for key '{}': {}",
+                                                entry.key, err
+                                            );
+                                        } else {
+                                            println!(
+                                                "[central_kv_sync] mirrored remote update rev {} for '{}'",
+                                                entry.revision, entry.key
+                                            );
+                                        }
+                                    }
+                                    Err(err) => {
+                                        eprintln!(
+                                            "[central_kv_sync] failed to inspect local key '{}': {}",
+                                            local_key, err
+                                        );
+                                    }
+                                }
+                            } else {
+                                eprintln!(
+                                    "[central_kv_sync] {:?} for remote key '{}', ignoring.",
+                                    entry.operation, entry.key
+                                );
+                            }
+                        }
+                        Some(Err(err)) => {
+                            eprintln!("[central_kv_sync] watch stream error: {}", err);
+                            break;
+                        }
+                        None => {
+                            eprintln!("[central_kv_sync] watch ended");
+                            break;
+                        }
+                    }
+                }
+                _ = shutdown_rx.changed() => {
+                    if *shutdown_rx.borrow() {
+                        println!("[central_kv_sync] shutdown");
+                        return;
+                    }
+                }
+            }
+        }
+
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_secs(5)) => {}
+            _ = shutdown_rx.changed() => {
+                if *shutdown_rx.borrow() {
+                    println!("[central_kv_sync] shutdown");
+                    break;
+                }
+            }
+        }
     }
 }
 
@@ -571,17 +848,8 @@ async fn run_sampler(
 
 #[tokio::main]
 async fn main() -> Result<(), LJMError> {
-    let creds_path = std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| "apt.creds".into());
-    let opts = ConnectOptions::with_credentials_file(creds_path)
-        .await
-        .map_err(|e| LJMError::LibraryError(format!("Failed to load creds: {}", e)))?;
-
     let servers = nats_config::servers_from_env().map_err(LJMError::LibraryError)?;
-
-    let nc = opts
-        .connect(servers)
-        .await
-        .map_err(|e| LJMError::LibraryError(format!("NATS connect failed: {}", e)))?;
+    let nc = connect_nats_with_creds(servers, local_creds_path_from_env()).await?;
 
     println!("Connected to NATS via creds!");
     let js = nats_config::jetstream_context(nc);
@@ -590,6 +858,39 @@ async fn main() -> Result<(), LJMError> {
     let key = std::env::var("CFG_KEY").unwrap_or_else(|_| "labjackd.config.macbook".into());
 
     let store = ensure_kv_bucket(&js, &bucket).await?;
+    let central_sync_cfg = central_kv_sync_config_from_env()?;
+    if let Some(sync_cfg) = central_sync_cfg.as_ref() {
+        match connect_nats_with_creds(sync_cfg.servers.clone(), sync_cfg.creds_path.clone()).await {
+            Ok(remote_client) => {
+                let remote_js = nats_config::jetstream_context_for_domain(
+                    remote_client,
+                    sync_cfg.domain.as_deref(),
+                );
+                match ensure_kv_bucket(&remote_js, &sync_cfg.bucket).await {
+                    Ok(remote_store) => {
+                        if let Err(err) = mirror_remote_kv_entry_to_local(
+                            &remote_store,
+                            &sync_cfg.bucket,
+                            &sync_cfg.key,
+                            &store,
+                            &key,
+                        )
+                        .await
+                        {
+                            eprintln!("[central_kv_sync] bootstrap mirror failed: {:?}", err);
+                        }
+                    }
+                    Err(err) => {
+                        eprintln!("[central_kv_sync] bootstrap remote bucket failed: {:?}", err);
+                    }
+                }
+            }
+            Err(err) => {
+                eprintln!("[central_kv_sync] bootstrap connect failed: {:?}", err);
+            }
+        }
+    }
+
     let cfg = load_config_from_kv(&store, &key).await?;
     println!(
         "[bootstrap] Loaded initial config from KV '{}:{}': {:?}",
@@ -609,11 +910,19 @@ async fn main() -> Result<(), LJMError> {
         js.clone(),
     ));
     tokio::spawn(watch_kv_config(
-        store,
+        store.clone(),
         key.clone(),
         config_tx.clone(),
         shutdown_rx.clone(),
     ));
+    if let Some(sync_cfg) = central_sync_cfg {
+        tokio::spawn(run_central_kv_sync(
+            sync_cfg,
+            store.clone(),
+            key.clone(),
+            shutdown_rx.clone(),
+        ));
+    }
 
     tokio::signal::ctrl_c()
         .await

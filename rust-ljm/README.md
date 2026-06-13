@@ -138,9 +138,19 @@ Important fields:
 - `JS_DOMAIN`: local JetStream domain, for example `edge-i69-mu2`
 - `CFG_BUCKET`: JetStream KV bucket
 - `CFG_KEY`: JetStream KV key for the LabJack config
+- `CENTRAL_NATS_SERVERS`: optional central OATS NATS URLs for config sync
+- `CENTRAL_NATS_CREDS_FILE`: optional central creds file, defaults to `NATS_CREDS_FILE`
+- `CENTRAL_CFG_BUCKET`: optional central KV bucket to mirror from, defaults to `CFG_BUCKET`
+- `CENTRAL_CFG_KEY`: optional central KV key to mirror from, defaults to `CFG_KEY`
+- `CENTRAL_JS_DOMAIN`: optional central JetStream domain if central KV is domain-scoped
 - `LABJACK_IP`: required direct LabJack IP for `streamer`
 - `LABJACK_SERIAL`: optional but recommended post-connect serial verification
 - `LABJACK_NAME`: optional logical device name for logging
+
+If `CENTRAL_NATS_SERVERS` is set, `streamer` bootstraps the local KV from the
+central KV and keeps watching the central key for updates. Central changes are
+mirrored into the local KV, and the existing local KV watcher then restarts the
+sampler with the new config.
 
 `streamer` now uses a strict Ethernet IP path only:
 

@@ -135,6 +135,7 @@ for key, value in env.items():
 
 path_like_keys = {
     "NATS_CREDS_FILE",
+    "CENTRAL_NATS_CREDS_FILE",
     "LJM_LIB_FILE",
     "OUTPUT_DIR",
     "PARQUET_DIR",
