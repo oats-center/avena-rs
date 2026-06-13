@@ -16,6 +16,10 @@ The goal is:
 For the current deployment, the browser talks to central OATS NATS and can
 request CSV exports over NATS from an `exporter` worker running on this box.
 
+For runtime config updates, this deployment can also mirror the central OATS KV
+entry into the local edge JetStream domain so the running `streamer` picks up
+central edits automatically.
+
 ## Single Config File
 
 Device-specific values live in one place:
@@ -115,6 +119,14 @@ Live LabJack channel subjects will look like:
 ```text
 avenars.v1.i69.i69-mu2.live.labjack.i69-lj2.sample.ch11
 avenars.v1.i69.i69-mu2.live.labjack.i69-lj2.sample.ch13
+```
+
+The webapp configuration list is read from central `avenabox`. If more than one
+config shares the same `asset_number`, use the config key in the plot URL to
+disambiguate the route:
+
+```text
+/labjacks/plots/1001?key=labjackd.config.i69-mu1
 ```
 
 ## What Runs On This Box
@@ -659,6 +671,31 @@ If `CENTRAL_NATS_SERVERS` is present in `rust-ljm/streamer.env.json`, the edge
 the local `CFG_BUCKET:CFG_KEY` and keeps watching for updates. Edit the central
 KV entry if you want the running edge box to pick up config changes
 automatically.
+
+This sync is one-way:
+
+- central KV change
+- mirrored into local edge KV
+- local KV watcher restarts the sampler
+
+Live sample publishing remains local-first through `edge-<box_id>` JetStream and
+the leaf connection.
+
+## Browser Plot Notes
+
+The plot page subscribes to all enabled channel subjects for the selected
+config, but it only parses and renders the channels currently selected in the
+`Visible Plot Channels` section. By default it selects at most two channels.
+
+If a channel subject is active in NATS but the chart shows `0 pts`, verify:
+
+- the correct config key is in the URL
+- the channel is selected in `Visible Plot Channels`
+- the browser is using the latest webapp build
+
+The webapp FlatBuffer parser also includes a fallback for misaligned WebSocket
+payload slices, which avoids dropped channels caused by `Float64Array`
+alignment errors in the generated TypeScript helper.
 
 ## Step 7: Write The Current LabJack KV Config
 

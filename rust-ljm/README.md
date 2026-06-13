@@ -41,6 +41,23 @@ The browser-to-worker path uses core NATS subjects, not JetStream, for export ch
 The local LabJack KV config and live sample stream remain on JetStream-backed
 subjects as before.
 
+## Runtime Config Sync
+
+`streamer` can treat the central OATS KV entry as the source of truth while
+still running against the local leaf node and local JetStream domain.
+
+When `CENTRAL_NATS_SERVERS` is set in `streamer.env.json`:
+
+- `streamer` connects to the local leaf node as usual
+- it bootstraps the local `CFG_BUCKET:CFG_KEY` from the central
+  `CENTRAL_CFG_BUCKET:CENTRAL_CFG_KEY`
+- it keeps watching the central KV key for updates
+- each central update is mirrored into the local KV
+- the existing local KV watcher then restarts the sampler with the new config
+
+This is one-way sync from central to local. Live samples still publish through
+the local JetStream domain and leaf connection.
+
 ## Streamer Control
 
 Edit `streamer.env.json`, then control the streamer with:
@@ -179,6 +196,21 @@ When `src/data.fbs` changes, regenerate both files from the repo root:
 flatc --rust -o rust-ljm/src rust-ljm/src/data.fbs
 flatc --ts --gen-object-api -o webapp/src/lib rust-ljm/src/data.fbs
 ```
+
+## Browser Decode Note
+
+The browser receives FlatBuffer payloads over the NATS WebSocket connection.
+Some payloads arrive as `Uint8Array` slices whose `byteOffset` is not 8-byte
+aligned. The generated TypeScript helper `valuesArray()` can throw on these
+misaligned payloads when it tries to create a `Float64Array` view directly.
+
+`webapp/src/lib/flatbuffer-parser.ts` now:
+
+- tries the fast `valuesArray()` path first
+- falls back to scalar `scan.values(i)` extraction when alignment is invalid
+
+This keeps per-channel point counts stable in the plot UI even when the browser
+receives misaligned WebSocket payload slices.
 
 ## LabJack KV Config
 

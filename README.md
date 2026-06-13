@@ -9,6 +9,11 @@ For the LabJack pipeline:
 - For central-webapp exports backed by edge-local parquet, use the browser's
   central NATS connection with `rust-ljm/exporter` in `worker` mode on the
   edge host
+- For edge boxes using central-edited runtime config, `streamer` can mirror the
+  central `avenabox` KV key into the local JetStream domain before watching it
+- When multiple configs share the same `asset_number`, the webapp plot route
+  should be opened with the config key query parameter, for example
+  `/labjacks/plots/1001?key=labjackd.config.i69-mu1`
 
 See `rust-ljm/README.md` for the current workflow and config format.
 

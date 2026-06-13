@@ -61,6 +61,37 @@ Open your browser and navigate to: `http://localhost:5173`
 - Live data visualization with interactive charts
 - Automatic data downsampling for performance
 - Trigger mode like oscilloscope and freezing plots
+- Channel selection: the plot page renders at most 2 selected channels at a time
+- Config-aware routing: if multiple configs share the same asset number, open
+  the plot route with the config key query parameter, for example
+  `/labjacks/plots/1001?key=labjackd.config.i69-mu1`
+
+### Plot Routing
+
+The configuration list is loaded from the central `avenabox` KV bucket. Asset
+numbers are not guaranteed to be unique across boxes, so the plot route should
+carry the KV key for disambiguation.
+
+Example:
+
+```text
+/labjacks/plots/1001?key=labjackd.config.i69-mu1
+```
+
+### FlatBuffer WebSocket Decode
+
+The browser receives live LabJack samples as FlatBuffer payloads over a NATS
+WebSocket connection. Some browsers expose message data as `Uint8Array` slices
+with non-8-byte-aligned offsets. The generated `valuesArray()` helper can throw
+on those payloads when constructing a `Float64Array`.
+
+`src/lib/flatbuffer-parser.ts` therefore:
+
+- tries the generated `valuesArray()` fast path first
+- falls back to per-element scalar extraction when the payload is misaligned
+
+Without that fallback, some selected channels may stay at `0 pts` or grow more
+slowly than others even though the NATS subjects are active.
 
 
 ### Key Dependencies
