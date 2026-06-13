@@ -1,4 +1,6 @@
 use async_nats;
+use async_nats::jetstream;
+use async_nats::jetstream::consumer::pull;
 use async_nats::ConnectOptions;
 use async_nats::jetstream::kv::Operation;
 use chrono::{DateTime, NaiveDate, Utc};
@@ -155,6 +157,11 @@ struct ChannelLogger {
     handle: tokio::task::JoinHandle<()>,
     calibration_tx: watch::Sender<CalibrationSpec>,
     calibration: CalibrationSpec,
+    subject: String,
+    stream_name: String,
+    consumer_name: String,
+    asset: u32,
+    rotate_secs: u64,
 }
 
 impl ParquetLogger {
@@ -277,20 +284,163 @@ fn next_file_index(parquet_root: &Path, asset: u32, channel: u8, date: NaiveDate
     max_idx + 1
 }
 
-fn spawn_channel_logger(
-    nc: async_nats::Client,
+fn sanitize_consumer_token(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for ch in raw.trim().chars() {
+        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+            out.push(ch.to_ascii_lowercase());
+        } else if ch.is_whitespace() || ch == '.' || ch == '/' {
+            out.push('-');
+        }
+    }
+
+    let out = out.trim_matches('-').to_string();
+    if out.is_empty() {
+        "unknown".to_string()
+    } else {
+        out
+    }
+}
+
+fn archiver_consumer_name(cfg: &SampleConfig, channel: u8) -> String {
+    format!(
+        "archiver-{}-{}-{}-{}",
+        sanitize_consumer_token(cfg.box_id.as_deref().unwrap_or("unknown-box")),
+        sanitize_consumer_token(cfg.source_type.as_deref().unwrap_or("labjack")),
+        sanitize_consumer_token(
+            cfg.source_id
+                .as_deref()
+                .unwrap_or(cfg.labjack_name.as_str())
+        ),
+        channel
+    )
+}
+
+fn process_scan_payload(
+    payload: &[u8],
+    channel: u8,
+    asset: u32,
+    parquet_root: &Path,
+    active_calibration: &CalibrationSpec,
+    logger: &mut Option<ParquetLogger>,
+    file_index: &mut usize,
+    last_sequence: &mut Option<u64>,
+) {
+    if let Ok(scan) = flatbuffers::root::<sampler::Scan>(payload) {
+        let sequence = scan.sequence();
+        match *last_sequence {
+            Some(previous) if sequence == previous + 1 => {}
+            Some(previous) if sequence > previous + 1 => {
+                eprintln!(
+                    "[logger] Channel {channel:02} sequence gap: expected {}, got {}",
+                    previous + 1,
+                    sequence
+                );
+            }
+            Some(previous) if sequence <= previous => {
+                println!(
+                    "[logger] Channel {channel:02} sequence reset/new run: previous {}, current {}",
+                    previous,
+                    sequence
+                );
+            }
+            _ => {}
+        }
+        *last_sequence = Some(sequence);
+
+        if let Some(vals) = scan.values() {
+            let first_sample_unix_ns = scan.first_sample_unix_ns();
+            let sample_interval_ns = scan.sample_interval_ns();
+
+            for (index, v) in vals.iter().enumerate() {
+                let timestamp_unix_ns = match sample_timestamp_ns(
+                    first_sample_unix_ns,
+                    sample_interval_ns,
+                    index,
+                ) {
+                    Ok(ts) => ts,
+                    Err(err) => {
+                        eprintln!(
+                            "[logger] Channel {channel:02} timestamp overflow at sequence {} sample {}: {}",
+                            sequence,
+                            index,
+                            err
+                        );
+                        break;
+                    }
+                };
+
+                let sample_date = timestamp_ns_to_utc_date(timestamp_unix_ns);
+                if logger.as_ref().map(|l| l.date != sample_date).unwrap_or(true) {
+                    if let Some(l) = logger.take() {
+                        l.close();
+                        println!("[logger] Closed file {}", *file_index);
+                    }
+                    *file_index = next_file_index(parquet_root, asset, channel, sample_date);
+                    *logger = Some(ParquetLogger::new(
+                        asset,
+                        channel,
+                        *file_index,
+                        sample_date,
+                        active_calibration.clone(),
+                        parquet_root,
+                    ));
+                }
+
+                if let Some(log) = logger.as_mut() {
+                    log.write_row(timestamp_unix_ns, v);
+                }
+            }
+        }
+    } else {
+        eprintln!("[logger] Channel {channel:02} received invalid FlatBuffer payload");
+    }
+}
+
+async fn spawn_channel_logger(
+    js: jetstream::Context,
+    stream_name: String,
+    consumer_name: String,
     subject: String,
     asset: u32,
     channel: u8,
     rotate_secs: u64,
     calibration: CalibrationSpec,
     parquet_root: PathBuf,
-) -> ChannelLogger {
+) -> Result<ChannelLogger, Box<dyn std::error::Error>> {
+    let stream = js.get_stream(stream_name.as_str()).await?;
+    let consumer = stream
+        .get_or_create_consumer(
+            consumer_name.as_str(),
+            pull::Config {
+                durable_name: Some(consumer_name.clone()),
+                filter_subject: subject.clone(),
+                ack_policy: jetstream::consumer::AckPolicy::Explicit,
+                ack_wait: Duration::from_secs(30),
+                ..Default::default()
+            },
+        )
+        .await?;
+
+    let logger_subject = subject.clone();
+    let logger_consumer_name = consumer_name.clone();
     let (calibration_tx, mut calibration_rx) = watch::channel(calibration.clone());
     let calibration_for_task = calibration.clone();
     let handle = tokio::spawn(async move {
-        let mut sub = nc.subscribe(subject.clone()).await.unwrap();
-        println!("[logger] Subscribed to {subject}");
+        let mut messages = match consumer.messages().await {
+            Ok(messages) => messages,
+            Err(err) => {
+                eprintln!(
+                    "[logger] Failed to attach JetStream consumer '{}' for {}: {}",
+                    logger_consumer_name, logger_subject, err
+                );
+                return;
+            }
+        };
+        println!(
+            "[logger] Attached JetStream consumer '{}' to {}",
+            logger_consumer_name, logger_subject
+        );
 
         let mut ticker = tokio::time::interval(Duration::from_secs(rotate_secs));
         let mut logger: Option<ParquetLogger> = None;
@@ -301,78 +451,39 @@ fn spawn_channel_logger(
 
         loop {
             tokio::select! {
-                Some(msg) = sub.next() => {
-                    if let Ok(scan) = flatbuffers::root::<sampler::Scan>(&msg.payload) {
-                        let sequence = scan.sequence();
-                        match last_sequence {
-                            Some(previous) if sequence == previous + 1 => {}
-                            Some(previous) if sequence > previous + 1 => {
+                maybe = messages.next() => {
+                    match maybe {
+                        Some(Ok(msg)) => {
+                            process_scan_payload(
+                                &msg.payload,
+                                channel,
+                                asset,
+                                &parquet_root,
+                                &active_calibration,
+                                &mut logger,
+                                &mut file_index,
+                                &mut last_sequence,
+                            );
+                            if let Err(err) = msg.ack().await {
                                 eprintln!(
-                                    "[logger] Channel {channel:02} sequence gap: expected {}, got {}",
-                                    previous + 1,
-                                    sequence
+                                    "[logger] Failed to ack JetStream message for channel {channel:02}: {}",
+                                    err
                                 );
                             }
-                            Some(previous) if sequence <= previous => {
-                                println!(
-                                    "[logger] Channel {channel:02} sequence reset/new run: previous {}, current {}",
-                                    previous,
-                                    sequence
-                                );
-                            }
-                            _ => {}
                         }
-                        last_sequence = Some(sequence);
-
-                        if let Some(vals) = scan.values() {
-                            let first_sample_unix_ns = scan.first_sample_unix_ns();
-                            let sample_interval_ns = scan.sample_interval_ns();
-
-                            for (index, v) in vals.iter().enumerate() {
-                                let timestamp_unix_ns = match sample_timestamp_ns(
-                                    first_sample_unix_ns,
-                                    sample_interval_ns,
-                                    index,
-                                ) {
-                                    Ok(ts) => ts,
-                                    Err(err) => {
-                                        eprintln!(
-                                            "[logger] Channel {channel:02} timestamp overflow at sequence {} sample {}: {}",
-                                            sequence,
-                                            index,
-                                            err
-                                        );
-                                        break;
-                                    }
-                                };
-
-                                let sample_date = timestamp_ns_to_utc_date(timestamp_unix_ns);
-                                if logger.as_ref().map(|l| l.date != sample_date).unwrap_or(true) {
-                                    if let Some(l) = logger.take() {
-                                        l.close();
-                                        println!("[logger] Closed file {}", file_index);
-                                    }
-                                    file_index = if logger.is_none() && sample_date != Utc::now().date_naive() {
-                                        next_file_index(&parquet_root, asset, channel, sample_date)
-                                    } else if sample_date == Utc::now().date_naive() {
-                                        next_file_index(&parquet_root, asset, channel, sample_date)
-                                    } else {
-                                        next_file_index(&parquet_root, asset, channel, sample_date)
-                                    };
-                                    logger = Some(ParquetLogger::new(
-                                        asset,
-                                        channel,
-                                        file_index,
-                                        sample_date,
-                                        active_calibration.clone(),
-                                        &parquet_root,
-                                    ));
-                                }
-
-                                if let Some(log) = logger.as_mut() {
-                                    log.write_row(timestamp_unix_ns, v);
-                                }
-                            }
+                        Some(Err(err)) => {
+                            eprintln!(
+                                "[logger] JetStream consumer '{}' error on {}: {}",
+                                logger_consumer_name, logger_subject, err
+                            );
+                            break;
+                        }
+                        None => {
+                            eprintln!(
+                                "[logger] JetStream consumer '{}' ended for {}",
+                                logger_consumer_name, logger_subject
+                            );
+                            break;
                         }
                     }
                 }
@@ -424,11 +535,16 @@ fn spawn_channel_logger(
         }
     });
 
-    ChannelLogger {
+    Ok(ChannelLogger {
         handle,
         calibration_tx,
         calibration,
-    }
+        subject,
+        stream_name,
+        consumer_name,
+        asset,
+        rotate_secs,
+    })
 }
 
 fn sample_timestamp_ns(
@@ -469,7 +585,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 2: load config from KV
     let bucket = std::env::var("CFG_BUCKET").unwrap_or_else(|_| "avenabox".into());
-    let key = std::env::var("CFG_KEY").unwrap_or_else(|_| "labjackd.config.macbook".into());
+    let key = std::env::var("CFG_KEY").unwrap_or_else(|_| "v1.macbook.unknown-source.config".into());
     let store = js.get_key_value(bucket.as_str()).await?;
     let entry = store.entry(key.as_str()).await?.ok_or("KV key not found")?;
 
@@ -495,20 +611,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             cfg.source_id.as_deref(),
         );
         let calibration = cfg.calibrations.get(ch).cloned().unwrap_or_default();
+        let consumer_name = archiver_consumer_name(&cfg, *ch);
         let h = spawn_channel_logger(
-            nc.clone(),
+            js.clone(),
+            cfg.nats_stream.clone(),
+            consumer_name,
             subject,
             cfg.asset_number,
             *ch,
             cfg.rotate_secs,
             calibration,
             parquet_root.clone(),
-        );
+        ).await?;
         active.insert(*ch, h);
     }
 
     tokio::spawn({
-        let nc = nc.clone();
+        let js = js.clone();
         async move {
             println!("[logger] Watching KV for config changes...");
             while let Some(ev) = watch.next().await {
@@ -532,44 +651,61 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                             // add new channels
                             for ch in &new_cfg.channels {
+                                let subject = subjects::live_labjack_channel_subject(
+                                    &new_cfg.nats_subject,
+                                    new_cfg.asset_number,
+                                    *ch,
+                                    new_cfg.site_id.as_deref(),
+                                    new_cfg.box_id.as_deref(),
+                                    Some(&new_cfg.labjack_name),
+                                    new_cfg.source_type.as_deref(),
+                                    new_cfg.source_id.as_deref(),
+                                );
+                                let consumer_name = archiver_consumer_name(&new_cfg, *ch);
+                                let calibration =
+                                    new_cfg.calibrations.get(ch).cloned().unwrap_or_default();
+
                                 if !active.contains_key(ch) {
                                     println!("[logger] Adding channel {ch}");
-                                    let subject = subjects::live_labjack_channel_subject(
-                                        &new_cfg.nats_subject,
-                                        new_cfg.asset_number,
-                                        *ch,
-                                        new_cfg.site_id.as_deref(),
-                                        new_cfg.box_id.as_deref(),
-                                        Some(&new_cfg.labjack_name),
-                                        new_cfg.source_type.as_deref(),
-                                        new_cfg.source_id.as_deref(),
-                                    );
-                                    let calibration =
-                                        new_cfg.calibrations.get(ch).cloned().unwrap_or_default();
-                                    let h = spawn_channel_logger(
-                                        nc.clone(),
+                                    match spawn_channel_logger(
+                                        js.clone(),
+                                        new_cfg.nats_stream.clone(),
+                                        consumer_name,
                                         subject,
                                         new_cfg.asset_number,
                                         *ch,
                                         new_cfg.rotate_secs,
                                         calibration,
                                         parquet_root.clone(),
-                                    );
-                                    active.insert(*ch, h);
+                                    ).await {
+                                        Ok(h) => {
+                                            active.insert(*ch, h);
+                                        }
+                                        Err(err) => {
+                                            eprintln!("[logger] Failed to add channel {ch}: {err}");
+                                        }
+                                    }
                                 } else {
-                                    let calibration =
-                                        new_cfg.calibrations.get(ch).cloned().unwrap_or_default();
                                     let mut needs_respawn = false;
                                     if let Some(entry) = active.get_mut(ch) {
+                                        needs_respawn = entry.subject != subject
+                                            || entry.stream_name != new_cfg.nats_stream
+                                            || entry.consumer_name != consumer_name
+                                            || entry.asset != new_cfg.asset_number
+                                            || entry.rotate_secs != new_cfg.rotate_secs;
                                         if entry.calibration != calibration {
-                                            if entry
-                                                .calibration_tx
-                                                .send(calibration.clone())
-                                                .is_ok()
-                                            {
+                                            if needs_respawn {
                                                 entry.calibration = calibration.clone();
                                             } else {
-                                                needs_respawn = true;
+                                                if entry
+                                                    .calibration_tx
+                                                    .send(calibration.clone())
+                                                    .is_ok()
+                                                {
+                                                    entry.calibration = calibration.clone();
+                                                } else {
+                                                    needs_respawn = true;
+                                                }
                                             }
                                         }
                                     }
@@ -577,26 +713,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         if let Some(entry) = active.remove(ch) {
                                             entry.handle.abort();
                                         }
-                                        let subject = subjects::live_labjack_channel_subject(
-                                            &new_cfg.nats_subject,
-                                            new_cfg.asset_number,
-                                            *ch,
-                                            new_cfg.site_id.as_deref(),
-                                            new_cfg.box_id.as_deref(),
-                                            Some(&new_cfg.labjack_name),
-                                            new_cfg.source_type.as_deref(),
-                                            new_cfg.source_id.as_deref(),
-                                        );
-                                        let h = spawn_channel_logger(
-                                            nc.clone(),
+                                        match spawn_channel_logger(
+                                            js.clone(),
+                                            new_cfg.nats_stream.clone(),
+                                            consumer_name,
                                             subject,
                                             new_cfg.asset_number,
                                             *ch,
                                             new_cfg.rotate_secs,
                                             calibration,
                                             parquet_root.clone(),
-                                        );
-                                        active.insert(*ch, h);
+                                        ).await {
+                                            Ok(h) => {
+                                                active.insert(*ch, h);
+                                            }
+                                            Err(err) => {
+                                                eprintln!(
+                                                    "[logger] Failed to respawn channel {ch}: {err}"
+                                                );
+                                            }
+                                        }
                                     }
                                 }
                             }

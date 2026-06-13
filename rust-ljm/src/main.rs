@@ -116,29 +116,63 @@ impl Drop for LabJackGuard {
     }
 }
 
+fn stream_max_bytes_from_env() -> Result<i64, LJMError> {
+    let Some(raw) = env_nonempty("STREAM_MAX_BYTES") else {
+        return Ok(-1);
+    };
+
+    let parsed = raw.parse::<i64>().map_err(|e| {
+        LJMError::LibraryError(format!(
+            "Invalid STREAM_MAX_BYTES value '{}': {}",
+            raw, e
+        ))
+    })?;
+
+    if parsed <= 0 {
+        return Err(LJMError::LibraryError(format!(
+            "Invalid STREAM_MAX_BYTES value '{}': must be greater than zero",
+            raw
+        )));
+    }
+
+    Ok(parsed)
+}
+
 async fn ensure_stream_exists(
     js: &jetstream::Context,
     stream_name: &str,
     subject: &str,
 ) -> Result<(), LJMError> {
+    let max_bytes = stream_max_bytes_from_env()?;
+    let desired_subjects = vec![subject.to_string()];
+
     if let Ok(stream) = js.get_stream(stream_name).await {
         let info = stream.cached_info();
-        if info
-            .config
-            .subjects
-            .iter()
-            .any(|existing| subjects::stream_subject_is_compatible(existing, subject))
-        {
+        let already_configured = info.config.subjects == desired_subjects
+            && info.config.storage == jetstream::stream::StorageType::File
+            && info.config.retention == jetstream::stream::RetentionPolicy::Limits
+            && info.config.max_bytes == max_bytes
+            && info.config.discard == jetstream::stream::DiscardPolicy::Old;
+
+        if already_configured {
             println!(
-                "JetStream stream '{}' already exists with compatible subjects {:?}.",
-                stream_name, info.config.subjects
+                "JetStream stream '{}' already matches subject(s) {:?}, storage {:?}, max_bytes {}, discard {:?}.",
+                stream_name,
+                info.config.subjects,
+                info.config.storage,
+                info.config.max_bytes,
+                info.config.discard
             );
             return Ok(());
         }
 
         println!(
-            "JetStream stream '{}' exists with incompatible subjects {:?}; attempting update to '{}'.",
-            stream_name, info.config.subjects, subject
+            "Reconciling JetStream stream '{}': subjects {:?} -> {:?}, max_bytes {} -> {}.",
+            stream_name,
+            info.config.subjects,
+            desired_subjects,
+            info.config.max_bytes,
+            max_bytes
         );
     }
 
@@ -149,12 +183,12 @@ async fn ensure_stream_exists(
 
     let config = StreamConfig {
         name: stream_name.to_string(),
-        subjects: vec![subject.to_string()],
+        subjects: desired_subjects,
         storage: jetstream::stream::StorageType::File,
         retention: jetstream::stream::RetentionPolicy::Limits,
         max_consumers: -1,
         max_messages: -1,
-        max_bytes: -1,
+        max_bytes,
         discard: jetstream::stream::DiscardPolicy::Old,
         ..Default::default()
     };
@@ -224,7 +258,7 @@ fn central_kv_sync_config_from_env() -> Result<Option<CentralKvSyncConfig>, LJME
         .unwrap_or_else(|| "avenabox".to_string());
     let key = env_nonempty("CENTRAL_CFG_KEY")
         .or_else(|| env_nonempty("CFG_KEY"))
-        .unwrap_or_else(|| "labjackd.config.macbook".to_string());
+        .unwrap_or_else(|| "v1.macbook.unknown-source.config".to_string());
     let domain = env_nonempty("CENTRAL_JS_DOMAIN");
 
     Ok(Some(CentralKvSyncConfig {
@@ -855,7 +889,7 @@ async fn main() -> Result<(), LJMError> {
     let js = nats_config::jetstream_context(nc);
 
     let bucket = std::env::var("CFG_BUCKET").unwrap_or_else(|_| "avenabox".into());
-    let key = std::env::var("CFG_KEY").unwrap_or_else(|_| "labjackd.config.macbook".into());
+    let key = std::env::var("CFG_KEY").unwrap_or_else(|_| "v1.macbook.unknown-source.config".into());
 
     let store = ensure_kv_bucket(&js, &bucket).await?;
     let central_sync_cfg = central_kv_sync_config_from_env()?;

@@ -152,7 +152,7 @@ Important fields:
 
 - `NATS_CREDS_FILE`: path to the NATS creds file
 - `NATS_SERVERS`: local NATS leaf node URL, normally `nats://127.0.0.1:4222`
-- `JS_DOMAIN`: local JetStream domain, for example `edge-i69-mu2`
+- `JS_DOMAIN`: local JetStream domain, for example `edge-i69-mu1`
 - `CFG_BUCKET`: JetStream KV bucket
 - `CFG_KEY`: JetStream KV key for the LabJack config
 - `CENTRAL_NATS_SERVERS`: optional central OATS NATS URLs for config sync
@@ -222,7 +222,7 @@ The JSON stored in JetStream KV should use the newer structure:
   "asset_number": 1456,
   "max_channels": 14,
   "site_id": "i69",
-  "box_id": "i69-mu2",
+  "box_id": "i69-mu1",
   "source_type": "labjack",
   "source_id": "i69-lj2",
   "nats_subject": "avenars",
@@ -247,7 +247,7 @@ The JSON stored in JetStream KV should use the newer structure:
 With the v1 namespace, channel 11 from this config publishes to:
 
 ```text
-avenars.v1.i69.i69-mu2.live.labjack.i69-lj2.sample.ch11
+avenars.v1.i69-mu1.i69-lj2.ch11
 ```
 
 Older configs using `avenabox.<asset>.data.ch##` still parse and publish with

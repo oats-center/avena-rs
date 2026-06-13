@@ -26,8 +26,8 @@ pub fn pad_asset(n: u32) -> String {
     format!("{n:03}")
 }
 
-fn uses_v1_namespace(nats_subject: &str, site_id: Option<&str>, box_id: Option<&str>) -> bool {
-    nats_subject.trim() == "avenars" || site_id.is_some() || box_id.is_some()
+fn uses_v1_namespace(nats_subject: &str, box_id: Option<&str>, source_id: Option<&str>) -> bool {
+    nats_subject.trim() == "avenars" || box_id.is_some() || source_id.is_some()
 }
 
 pub fn live_labjack_channel_subject(
@@ -40,7 +40,7 @@ pub fn live_labjack_channel_subject(
     source_type: Option<&str>,
     source_id: Option<&str>,
 ) -> String {
-    if !uses_v1_namespace(nats_subject, site_id, box_id) {
+    if !uses_v1_namespace(nats_subject, box_id, source_id) {
         return format!(
             "{}.{}.data.{}",
             nats_subject,
@@ -50,19 +50,17 @@ pub fn live_labjack_channel_subject(
     }
 
     let root = sanitize_token(nats_subject);
-    let site = sanitize_token(site_id.unwrap_or("unknown-site"));
     let box_id = sanitize_token(box_id.unwrap_or("unknown-box"));
-    let source_type = sanitize_token(source_type.unwrap_or("labjack"));
     let source = source_id
         .or(labjack_name)
         .map(str::to_string)
         .unwrap_or_else(|| format!("asset{}", pad_asset(asset)));
     let source_id = sanitize_token(&source);
 
-    format!(
-        "{root}.v1.{site}.{box_id}.live.{source_type}.{source_id}.sample.{}",
-        pad_channel(channel)
-    )
+    let _ = site_id;
+    let _ = source_type;
+
+    format!("{root}.v1.{box_id}.{source_id}.{}", pad_channel(channel))
 }
 
 pub fn live_labjack_stream_subject(
@@ -73,17 +71,18 @@ pub fn live_labjack_stream_subject(
     source_type: Option<&str>,
     source_id: Option<&str>,
 ) -> String {
-    if !uses_v1_namespace(nats_subject, site_id, box_id) {
+    if !uses_v1_namespace(nats_subject, box_id, source_id) {
         return format!("{nats_subject}.*.data.*");
     }
 
     let root = sanitize_token(nats_subject);
-    let site = sanitize_token(site_id.unwrap_or("unknown-site"));
     let box_id = sanitize_token(box_id.unwrap_or("unknown-box"));
-    let source_type = sanitize_token(source_type.unwrap_or("labjack"));
     let source_id = sanitize_token(source_id.or(labjack_name).unwrap_or("unknown-source"));
 
-    format!("{root}.v1.{site}.{box_id}.live.{source_type}.{source_id}.sample.*")
+    let _ = site_id;
+    let _ = source_type;
+
+    format!("{root}.v1.{box_id}.{source_id}.*")
 }
 
 pub fn stream_subject_is_compatible(existing: &str, desired_namespace: &str) -> bool {
@@ -127,7 +126,7 @@ mod tests {
                 None,
                 None,
             ),
-            "avenars.v1.i69.i69-mu1.live.labjack.i69-lj2.sample.ch11"
+            "avenars.v1.i69-mu1.i69-lj2.ch11"
         );
     }
 }

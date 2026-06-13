@@ -19,14 +19,15 @@
       "nats://nats1.oats:7422",
       "nats://nats2.oats:7422"
     ],
+    "stream_max_bytes": 100000000000,
     "kv_bucket": "avenabox",
-    "kv_key": "labjackd.config.i69-mu1",
+    "kv_key": "v1.i69-mu1.i69-lj2.config",
     "stream_name": "labjacks"
   },
   "paths": {
     "rust_creds_file": "apt.creds",
-    "output_dir": "outputs",
-    "parquet_dir": "parquet",
+    "output_dir": "/extstore/home/user/avena-rs/rust-ljm/outputs",
+    "parquet_dir": "/extstore/home/user/avena-rs/rust-ljm/parquet",
     "exporter_http_url": "http://127.0.0.1:9001"
   },
   "labjack": {

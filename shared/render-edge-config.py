@@ -151,34 +151,37 @@ def streamer_env(config: dict) -> dict:
     paths = config["paths"]
     labjack = config["labjack"]
     source = config["source"]
-    central_servers = central_client_servers(nats)
-    return {
-        "env": {
-            "NATS_SUBJECT": nats["root_subject"],
-            "NATS_SERVERS": nats["local_servers"],
-            "JS_DOMAIN": nats["jetstream_domain"],
-            "ASSET_NUMBER": labjack["asset_number"],
-            "SITE_ID": config["site_id"],
-            "BOX_ID": config["box_id"],
-            "SOURCE_TYPE": source["type"],
-            "SOURCE_ID": source["id"],
-            "OUTPUT_DIR": paths["output_dir"],
-            "NATS_CREDS_FILE": paths["rust_creds_file"],
-            "CFG_BUCKET": nats["kv_bucket"],
-            "CFG_KEY": nats["kv_key"],
-            "CENTRAL_NATS_SERVERS": central_servers,
-            "CENTRAL_NATS_CREDS_FILE": paths["rust_creds_file"],
-            "CENTRAL_CFG_BUCKET": nats["kv_bucket"],
-            "CENTRAL_CFG_KEY": nats["kv_key"],
-            "LABJACK_IDENTIFIER": labjack.get("identifier", ""),
-            "LABJACK_SERIAL": labjack["serial"],
-            "LABJACK_NAME": labjack["name"],
-            "LABJACK_IP": labjack["ip"],
-            "LABJACK_USB_ID": labjack.get("usb_id", "ANY"),
-            "LABJACK_OPEN_ORDER": labjack.get("open_order", "ethernet"),
-            "EXPORTER_HTTP_URL": paths["exporter_http_url"],
-        }
+    env = {
+        "NATS_SUBJECT": nats["root_subject"],
+        "NATS_SERVERS": nats["local_servers"],
+        "JS_DOMAIN": nats["jetstream_domain"],
+        "ASSET_NUMBER": labjack["asset_number"],
+        "SITE_ID": config["site_id"],
+        "BOX_ID": config["box_id"],
+        "SOURCE_TYPE": source["type"],
+        "SOURCE_ID": source["id"],
+        "OUTPUT_DIR": paths["output_dir"],
+        "NATS_CREDS_FILE": paths["rust_creds_file"],
+        "CFG_BUCKET": nats["kv_bucket"],
+        "CFG_KEY": nats["kv_key"],
+        "CENTRAL_NATS_SERVERS": central_client_servers(nats),
+        "CENTRAL_NATS_CREDS_FILE": paths["rust_creds_file"],
+        "CENTRAL_CFG_BUCKET": nats["kv_bucket"],
+        "CENTRAL_CFG_KEY": nats["kv_key"],
+        "LABJACK_IDENTIFIER": labjack.get("identifier", ""),
+        "LABJACK_SERIAL": labjack["serial"],
+        "LABJACK_NAME": labjack["name"],
+        "LABJACK_IP": labjack["ip"],
+        "LABJACK_USB_ID": labjack.get("usb_id", "ANY"),
+        "LABJACK_OPEN_ORDER": labjack.get("open_order", "ethernet"),
+        "EXPORTER_HTTP_URL": paths["exporter_http_url"],
     }
+
+    stream_max_bytes = nats.get("stream_max_bytes")
+    if stream_max_bytes is not None:
+        env["STREAM_MAX_BYTES"] = stream_max_bytes
+
+    return {"env": env}
 
 
 def archiver_env(config: dict) -> dict:
@@ -236,6 +239,10 @@ def validate(config: dict):
         require(config, key)
     if not config["nats"].get("leaf_remotes"):
         raise SystemExit("nats.leaf_remotes must contain at least one OATS leaf URL")
+    stream_max_bytes = config["nats"].get("stream_max_bytes")
+    if stream_max_bytes is not None:
+        if not isinstance(stream_max_bytes, int) or stream_max_bytes <= 0:
+            raise SystemExit("nats.stream_max_bytes must be a positive integer when set")
     channels = config["labjack"]["sensor_settings"].get("channels_enabled", [])
     if not channels:
         raise SystemExit("labjack.sensor_settings.channels_enabled must not be empty")

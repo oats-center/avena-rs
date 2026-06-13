@@ -28,7 +28,7 @@ export function padChannel(channel: number): string {
 }
 
 function usesV1Namespace(config: LabJackSubjectConfig): boolean {
-  return config.nats_subject.trim() === "avenars" || Boolean(config.site_id || config.box_id);
+  return config.nats_subject.trim() === "avenars" || Boolean(config.box_id || config.source_id);
 }
 
 export function liveLabJackChannelSubject(config: LabJackSubjectConfig, channel: number): string {
@@ -37,14 +37,12 @@ export function liveLabJackChannelSubject(config: LabJackSubjectConfig, channel:
   }
 
   const root = sanitizeToken(config.nats_subject);
-  const siteId = sanitizeToken(config.site_id || "unknown-site");
   const boxId = sanitizeToken(config.box_id || "unknown-box");
-  const sourceType = sanitizeToken(config.source_type || "labjack");
   const sourceId = sanitizeToken(
     config.source_id || config.labjack_name || `asset${padAsset(config.asset_number)}`
   );
 
-  return `${root}.v1.${siteId}.${boxId}.live.${sourceType}.${sourceId}.sample.${padChannel(channel)}`;
+  return `${root}.v1.${boxId}.${sourceId}.${padChannel(channel)}`;
 }
 
 export function liveLabJackChannelPattern(config: LabJackSubjectConfig): string {
@@ -53,12 +51,20 @@ export function liveLabJackChannelPattern(config: LabJackSubjectConfig): string 
   }
 
   const root = sanitizeToken(config.nats_subject);
-  const siteId = sanitizeToken(config.site_id || "unknown-site");
   const boxId = sanitizeToken(config.box_id || "unknown-box");
-  const sourceType = sanitizeToken(config.source_type || "labjack");
   const sourceId = sanitizeToken(
     config.source_id || config.labjack_name || `asset${padAsset(config.asset_number)}`
   );
 
-  return `${root}.v1.${siteId}.${boxId}.live.${sourceType}.${sourceId}.sample.ch##`;
+  return `${root}.v1.${boxId}.${sourceId}.ch##`;
+}
+
+export function labjackConfigKey(config: {
+  box_id?: string | null;
+  source_id?: string | null;
+  labjack_name?: string | null;
+}): string {
+  const boxId = sanitizeToken(config.box_id || "unknown-box");
+  const sourceId = sanitizeToken(config.source_id || config.labjack_name || "unknown-source");
+  return `v1.${boxId}.${sourceId}.config`;
 }

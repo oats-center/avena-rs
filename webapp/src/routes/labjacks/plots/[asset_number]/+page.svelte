@@ -448,7 +448,7 @@
             }
             
             const preferredKey = $page.url.searchParams.get('key')?.trim() || "";
-            const keys = await getKeys(natsService, "avenabox", "labjackd.config.*");
+            const keys = await getKeys(natsService, "avenabox", "v1.*.*.config");
             let foundConfig: LabJackConfig | null = null;
 
             if (preferredKey) {

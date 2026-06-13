@@ -2,6 +2,7 @@
     import { onMount } from "svelte";
     import { connect, getKeys, getKeyValue, updateConfig, deleteKey } from "$lib/nats.svelte";
     import { normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
+    import { labjackConfigKey } from "$lib/subjects";
     import LabJackConfigModal from "$lib/components/LabJackConfigModal.svelte";
     
     interface SensorSettings {
@@ -141,7 +142,7 @@
             await loadCalibrations();
 
             // Get all LabJack config keys from avenabox bucket
-            const keys = await getKeys(natsService, "avenabox", "labjackd.config.*");
+            const keys = await getKeys(natsService, "avenabox", "v1.*.*.config");
             console.log("Found keys:", keys);
             
             const newLabJacks = new Map<string, LabJackConfig>();
@@ -200,7 +201,7 @@
             asset_number: 0,
             max_channels: 8,
             site_id: "i69",
-            box_id: "i69-mu2",
+            box_id: "",
             source_type: "labjack",
             source_id: "",
             nats_subject: "avenars",
@@ -263,7 +264,7 @@
             }
             
             const sanitizedConfig = sanitizeLabJackConfig(config);
-            const key = isAddingNew ? `labjackd.config.${sanitizedConfig.labjack_name.toLowerCase()}` : editingKey;
+            const key = isAddingNew ? labjackConfigKey(sanitizedConfig) : editingKey;
             const success = await updateConfig(serverName, credentialsContent, "avenabox", key, sanitizedConfig);
             
             if (success) {

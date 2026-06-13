@@ -13,7 +13,7 @@ ReadOnlyTmpfs=true
 
 Volume=./nats-leaf.conf:/etc/nats/nats-leaf.conf:ro
 Volume=./creds:/etc/nats/creds:ro
-Volume=nats-jetstream.volume:/var/lib/nats:Z
+Volume=/extstore/nats:/var/lib/nats:Z
 
 Exec=-c /etc/nats/nats-leaf.conf
 

@@ -13,7 +13,7 @@ For the LabJack pipeline:
   central `avenabox` KV key into the local JetStream domain before watching it
 - When multiple configs share the same `asset_number`, the webapp plot route
   should be opened with the config key query parameter, for example
-  `/labjacks/plots/1001?key=labjackd.config.i69-mu1`
+  `/labjacks/plots/1001?key=v1.i69-mu1.i69-lj2.config`
 
 See `rust-ljm/README.md` for the current workflow and config format.
 

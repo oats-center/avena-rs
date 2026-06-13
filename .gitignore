@@ -10,6 +10,8 @@ __pycache__/
 *.creds
 *.nk
 *.jwt
+playwright-report/
+webapp/test-results/
 
 ljstreamM_data/**
 !ljstreamM_data/validate_signals.py

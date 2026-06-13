@@ -1,1065 +1,612 @@
-# i69-mu2 Edge Setup: NATS Leaf, JetStream, Prometheus
+# Edge Box Setup: NATS Leaf, Alloy, Rust Services, and Remote Webapp
 
-This is the complete setup guide for the `i69-mu2` box. Follow it from top to bottom on the box itself.
+This guide is for bringing up a new MU / edge box that:
 
-The goal is:
+- runs a local NATS leaf node with local JetStream
+- connects that leaf to central OATS NATS
+- stores JetStream and parquet data on `/extstore`
+- runs `streamer`, `archiver`, and optional `exporter` locally
+- sends host and NATS metrics to central Prometheus through Alloy
+- is viewed from a laptop webapp connected to central NATS
 
-- local NATS leaf node on `127.0.0.1:4222`
-- local JetStream domain `edge-i69-mu2`
-- leaf connection from this box to OATS NATS at `nats1.oats:7422` and `nats2.oats:7422`
-- Rust `streamer` publishes LabJack data to the local leaf node
-- Rust `archiver` writes local Parquet files
-- optional Rust `exporter` worker serves export requests over NATS using local parquet
-- Alloy sends host and local NATS metrics to OATS Prometheus
-- the web app connects to central OATS NATS, not directly to this box
+The current repo example is `i69-mu1` with LabJack `i69-lj2`.
 
-For the current deployment, the browser talks to central OATS NATS and can
-request CSV exports over NATS from an `exporter` worker running on this box.
+## Architecture
 
-For runtime config updates, this deployment can also mirror the central OATS KV
-entry into the local edge JetStream domain so the running `streamer` picks up
-central edits automatically.
+```text
+LabJack T7
+  -> streamer
+  -> local NATS leaf + local JetStream
+  -> archiver reads local JetStream and writes local parquet
+  -> leaf forwards live subjects to central OATS NATS
+  -> laptop webapp connects to central NATS over WebSocket
+  -> exporter receives export requests over central NATS and streams CSV back
 
-## Single Config File
+Alloy
+  -> scrapes node-exporter-style host metrics
+  -> scrapes local NATS exporter on 127.0.0.1:7777
+  -> remote_write to http://prometheus.oats:9090/api/v1/write
+```
 
-Device-specific values live in one place:
+Current subject and key layout:
+
+```text
+KV key:                  v1.<box_id>.<source_id>.config
+Live subject wildcard:   avenars.v1.<box_id>.<source_id>.*
+Live channel subject:    avenars.v1.<box_id>.<source_id>.ch11
+Export request subject:  avenars.export.request.<box_id>
+Export reply subject:    avenars.export.reply.<job_id>
+```
+
+For `i69-mu1` and `i69-lj2`:
+
+```text
+v1.i69-mu1.i69-lj2.config
+avenars.v1.i69-mu1.i69-lj2.*
+avenars.v1.i69-mu1.i69-lj2.ch11
+```
+
+## What Runs Where
+
+On the edge box:
+
+- `nats-leaf` Quadlet container
+- `nats-exporter` Quadlet container
+- `alloy` Quadlet container
+- `rust-ljm/streamer`
+- `rust-ljm/archiver`
+- `rust-ljm/exporter` in `worker` mode
+
+On the laptop:
+
+- `webapp`
+- browser session connected to `ws://nats1.oats:8080`
+
+Not on central:
+
+- no extra services need to be installed on central for this flow
+
+## 1. Prerequisites
+
+On the edge box, install or verify:
+
+- `podman`
+- `systemctl`
+- `curl`
+- `jq`
+- `nats`
+- `nsc`
+- `cargo` and `rustc`
+- LabJack LJM runtime library
+
+Helpful checks:
+
+```bash
+command -v podman
+command -v systemctl
+command -v curl
+command -v jq
+command -v nats
+command -v nsc
+command -v cargo
+command -v rustc
+```
+
+If you are on Fedora, the common base packages are:
+
+```bash
+sudo dnf install -y podman jq curl git gcc gcc-c++ make openssl-devel pkg-config
+```
+
+`nats`, `nsc`, the Rust toolchain, and the LabJack LJM library may come from your
+normal internal install path rather than Fedora packages. `streamer` needs
+`libLabJackM.so` available in a standard library path such as `/usr/local/lib`
+or `/usr/lib`.
+
+On the laptop, install or verify:
+
+- `node`
+- `pnpm` or `corepack`
+
+Helpful checks:
+
+```bash
+command -v node
+command -v pnpm || command -v corepack
+```
+
+## 2. Clone Repo and Confirm Network
+
+On the edge box:
+
+```bash
+cd /extstore/home/user || cd /home/user
+git clone <your-avena-rs-remote> avena-rs
+cd avena-rs
+```
+
+Confirm Tailscale and OATS DNS:
+
+```bash
+hostname
+tailscale status --self
+tailscale ip -4
+getent hosts nats1.oats nats2.oats prometheus.oats
+```
+
+Do not continue until `nats1.oats`, `nats2.oats`, and `prometheus.oats` resolve.
+
+## 3. Edit the Box Config
+
+All generated config comes from one file:
 
 ```text
 shared/edge-box.config.json
 ```
 
-If hardware changes, edit that file first. Do not hand-edit generated files unless you are debugging.
+Edit this first on every new box.
 
-Current values:
+Current example:
 
-```text
-site_id:        i69
-box_id:         i69-mu2
-source_type:    labjack
-source_id:      i69-lj2
-labjack_name:   i69-lj2
-labjack_serial: 470036330
-labjack_ip:     192.168.1.111
-nats_root:      avenars
-kv_bucket:      avenabox
-kv_key:         labjackd.config.i69-mu2
-js_domain:      edge-i69-mu2
-local_nats:     nats://127.0.0.1:4222
+```json
+{
+  "site_id": "i69",
+  "box_id": "i69-mu1",
+  "source": {
+    "type": "labjack",
+    "id": "i69-lj2"
+  },
+  "nats": {
+    "root_subject": "avenars",
+    "local_servers": "nats://127.0.0.1:4222",
+    "leaf_server_name": "i69-mu1-leaf",
+    "jetstream_domain": "edge-i69-mu1",
+    "kv_bucket": "avenabox",
+    "kv_key": "v1.i69-mu1.i69-lj2.config",
+    "stream_name": "labjacks",
+    "stream_max_bytes": 100000000000
+  },
+  "labjack": {
+    "name": "i69-lj2",
+    "asset_number": 1001,
+    "ip": "192.168.1.111",
+    "serial": "470036312",
+    "sensor_settings": {
+      "channels_enabled": [11, 13]
+    }
+  }
+}
 ```
 
-Common hardware/config changes and where to edit them:
+Fields that must be unique per box:
 
-- Box name changed: edit `box_id`, `nats.leaf_server_name`, `nats.jetstream_domain`, and `nats.kv_key`.
-- LabJack replaced: edit `source.id`, `labjack.name`, `labjack.serial`, and possibly `labjack.ip`.
-- LabJack IP changed: edit `labjack.ip`.
-- Asset number changed: edit `labjack.asset_number`.
-- Enabled channels changed: edit `labjack.sensor_settings.channels_enabled`, plus matching `data_formats`, `measurement_units`, and `calibrations`.
-- Sampling changed: edit `labjack.sensor_settings.scans_per_read` and `labjack.sensor_settings.scan_rate_hz`.
-- OATS leaf URLs changed: edit `nats.leaf_remotes`.
-- Local NATS or monitoring ports changed: edit `nats.local_servers`, `nats.leaf_listen`, or `nats.monitor_listen`.
-- Parquet path changed: edit `paths.parquet_dir`.
+- `box_id`
+- `source.id`
+- `nats.leaf_server_name`
+- `nats.jetstream_domain`
+- `nats.kv_key`
 
-To replicate this setup on another box:
+Fields that must match the physical LabJack:
 
-1. Copy or clone this repo onto the new box.
-2. Edit `shared/edge-box.config.json` for the new hardware.
-3. Generate a new leaf user/creds name for that box, for example `<box_id>-leaf`.
-4. Run this guide from Step 0 through Step 11.
-5. Do not reuse the `i69-mu2` `box_id`, `nats.jetstream_domain`, or `nats.kv_key` on another physical box.
+- `labjack.name`
+- `labjack.asset_number`
+- `labjack.ip`
+- `labjack.serial`
+- `labjack.sensor_settings.channels_enabled`
 
-Minimum values that must be unique per box:
+Recommended naming:
 
 ```text
-box_id
-nats.leaf_server_name
-nats.jetstream_domain
-nats.kv_key
-source.id
-labjack.name
+box_id      = i69-mu1
+source.id   = i69-lj2
+kv_key      = v1.i69-mu1.i69-lj2.config
+js_domain   = edge-i69-mu1
+leaf user   = i69-mu1-leaf
 ```
 
-Minimum values that must match the physical LabJack:
+## 4. Render Generated Files
 
-```text
-labjack.ip
-labjack.serial
-labjack.asset_number
-labjack.sensor_settings.channels_enabled
-```
-
-After editing `shared/edge-box.config.json`, always render generated files:
+From the repo root:
 
 ```bash
-cd /home/user/avena-rs
+cd /extstore/home/user/avena-rs
 ./shared/render-edge-config.py
 ```
 
-The renderer writes:
+This writes:
 
 ```text
 shared/nats-leaf.conf
 shared/alloy.container
 rust-ljm/streamer.env.json
 rust-ljm/archiver.env.json
+rust-ljm/exporter.env.json
 shared/labjack-kv.generated.json
 ```
 
-Validate the rendered files:
+Validate:
 
 ```bash
 jq . shared/edge-box.config.json
 jq . shared/labjack-kv.generated.json
 jq -r '.env.BOX_ID, .env.JS_DOMAIN, .env.CFG_KEY, .env.LABJACK_IP, .env.LABJACK_SERIAL' rust-ljm/streamer.env.json
-grep -n 'server_name: "i69-mu2-leaf"' shared/nats-leaf.conf
-grep -n 'domain: "edge-i69-mu2"' shared/nats-leaf.conf
+grep -n 'server_name:' shared/nats-leaf.conf
+grep -n 'domain:' shared/nats-leaf.conf
 ```
 
-Live LabJack channel subjects will look like:
+## 5. Prepare Local Storage
+
+Create host storage locations used by the containers and Rust services:
+
+```bash
+sudo mkdir -p /extstore/nats
+mkdir -p /extstore/home/user/avena-rs/rust-ljm/parquet
+mkdir -p /extstore/home/user/avena-rs/rust-ljm/outputs
+```
+
+Check capacity:
+
+```bash
+df -hT /extstore
+du -sh /extstore/nats 2>/dev/null || true
+du -sh /extstore/home/user/avena-rs/rust-ljm/parquet 2>/dev/null || true
+```
+
+Current JetStream behavior from this repo:
+
+- stream cap: `100000000000` bytes per stream
+- discard policy: `old`
+- effect: oldest JetStream messages are evicted when the stream reaches 100 GB
+
+## 6. Get Leaf Credentials
+
+You need one NATS creds file for the box leaf user, normally named:
 
 ```text
-avenars.v1.i69.i69-mu2.live.labjack.i69-lj2.sample.ch11
-avenars.v1.i69.i69-mu2.live.labjack.i69-lj2.sample.ch13
+<box_id>-leaf.creds
 ```
 
-The webapp configuration list is read from central `avenabox`. If more than one
-config shares the same `asset_number`, use the config key in the plot URL to
-disambiguate the route:
+There are two ways to get it.
 
-```text
-/labjacks/plots/1001?key=labjackd.config.i69-mu1
-```
+If a central admin already gave you a creds file, use that and skip the NSC
+generation commands.
 
-## What Runs On This Box
-
-Run these on `i69-mu2`:
-
-- `nats-leaf.service`: local NATS leaf node with JetStream
-- `nats-exporter.service`: local NATS metrics exporter
-- `alloy.service`: host/NATS metrics collector and remote writer
-- `rust-ljm/archiver`: local Parquet writer
-- `rust-ljm/streamer`: LabJack reader and NATS publisher
-- optional `rust-ljm/exporter`: edge export worker for browser-initiated NATS export requests
-
-Do not run these on `i69-mu2` for this deployment:
-
-- `webapp`: the browser-facing app connects to central OATS NATS
-
-## Before You Start
-
-Start from the repo root:
+If you are allowed to generate it from the material in `shared/`:
 
 ```bash
-cd /home/user/avena-rs
-```
-
-Confirm the box identity:
-
-```bash
-hostname
-tailscale status --self
-tailscale ip -4
-```
-
-Expected:
-
-- Tailscale name is `i69-mu2`
-- Linux hostname may still be `localhost.localdomain`; that is not a blocker for this setup
-- Tailscale is online
-- the device has the `tag:prom-node` tag on the Tailscale admin side
-
-Confirm OATS names resolve:
-
-```bash
-getent hosts nats1.oats nats2.oats prometheus.oats
-```
-
-If this fails, Tailscale/DNS is the problem. Do not continue until OATS names resolve.
-
-Check required local tools:
-
-```bash
-command -v podman
-command -v systemctl
-command -v curl
-command -v nsc
-command -v nats
-command -v jq
-```
-
-If `podman` is missing on Fedora, install it before continuing:
-
-```bash
-sudo dnf install -y podman
-```
-
-If only `jq` is missing, install it or omit the `| jq ...` parts in validation commands. If `nsc` or `nats` is missing, install the NATS tools before continuing.
-
-## Storage Check
-
-Parquet archives, local JetStream storage, Podman container volumes, and repo data
-all live under `/` for this deployment. On `i69-mu2`, `/` should be backed by
-the 1 TB NVMe SSD, not the small eMMC device.
-
-Check disks and mounted filesystems:
-
-```bash
-lsblk -o NAME,MODEL,SERIAL,SIZE,TYPE,FSTYPE,LABEL,UUID,MOUNTPOINTS
-df -hT /
-```
-
-Expected on `i69-mu2` after storage expansion:
-
-```text
-nvme0n1                     CT1000P310SSD2  931.5G disk
-fedora_fw--77--231-root                    928.9G lvm  xfs  /
-/dev/mapper/fedora_fw--77--231-root xfs    929G        /
-```
-
-If `df -hT /` shows only about `115G`, the SSD is present but most of the LVM
-space has not been allocated to `/`. Confirm available LVM space:
-
-```bash
-sudo pvs
-sudo vgs
-sudo lvs
-```
-
-If the `fedora_fw-77-231` volume group shows a large `VFree` value, grow `/` to
-use the rest of the SSD:
-
-```bash
-sudo lvextend -r -l +100%FREE /dev/fedora_fw-77-231/root
-```
-
-Validate:
-
-```bash
-df -hT /
-lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS
-```
-
-Expected result:
-
-- `/` is about `929G`
-- `/home/user/avena-rs/rust-ljm/parquet` is on `/`
-- local NATS JetStream storage is on `/` through the Podman volume
-- free space is hundreds of GB, not tens of GB
-
-Check current Parquet usage:
-
-```bash
-du -sh /home/user/avena-rs/rust-ljm/parquet
-```
-
-## Step 0: Render The Config Files
-
-Render all generated configs from `shared/edge-box.config.json`:
-
-```bash
-cd /home/user/avena-rs
-./shared/render-edge-config.py
-```
-
-Expected output:
-
-```text
-Rendered edge config files:
-  shared/nats-leaf.conf
-  shared/alloy.container
-  rust-ljm/streamer.env.json
-  rust-ljm/archiver.env.json
-  shared/labjack-kv.generated.json
-```
-
-Validate:
-
-```bash
-test -s shared/nats-leaf.conf && echo "nats-leaf.conf rendered"
-test -s rust-ljm/streamer.env.json && echo "streamer env rendered"
-test -s rust-ljm/archiver.env.json && echo "archiver env rendered"
-test -s shared/labjack-kv.generated.json && echo "KV config rendered"
-```
-
-If this fails, fix `shared/edge-box.config.json` before continuing.
-
-## Step 1: Create Or Locate Box Credentials
-
-The repo includes the OATS operator/account files under `shared/`.
-
-Create or refresh the `i69-mu2-leaf` user:
-
-```bash
-cd /home/user/avena-rs/shared
+cd /extstore/home/user/avena-rs/shared
 nsc add operator --url OATS.jwt --force
 nsc env -o OATS
 nsc import account --file avena-rs.jwt || true
 nsc env -a avena-rs
-nsc add user --account avena-rs --name i69-mu2-leaf -K ./AA5JDYLJA24B5CUEZ6B2XPTCXKH2KLWYMJ2RYOQ5CUYSBFKDO5JKCDKF.nk || true
-nsc generate creds --account avena-rs --name i69-mu2-leaf --output-file /tmp/i69-mu2-leaf.creds -K ./AA5JDYLJA24B5CUEZ6B2XPTCXKH2KLWYMJ2RYOQ5CUYSBFKDO5JKCDKF.nk
-cd /home/user/avena-rs
+ls *.nk
+```
+
+Pick the account signing seed for `avena-rs` and export it:
+
+```bash
+export ACCOUNT_SEED=./<avena-rs-account-signing-seed>.nk
+export LEAF_USER=i69-mu1-leaf
+```
+
+Create or refresh the user and generate creds:
+
+```bash
+nsc add user --account avena-rs --name "$LEAF_USER" -K "$ACCOUNT_SEED" || true
+nsc generate creds --account avena-rs --name "$LEAF_USER" --output-file /tmp/"$LEAF_USER".creds -K "$ACCOUNT_SEED"
 ```
 
 Validate:
 
 ```bash
-test -s /tmp/i69-mu2-leaf.creds && echo "creds file exists"
-grep -q "BEGIN NATS USER JWT" /tmp/i69-mu2-leaf.creds && echo "creds file looks valid"
+test -s /tmp/"$LEAF_USER".creds && echo "creds file exists"
+grep -q "BEGIN NATS USER JWT" /tmp/"$LEAF_USER".creds && echo "creds file looks valid"
 ```
 
-If this fails, the NSC account/operator setup is the issue.
-
-If `nsc env -o OATS.jwt` appears anywhere in older notes, do not use it. `nsc env -o` expects an operator name already imported into the NSC store. `OATS.jwt` is a file, so import it with `nsc add operator --url OATS.jwt --force`, then select `OATS`.
-
-## Step 2: Install Local Service Configs
-
-Install the Quadlet files and credentials into the rootful Quadlet search path:
+Install the creds in both places:
 
 ```bash
 sudo install -d -m 0755 /etc/containers/systemd/creds
+sudo install -m 0600 /tmp/"$LEAF_USER".creds /etc/containers/systemd/creds/leaf.creds
+install -m 0600 /tmp/"$LEAF_USER".creds rust-ljm/apt.creds
+```
+
+## 7. Install and Start Local NATS Leaf
+
+Install the Quadlet files:
+
+```bash
 sudo install -m 0644 shared/nats-leaf.conf /etc/containers/systemd/nats-leaf.conf
 sudo install -m 0644 shared/nats-leaf.container /etc/containers/systemd/nats-leaf.container
-sudo install -m 0644 shared/nats-jetstream.volume /etc/containers/systemd/nats-jetstream.volume
 sudo install -m 0644 shared/nats-exporter.container /etc/containers/systemd/nats-exporter.container
-sudo install -m 0644 shared/alloy.container /etc/containers/systemd/alloy.container
-sudo install -m 0644 shared/alloy.volume /etc/containers/systemd/alloy.volume
-sudo install -m 0644 shared/config.alloy /etc/containers/systemd/config.alloy
-sudo install -m 0600 /tmp/i69-mu2-leaf.creds /etc/containers/systemd/creds/leaf.creds
-install -m 0600 /tmp/i69-mu2-leaf.creds rust-ljm/apt.creds
 ```
 
-Validate files:
-
-```bash
-sudo test -s /etc/containers/systemd/nats-leaf.conf && echo "nats config installed"
-sudo test -s /etc/containers/systemd/creds/leaf.creds && echo "leaf creds installed"
-test -s rust-ljm/apt.creds && echo "rust creds installed"
-```
-
-Validate key config values:
-
-```bash
-sudo grep -n 'server_name: "i69-mu2-leaf"' /etc/containers/systemd/nats-leaf.conf
-sudo grep -n 'domain: "edge-i69-mu2"' /etc/containers/systemd/nats-leaf.conf
-sudo grep -n 'nats1.oats:7422' /etc/containers/systemd/nats-leaf.conf
-sudo grep -n 'nats2.oats:7422' /etc/containers/systemd/nats-leaf.conf
-! sudo grep -n 'nats3.oats:7422' /etc/containers/systemd/nats-leaf.conf
-```
-
-If these fail, the wrong config was copied or edited.
-
-## Step 3: Start Local NATS Leaf
-
-Reload systemd and start only NATS first:
+Start the local leaf:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl start nats-leaf
-```
-
-Do not use `sudo systemctl enable --now nats-leaf` for these Quadlet units on this host. They are generated by Podman from `/etc/containers/systemd/*.container`, and `enable` can fail with `Unit ... is transient or generated`. The `[Install]` section in the Quadlet file is enough for the generator to create the boot-time wants link.
-
-Validate local NATS monitor:
-
-```bash
-curl -fsS http://127.0.0.1:8222/varz | jq '{server_name, now, jetstream}'
-```
-
-Expected:
-
-- `server_name` is `i69-mu2-leaf`
-- `jetstream` exists
-
-Validate leaf connection status:
-
-```bash
-curl -fsS http://127.0.0.1:8222/leafz | jq
-```
-
-Expected:
-
-- at least one remote leaf connection to OATS
-- if there are zero leaf connections, check Tailscale/DNS, the OATS leaf port, and the creds file
-
-Check logs if needed:
-
-```bash
-sudo journalctl -u nats-leaf --no-pager -n 80
-```
-
-If `leafnodes` is `0`, check OATS port reachability:
-
-```bash
-for port in 4222 7422 8080; do
-  for host in nats1.oats nats2.oats; do
-    echo "== $host:$port =="
-    timeout 3 bash -lc "cat < /dev/null > /dev/tcp/$host/$port" && echo open || echo closed
-  done
-done
-```
-
-Expected:
-
-- `4222` open: central NATS client port is reachable
-- `8080` open: central NATS WebSocket port is reachable
-- `7422` open: central NATS leaf-node port is reachable
-
-If `4222` and `8080` are open but `7422` is closed, the local box is healthy enough to reach OATS, but the OATS leaf-node listener/firewall is not reachable. Fix the OATS side before expecting central live data.
-
-If `7422` is open but `leafnodes` is still `0`, check for an authorization error:
-
-```bash
-journalctl -u nats-leaf --no-pager -n 120 | grep -E 'Leafnode|Authorization|Violation|account'
-```
-
-If the log shows `Leafnode connection created` followed by
-`Leafnode Error 'Authorization Violation'`, the network path is working but
-OATS is rejecting the credentials. Confirm the same creds against central NATS:
-
-```bash
-nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds rtt
-```
-
-If that also reports `Authorization Violation`, fix OATS account/JWT loading.
-The local NSC store may know about `i69-mu2-leaf`, but the running OATS servers
-also need the updated `avena-rs` account JWT in their account resolver.
-
-Useful local checks:
-
-```bash
-cd /home/user/avena-rs/shared
-nsc env
-nsc describe account avena-rs
-nsc describe user --account avena-rs --name i69-mu2-leaf
-find ~/.local/share/nats/nsc/stores/OATS/accounts/avena-rs -maxdepth 2 -type f -print
-```
-
-For this box, the local JWT files are normally:
-
-```text
-~/.local/share/nats/nsc/stores/OATS/accounts/avena-rs/avena-rs.jwt
-~/.local/share/nats/nsc/stores/OATS/accounts/avena-rs/users/i69-mu2-leaf.jwt
-```
-
-An OATS NATS admin should push or install the updated `avena-rs` account JWT
-into the OATS account resolver, then make sure `nats1`, `nats2`, and `nats3`
-have loaded it. The exact command depends on how OATS is configured:
-
-```bash
-# If OATS uses a NATS account resolver and the admin has system-account access:
-nsc push -a avena-rs -u nats://nats1.oats:4222
-
-# If OATS uses a resolver directory, copy the updated account JWT into the
-# configured resolver directory on OATS, then reload/restart the NATS servers.
-```
-
-After OATS loads the updated account JWT, verify from `i69-mu2`:
-
-```bash
-nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds rtt
-curl -fsS http://127.0.0.1:8222/leafz | jq '{leafnodes, leafs}'
-```
-
-Expected:
-
-- central `nats rtt` no longer reports `Authorization Violation`
-- local `leafz.leafnodes` is greater than `0`
-
-No local config change is needed for the current `nats1`/`nats2` setup. The
-rendered config already uses only:
-
-```text
-nats://nats1.oats:7422
-nats://nats2.oats:7422
-```
-
-If the services are already running, the leaf will keep retrying automatically.
-After the OATS-side account/auth fix, validate first:
-
-```bash
-curl -fsS http://127.0.0.1:8222/leafz | jq '{leafnodes, leafs}'
-nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds rtt
-```
-
-If it still has not connected after a minute, restart only the local leaf:
-
-```bash
 sudo systemctl restart nats-leaf
+```
+
+Validate local NATS:
+
+```bash
+curl -fsS http://127.0.0.1:8222/varz | jq '{server_name, jetstream}'
 curl -fsS http://127.0.0.1:8222/leafz | jq '{leafnodes, leafs}'
 ```
 
-## Step 4: Validate Local NATS And JetStream With CLI
+Expected:
 
-Run:
+- `server_name` matches `<box_id>-leaf`
+- JetStream exists
+- `leafnodes` is greater than `0`
+
+Validate CLI access:
 
 ```bash
 nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds rtt
-nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds --js-domain edge-i69-mu2 account info
-nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds --js-domain edge-i69-mu2 stream ls -a
+nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds --js-domain edge-i69-mu1 account info
 ```
 
-Expected:
-
-- `rtt` succeeds
-- `account info` shows `Connected Server Name: i69-mu2-leaf`
-- `account info` shows JetStream domain `edge-i69-mu2`
-- `stream ls -a` succeeds, even if only KV/internal streams exist
-
-Do not use `nats server info` as the normal validation command for this leaf user. It requires system-account privileges and can fail even when local NATS and JetStream are healthy.
-
-If `rtt` fails, local NATS auth/connectivity is the issue.
-
-If `rtt` works but `account info` or `stream ls -a` fails, JetStream domain/config is the issue.
-
-## Step 5: Start Metrics
-
-Start NATS exporter and Alloy:
+If local leaf auth works, confirm central auth also works:
 
 ```bash
-sudo systemctl start nats-exporter alloy
+nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds rtt
 ```
 
-Validate NATS exporter:
+If this reports `Authorization Violation`, the OATS account resolver has not
+loaded the account/user JWT yet. That is a central-side issue.
+
+## 8. Create the Local KV Entry
+
+Add the KV bucket locally if it does not exist:
 
 ```bash
-curl -fsS http://127.0.0.1:7777/metrics | head
-curl -fsS http://127.0.0.1:7777/metrics | grep -E 'leaf|jetstream|varz' | head
+nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds --js-domain edge-i69-mu1 kv add avenabox --history=5 || true
 ```
 
-If the first command prints metrics and then ends with `curl: (23) Failure writing output to destination`, that is harmless. It happens because `head` closes the pipe after the first few lines while `curl` still has more metrics to write.
-
-Validate Alloy:
+Write the generated config locally:
 
 ```bash
-sudo systemctl status alloy --no-pager
-sudo journalctl -u alloy --no-pager -n 80
-```
-
-Expected:
-
-- `nats-exporter` metrics endpoint returns text
-- Alloy is active
-- Alloy logs do not repeatedly report remote-write failures
-
-Validate the exact local NATS metric names:
-
-```bash
-curl -fsS http://127.0.0.1:7777/metrics | grep -E '^(gnatsd_healthz_status_value|gnatsd_leafz_conn_nodes_total|gnatsd_varz_connections|gnatsd_varz_jetstream_config_domain)'
-```
-
-Expected examples:
-
-```text
-gnatsd_healthz_status_value{server_id="http://127.0.0.1:8222",value="ok"} 1
-gnatsd_leafz_conn_nodes_total{server_id="http://127.0.0.1:8222"} 0
-gnatsd_varz_jetstream_config_domain{server_id="http://127.0.0.1:8222",value="edge-i69-mu2"} 1
-```
-
-In Grafana, use Explore with the Prometheus data source. The node-exporter dashboard shows host CPU, memory, disk, and network panels; it does not automatically show local NATS panels.
-
-Useful Prometheus queries:
-
-```promql
-gnatsd_healthz_status_value{job="avena-rs", service="nats-leaf", instance="i69-mu2", value="ok"}
-gnatsd_leafz_conn_nodes_total{job="avena-rs", service="nats-leaf", instance="i69-mu2"}
-gnatsd_varz_jetstream_config_domain{job="avena-rs", service="nats-leaf", instance="i69-mu2", value="edge-i69-mu2"}
-gnatsd_varz_connections{job="avena-rs", service="nats-leaf", instance="i69-mu2"}
-gnatsd_varz_in_msgs{job="avena-rs", service="nats-leaf", instance="i69-mu2"}
-gnatsd_varz_out_msgs{job="avena-rs", service="nats-leaf", instance="i69-mu2"}
-```
-
-The upstream leaf connection metric is:
-
-```promql
-gnatsd_leafz_conn_nodes_total{job="avena-rs", service="nats-leaf", instance="i69-mu2"}
-```
-
-For the current setup, this metric stays `0` while OATS port `7422` is unreachable. After OATS accepts the leaf connection, it should become greater than `0`.
-
-If the `instance="i69-mu2"` queries do not return data, confirm the installed Alloy Quadlet has the rendered box label:
-
-```bash
-grep -n 'Environment=NODE_NAME=i69-mu2' shared/alloy.container
-sudo grep -n 'Environment=NODE_NAME=i69-mu2' /etc/containers/systemd/alloy.container
-```
-
-If the installed file still uses `NODE_NAME=%H`, reinstall the rendered Alloy file and restart Alloy:
-
-```bash
-sudo install -m 0644 shared/alloy.container /etc/containers/systemd/alloy.container
-sudo systemctl daemon-reload
-sudo systemctl restart alloy
-```
-
-After that, local Prometheus labels should use `i69-mu2`. The old
-`localhost.localdomain` option can still appear in Grafana for a while because
-Prometheus keeps old samples inside the selected time range. To confirm whether
-new samples are fixed, set Grafana to **Last 5 minutes** and query:
-
-```promql
-node_uname_info{job="avena-rs", instance="i69-mu2"}
-```
-
-If `localhost.localdomain` still appears after Alloy was restarted, check for an
-old Alloy process or stale installed config:
-
-```bash
-systemctl is-active alloy
-sudo grep -n 'Environment=NODE_NAME=' /etc/containers/systemd/alloy.container
-pgrep -af 'grafana/alloy|alloy run' || true
-```
-
-Expected:
-
-- Alloy is active
-- installed `Environment=NODE_NAME=i69-mu2`
-- only the systemd-managed Alloy process is running
-
-If old `localhost.localdomain` samples must be deleted immediately from OATS
-Prometheus, that has to be done on the OATS Prometheus server with admin API
-access. Run this on OATS only if Prometheus was started with
-`--web.enable-admin-api`:
-
-```bash
-curl -X POST 'http://127.0.0.1:9090/api/v1/admin/tsdb/delete_series?match[]={job="avena-rs",instance="localhost.localdomain"}'
-curl -X POST 'http://127.0.0.1:9090/api/v1/admin/tsdb/delete_series?match[]={job="avena-rs",server="localhost.localdomain"}'
-curl -X POST 'http://127.0.0.1:9090/api/v1/admin/tsdb/delete_series?match[]={job="avena-rs",nodename="localhost.localdomain"}'
-curl -X POST 'http://127.0.0.1:9090/api/v1/admin/tsdb/clean_tombstones'
-```
-
-Most of the time, waiting for the dashboard time window to move past the old
-samples is enough.
-
-If metrics do not show up in the OATS dashboard after a few minutes, check:
-
-```bash
-tailscale status --self
-getent hosts prometheus.oats
-sudo journalctl -u alloy --no-pager -n 120
-```
-
-## Step 6: Confirm Rust Env Files
-
-Validate the edge process configs:
-
-```bash
-jq . rust-ljm/streamer.env.json
-jq . rust-ljm/archiver.env.json
-```
-
-Important values must be:
-
-```text
-NATS_SERVERS = nats://127.0.0.1:4222
-JS_DOMAIN    = edge-i69-mu2
-CFG_BUCKET   = avenabox
-CFG_KEY      = labjackd.config.i69-mu2
-CENTRAL_NATS_SERVERS = nats://nats1.oats:4222,nats://nats2.oats:4222
-BOX_ID       = i69-mu2
-LABJACK_IP   = 192.168.1.111
-LABJACK_SERIAL = 470036330
-```
-
-Validate with commands:
-
-```bash
-jq -r '.env.NATS_SERVERS, .env.JS_DOMAIN, .env.CFG_KEY, .env.BOX_ID, .env.LABJACK_IP, .env.LABJACK_SERIAL' rust-ljm/streamer.env.json
-jq -r '.env.NATS_SERVERS, .env.JS_DOMAIN, .env.CFG_KEY, .env.BOX_ID' rust-ljm/archiver.env.json
-```
-
-If `CENTRAL_NATS_SERVERS` is present in `rust-ljm/streamer.env.json`, the edge
-`streamer` mirrors `CENTRAL_CFG_BUCKET:CENTRAL_CFG_KEY` from central OATS into
-the local `CFG_BUCKET:CFG_KEY` and keeps watching for updates. Edit the central
-KV entry if you want the running edge box to pick up config changes
-automatically.
-
-This sync is one-way:
-
-- central KV change
-- mirrored into local edge KV
-- local KV watcher restarts the sampler
-
-Live sample publishing remains local-first through `edge-<box_id>` JetStream and
-the leaf connection.
-
-## Browser Plot Notes
-
-The plot page subscribes to all enabled channel subjects for the selected
-config, but it only parses and renders the channels currently selected in the
-`Visible Plot Channels` section. By default it selects at most two channels.
-
-If a channel subject is active in NATS but the chart shows `0 pts`, verify:
-
-- the correct config key is in the URL
-- the channel is selected in `Visible Plot Channels`
-- the browser is using the latest webapp build
-
-The webapp FlatBuffer parser also includes a fallback for misaligned WebSocket
-payload slices, which avoids dropped channels caused by `Float64Array`
-alignment errors in the generated TypeScript helper.
-
-## Step 7: Write The Current LabJack KV Config
-
-The LabJack KV payload is generated from `shared/edge-box.config.json` at:
-
-```text
-shared/labjack-kv.generated.json
-```
-
-Validate it before writing to NATS:
-
-```bash
-jq . shared/labjack-kv.generated.json
-```
-
-Create the KV bucket if needed and write the config:
-
-```bash
-nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds --js-domain edge-i69-mu2 kv add avenabox --history=5 || true
-nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds --js-domain edge-i69-mu2 kv put avenabox labjackd.config.i69-mu2 "$(cat shared/labjack-kv.generated.json)"
+nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds --js-domain edge-i69-mu1 \
+  kv put avenabox v1.i69-mu1.i69-lj2.config "$(cat shared/labjack-kv.generated.json)"
 ```
 
 Validate:
 
 ```bash
-nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds --js-domain edge-i69-mu2 kv get avenabox labjackd.config.i69-mu2 | sed -n '/^{/,$p' | jq .
+nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds --js-domain edge-i69-mu1 \
+  kv get avenabox v1.i69-mu1.i69-lj2.config | sed -n '/^{/,$p' | jq .
 ```
 
-If this fails, the local NATS/JetStream/KV setup is the issue. Do not start the Rust processes yet.
-
-## Step 8: Start Archiver
-
-Start archiver before streamer so local data is recorded as soon as samples begin:
-
-Check that no old managed binaries are already running:
+If the webapp should discover this box through central OATS KV, also put the
+same config into central:
 
 ```bash
-cd /home/user/avena-rs/rust-ljm
+nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds \
+  kv put avenabox v1.i69-mu1.i69-lj2.config "$(cat shared/labjack-kv.generated.json)"
+```
+
+That central key is what the webapp reads on `/labjacks`.
+
+## 9. Install and Start Alloy and NATS Exporter
+
+Install the remaining Quadlet files:
+
+```bash
+sudo install -m 0644 shared/alloy.container /etc/containers/systemd/alloy.container
+sudo install -m 0644 shared/alloy.volume /etc/containers/systemd/alloy.volume
+sudo install -m 0644 shared/config.alloy /etc/containers/systemd/config.alloy
+```
+
+Start them:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart nats-exporter
+sudo systemctl restart alloy
+```
+
+Validate local metrics endpoints:
+
+```bash
+curl -fsS http://127.0.0.1:7777/metrics | head
+curl -fsS http://127.0.0.1:12345/-/ready
+```
+
+What Alloy sends:
+
+- host metrics from the unix exporter
+- NATS metrics scraped from `127.0.0.1:7777`
+- labels `job="avena-rs"` and `instance="<box_id>"`
+
+Prometheus destination from the checked-in config:
+
+```text
+http://prometheus.oats:9090/api/v1/write
+```
+
+Expected Grafana usage:
+
+- open the OATS dashboard URL
+- choose datasource `efo1upqlm33swc`
+- choose `job=avena-rs`
+- choose node `i69-mu1` or your new `box_id`
+
+## 10. Build and Start the Rust Services
+
+Build once:
+
+```bash
+cd /extstore/home/user/avena-rs/rust-ljm
+cargo build --release --bin streamer --bin archiver --bin exporter
+```
+
+Start the three local processes:
+
+```bash
+./streamerctl.sh start
+./archiverctl.sh start
+./exporterctl.sh start
+```
+
+Check status:
+
+```bash
 ./streamerctl.sh status
 ./archiverctl.sh status
 ./exporterctl.sh status
-pgrep -af '/home/user/avena-rs/rust-ljm/target/(debug|release)/(streamer|archiver|exporter)|target/(debug|release)/(streamer|archiver|exporter)' || true
 ```
 
-Expected:
-
-- streamer is stopped
-- archiver is stopped
-- exporter is stopped
-- `pgrep` prints nothing
-
-If `pgrep` shows old processes, stop them before continuing:
+Tail logs:
 
 ```bash
-./streamerctl.sh stop
-./archiverctl.sh stop
-./exporterctl.sh stop
-pgrep -af '/home/user/avena-rs/rust-ljm/target/(debug|release)/(streamer|archiver|exporter)|target/(debug|release)/(streamer|archiver|exporter)' || true
+tail -f logs/streamer.log
+tail -f logs/archiver.log
+tail -f logs/exporter.log
 ```
 
-The `*ctl.sh` scripts use PID files and also search for the managed binary path. `stop` is expected to stop all matching managed PIDs, not just the first one.
+What each one does:
+
+- `streamer`: reads the LabJack and publishes `avenars.v1.<box_id>.<source_id>.chXX`
+- `archiver`: reads local JetStream and writes parquet under `rust-ljm/parquet`
+- `exporter`: listens on `avenars.export.request.<box_id>` and sends CSV back over NATS
+
+## 11. Validate the End-to-End Data Flow
+
+Verify live traffic locally:
 
 ```bash
-cd /home/user/avena-rs/rust-ljm
-./archiverctl.sh restart
-./archiverctl.sh status
-tail -n 80 logs/archiver.log
+nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds --js-domain edge-i69-mu1 \
+  stream info labjacks --json | jq '{config:{subjects:.config.subjects,max_bytes:.config.max_bytes,discard:.config.discard},state:{messages:.state.messages,bytes:.state.bytes}}'
 ```
 
-Expected:
-
-- status says archiver is running
-- log says it connected to NATS
-- log says it loaded config for `labjackd.config.i69-mu2`
-- log subscribes to subjects like `avenars.v1.i69.i69-mu2.live.labjack.i69-lj2.sample.ch11`
-
-If archiver cannot load KV, go back to Step 7.
-
-If archiver cannot connect to NATS, go back to Step 4.
-
-## Step 9: Start Streamer
-
-Only do this when the LabJack is powered and reachable at `192.168.1.111`.
-
-Validate LabJack network first:
+Verify live traffic centrally:
 
 ```bash
-ping -c 3 192.168.1.111
+nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds \
+  sub 'avenars.v1.i69-mu1.i69-lj2.*' --count=4
 ```
 
-Start streamer:
+Verify parquet is being written:
 
 ```bash
-cd /home/user/avena-rs/rust-ljm
-./streamerctl.sh restart
-./streamerctl.sh status
-tail -n 120 logs/streamer.log
+find rust-ljm/parquet -type f | tail -n 10
+du -sh rust-ljm/parquet
 ```
 
-Expected:
-
-- status says streamer is running
-- log says it connected to NATS
-- log says it loaded `avenabox:labjackd.config.i69-mu2`
-- log says it connected to LabJack serial `470036330`
-- log says streaming started
-
-If it fails before LabJack connection, check NATS/KV steps.
-
-If it fails at LabJack connection, check `LABJACK_IP`, cabling, power, and serial.
-
-## Step 10: Validate Live Data And Archive Data
-
-Check the local stream exists:
+Verify archiver consumers:
 
 ```bash
-nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds --js-domain edge-i69-mu2 stream ls -a
-nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds --js-domain edge-i69-mu2 stream info labjacks
+nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds --js-domain edge-i69-mu1 \
+  consumer info labjacks archiver-i69-mu1-labjack-i69-lj2-11
+nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds --js-domain edge-i69-mu1 \
+  consumer info labjacks archiver-i69-mu1-labjack-i69-lj2-13
 ```
 
-Watch a live subject locally:
+## 12. Run the Webapp on a Laptop
+
+On the laptop:
 
 ```bash
-nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds sub 'avenars.v1.i69.i69-mu2.live.labjack.i69-lj2.sample.*'
+git clone <your-avena-rs-remote> avena-rs
+cd avena-rs/webapp
+corepack enable || true
+pnpm install
+pnpm run dev
 ```
 
-You should see binary messages arriving. Press `Ctrl+C` to stop the subscription.
-
-Check Parquet files:
-
-```bash
-find /home/user/avena-rs/rust-ljm/parquet -type f -name '*.parquet' | sort | tail
-```
-
-Expected:
-
-- files under paths like `parquet/asset1001/YYYY-MM-DD/ch11/part-0001.parquet`
-
-If live data arrives but no Parquet files appear, archiver is the issue.
-
-If no live data arrives, streamer/LabJack/NATS publishing is the issue.
-
-## Step 11: Validate Central Visibility
-
-The web app connects to central OATS NATS. This box should make live messages available through its leaf connection.
-
-From a machine or context that can connect to central OATS NATS with web/user credentials, subscribe to:
+Open:
 
 ```text
-avenars.v1.i69.i69-mu2.live.labjack.i69-lj2.sample.*
+http://localhost:5173
 ```
 
-If local subscription works but central subscription does not:
+Login values:
 
-- check `curl http://127.0.0.1:8222/leafz`
-- check OATS leaf-node permissions for `i69-mu2-leaf`
-- check central account import/export or user permissions
+- Server URL: `ws://nats1.oats:8080`
+- Credentials file: a NATS creds file with access to central `avenabox`, live subjects, and export subjects
 
-## Normal Bring-Online Command Set
+The webapp reads configs from central KV. The current plot route form is:
 
-Use this after setup is complete:
+```text
+/labjacks/plots/1001?key=v1.i69-mu1.i69-lj2.config
+```
+
+Important behavior:
+
+- the webapp does not connect directly to the leaf node
+- live plots subscribe through central NATS
+- export requests are published through central NATS to `avenars.export.request.<box_id>`
+- the local exporter answers back through central NATS
+
+## 13. Exact Commands You Will Usually Re-Run
+
+On the edge box after config changes:
 
 ```bash
-cd /home/user/avena-rs
-sudo systemctl unmask nats-leaf nats-exporter alloy || true
-sudo systemctl daemon-reload
-sudo systemctl start nats-leaf nats-exporter alloy
-
-cd /home/user/avena-rs/rust-ljm
-./streamerctl.sh stop
-./archiverctl.sh stop
-./archiverctl.sh restart
+cd /extstore/home/user/avena-rs
+./shared/render-edge-config.py
+nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds --js-domain edge-i69-mu1 \
+  kv put avenabox v1.i69-mu1.i69-lj2.config "$(cat shared/labjack-kv.generated.json)"
+nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds \
+  kv put avenabox v1.i69-mu1.i69-lj2.config "$(cat shared/labjack-kv.generated.json)"
+cd rust-ljm
 ./streamerctl.sh restart
-./archiverctl.sh status
-./streamerctl.sh status
+./archiverctl.sh restart
+./exporterctl.sh restart
 ```
 
-Run the Rust `*ctl.sh start`/`restart` commands from a normal shell on the box. Some temporary automation or coding-agent command runners clean up background child processes when the command session ends, even though the control script writes PID files. A normal interactive shell or a dedicated systemd service does not have that problem.
+On the laptop:
 
-Quick validation:
+```bash
+cd avena-rs/webapp
+pnpm run dev
+```
+
+## 14. Troubleshooting
+
+Leaf node is up but not connected:
 
 ```bash
 curl -fsS http://127.0.0.1:8222/leafz | jq
-curl -fsS http://127.0.0.1:7777/metrics | head
-tail -n 40 /home/user/avena-rs/rust-ljm/logs/streamer.log
-tail -n 40 /home/user/avena-rs/rust-ljm/logs/archiver.log
-find /home/user/avena-rs/rust-ljm/parquet -type f -name '*.parquet' | sort | tail
+sudo journalctl -u nats-leaf --no-pager -n 100
+nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds rtt
 ```
 
-## Normal Turn-Offline Command Set
-
-Use this before shutting the box down or moving it.
-
-Stop LabJack publishing first:
+No configs in the webapp:
 
 ```bash
-cd /home/user/avena-rs/rust-ljm
-./streamerctl.sh stop
+nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds kv ls
+nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds kv get avenabox v1.i69-mu1.i69-lj2.config
 ```
 
-Give archiver a few seconds to flush and close files:
+No live points in the webapp:
 
 ```bash
-sleep 5
-./archiverctl.sh stop
+nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds sub 'avenars.v1.i69-mu1.i69-lj2.*' --count=4
+tail -n 100 /extstore/home/user/avena-rs/rust-ljm/logs/streamer.log
 ```
 
-Stop edge services:
+No parquet output:
 
 ```bash
-sudo systemctl stop alloy nats-exporter nats-leaf
+tail -n 100 /extstore/home/user/avena-rs/rust-ljm/logs/archiver.log
+find /extstore/home/user/avena-rs/rust-ljm/parquet -type f | tail
 ```
 
-Validate nothing is running:
+Export download fails:
 
 ```bash
-cd /home/user/avena-rs/rust-ljm
-./streamerctl.sh status
-./archiverctl.sh status
-systemctl is-active nats-leaf nats-exporter alloy || true
-pgrep -af '/home/user/avena-rs/rust-ljm/target/(debug|release)/(streamer|archiver|exporter)|target/(debug|release)/(streamer|archiver|exporter)' || true
+tail -n 100 /extstore/home/user/avena-rs/rust-ljm/logs/exporter.log
+nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds sub 'avenars.export.request.i69-mu1'
 ```
 
-Expected after offline:
-
-- streamer is stopped
-- archiver is stopped
-- exporter is stopped
-- systemd services are inactive
-- `pgrep` prints nothing
-
-Power off:
+Check current storage usage:
 
 ```bash
-sudo systemctl poweroff
+du -sh /extstore/nats
+du -sh /extstore/home/user/avena-rs/rust-ljm/parquet
+nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds --js-domain edge-i69-mu1 \
+  stream info labjacks --json | jq '{messages:.state.messages,bytes:.state.bytes,max_bytes:.config.max_bytes}'
 ```
-
-## Reboot Command Set
-
-Use this when you want to reboot the box and have it come back online.
-
-Stop Rust data processes cleanly first:
-
-```bash
-cd /home/user/avena-rs/rust-ljm
-./streamerctl.sh stop
-sleep 5
-./archiverctl.sh stop
-```
-
-Leave the Quadlet services unmasked so they can come back after reboot:
-
-```bash
-sudo systemctl unmask nats-leaf nats-exporter alloy || true
-sudo systemctl reboot
-```
-
-After the reboot, validate:
-
-```bash
-systemctl is-active nats-leaf nats-exporter alloy || true
-curl -fsS http://127.0.0.1:8222/varz | jq '{server_name, jetstream}'
-curl -fsS http://127.0.0.1:8222/leafz | jq
-```
-
-Then start the Rust data path:
-
-```bash
-cd /home/user/avena-rs/rust-ljm
-./archiverctl.sh start
-./streamerctl.sh start
-./archiverctl.sh status
-./streamerctl.sh status
-```
-
-If you want the box to stay offline after the next boot, mask the generated services before powering off:
-
-```bash
-sudo systemctl mask alloy nats-exporter nats-leaf
-sudo systemctl poweroff
-```
-
-To bring a masked box back online later:
-
-```bash
-sudo systemctl unmask nats-leaf nats-exporter alloy
-sudo systemctl daemon-reload
-sudo systemctl start nats-leaf nats-exporter alloy
-```
-
-## After Moving The Box
-
-When the box arrives somewhere else:
-
-```bash
-sudo systemctl unmask nats-leaf nats-exporter alloy || true
-sudo systemctl daemon-reload
-sudo systemctl start nats-leaf nats-exporter alloy
-cd /home/user/avena-rs/rust-ljm
-./archiverctl.sh start
-./streamerctl.sh start
-```
-
-Then run the quick validation commands from the bring-online section.
-
-## Troubleshooting By Symptom
-
-`getent hosts nats1.oats` fails:
-
-- Tailscale/DNS is not ready
-- check `tailscale status --self`
-
-`curl http://127.0.0.1:8222/varz` fails:
-
-- local NATS is not running
-- check `sudo journalctl -u nats-leaf --no-pager -n 120`
-
-`leafz` shows no OATS connection:
-
-- OATS leaf port/creds/permissions are the issue
-- check `/etc/containers/systemd/creds/leaf.creds`
-- check `nats1.oats:7422` and `nats2.oats:7422`
-
-`nats stream ls --js-domain edge-i69-mu2` fails:
-
-- JetStream domain/config is the issue
-- check `domain: "edge-i69-mu2"` in `nats-leaf.conf`
-
-`kv get avenabox labjackd.config.i69-mu2` fails:
-
-- KV config is missing
-- rerun Step 7
-
-`streamer` cannot connect to LabJack:
-
-- check `ping -c 3 192.168.1.111`
-- check LabJack power/network
-- check serial `470036330`
-
-`archiver` runs but no Parquet files appear:
-
-- confirm streamer is publishing
-- confirm archiver subscribed to `avenars.v1.i69.i69-mu2.live.labjack.i69-lj2.sample.*`
-
-Metrics do not appear in OATS dashboard:
-
-- check `curl http://127.0.0.1:7777/metrics`
-- check `sudo journalctl -u alloy --no-pager -n 120`
-- confirm Tailscale tag `tag:prom-node`
-
-## Useful Log Commands
-
-```bash
-sudo journalctl -u nats-leaf -f
-sudo journalctl -u nats-exporter -f
-sudo journalctl -u alloy -f
-tail -f /home/user/avena-rs/rust-ljm/logs/streamer.log
-tail -f /home/user/avena-rs/rust-ljm/logs/archiver.log
-```
-
-## References
-
-These are only here for maintainers. You should not need them to run this setup.
-
-- NATS JetStream leaf nodes: https://docs.nats.io/running-a-nats-service/configuration/leafnodes/jetstream_leafnodes
-- NATS leaf node config: https://docs.nats.io/running-a-nats-service/configuration/leafnodes/leafnode_conf
-- NATS Prometheus exporter: https://github.com/nats-io/prometheus-nats-exporter

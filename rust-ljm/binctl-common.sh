@@ -114,7 +114,7 @@ defaults = {
     "OUTPUT_DIR": "outputs",
     "NATS_CREDS_FILE": os.path.join(root_dir, "apt.creds"),
     "CFG_BUCKET": "avenabox",
-    "CFG_KEY": "labjackd.config.i69-mu1",
+    "CFG_KEY": "v1.i69-mu1.i69-lj2.config",
     "LABJACK_IDENTIFIER": "",
     "LABJACK_SERIAL": "",
     "LABJACK_NAME": "",
