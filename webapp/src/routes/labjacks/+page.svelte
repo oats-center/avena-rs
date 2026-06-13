@@ -452,10 +452,13 @@
                                 <div>
                                     <h3 class="card-title text-xl text-base-content">{config.labjack_name}</h3>
                                     <p class="text-base-content/70 text-sm mt-1">Asset #{config.asset_number}</p>
+                                    {#if config.box_id}
+                                        <p class="text-base-content/70 text-sm mt-1">Box {config.box_id}</p>
+                                    {/if}
                                 </div>
                                 <div class="flex space-x-1">
                                     <button
-                                        onclick={() => window.location.href = `/labjacks/plots/${config.asset_number}`}
+                                        onclick={() => window.location.href = `/labjacks/plots/${config.asset_number}?key=${encodeURIComponent(key)}`}
                                         class="btn btn-sm btn-success btn-circle"
                                         title="View Real-time Plots"
                                         aria-label="View Real-time Plots"

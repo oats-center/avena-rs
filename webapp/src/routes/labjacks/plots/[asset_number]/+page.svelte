@@ -444,21 +444,35 @@
                 return;
             }
             
-            // Find the LabJack config by asset number
+            const preferredKey = $page.url.searchParams.get('key')?.trim() || "";
             const keys = await getKeys(natsService, "avenabox", "labjackd.config.*");
             let foundConfig: LabJackConfig | null = null;
-            
-            for (const key of keys) {
+
+            if (preferredKey) {
                 try {
-                    const configStr = await getKeyValue(natsService, "avenabox", key);
+                    const configStr = await getKeyValue(natsService, "avenabox", preferredKey);
                     const config = normalizeLabJackConfig(JSON.parse(configStr));
-                    if (!config) continue;
-                    if (config.asset_number === assetNumber) {
+                    if (config && config.asset_number === assetNumber) {
                         foundConfig = config;
-                        break;
                     }
                 } catch (err) {
-                    console.error(`Failed to parse config for key ${key}:`, err);
+                    console.error(`Failed to load preferred config key ${preferredKey}:`, err);
+                }
+            }
+
+            if (!foundConfig) {
+                for (const key of keys) {
+                    try {
+                        const configStr = await getKeyValue(natsService, "avenabox", key);
+                        const config = normalizeLabJackConfig(JSON.parse(configStr));
+                        if (!config) continue;
+                        if (config.asset_number === assetNumber) {
+                            foundConfig = config;
+                            break;
+                        }
+                    } catch (err) {
+                        console.error(`Failed to parse config for key ${key}:`, err);
+                    }
                 }
             }
             
