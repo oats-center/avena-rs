@@ -125,11 +125,33 @@ def labjack_kv_config(config: dict) -> dict:
     }
 
 
+def central_client_servers(nats: dict) -> str:
+    configured = nats.get("central_servers")
+    if isinstance(configured, str) and configured.strip():
+        return configured.strip()
+    if isinstance(configured, list):
+        values = [str(item).strip() for item in configured if str(item).strip()]
+        if values:
+            return ",".join(values)
+
+    derived = []
+    for remote in nats.get("leaf_remotes", []):
+        remote = str(remote).strip()
+        if not remote:
+            continue
+        if remote.endswith(":7422"):
+            derived.append(f"{remote[:-5]}:4222")
+        else:
+            derived.append(remote)
+    return ",".join(derived)
+
+
 def streamer_env(config: dict) -> dict:
     nats = config["nats"]
     paths = config["paths"]
     labjack = config["labjack"]
     source = config["source"]
+    central_servers = central_client_servers(nats)
     return {
         "env": {
             "NATS_SUBJECT": nats["root_subject"],
@@ -144,6 +166,10 @@ def streamer_env(config: dict) -> dict:
             "NATS_CREDS_FILE": paths["rust_creds_file"],
             "CFG_BUCKET": nats["kv_bucket"],
             "CFG_KEY": nats["kv_key"],
+            "CENTRAL_NATS_SERVERS": central_servers,
+            "CENTRAL_NATS_CREDS_FILE": paths["rust_creds_file"],
+            "CENTRAL_CFG_BUCKET": nats["kv_bucket"],
+            "CENTRAL_CFG_KEY": nats["kv_key"],
             "LABJACK_IDENTIFIER": labjack.get("identifier", ""),
             "LABJACK_SERIAL": labjack["serial"],
             "LABJACK_NAME": labjack["name"],

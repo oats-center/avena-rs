@@ -20,7 +20,7 @@ export class FlatBufferParser {
             const bb = new flatbuffers.ByteBuffer(bytes);
             const scan = Scan.getRootAsScan(bb);
 
-            const values = scan.valuesArray();
+            const values = extractValues(scan);
             if (!values || values.length === 0) {
                 console.warn('No values found in FlatBuffer');
                 return null;
@@ -38,6 +38,33 @@ export class FlatBufferParser {
             return null;
         }
     }
+}
+
+function extractValues(scan: Scan): Float64Array | null {
+    try {
+        const direct = scan.valuesArray();
+        if (direct && direct.length > 0) {
+            return direct;
+        }
+    } catch (error) {
+        // NATS websocket payloads can arrive as Uint8Array slices whose byteOffset
+        // is not 8-byte aligned, which breaks the generated Float64Array view.
+        console.warn('Falling back to scalar FlatBuffer decode for misaligned payload.', error);
+    }
+
+    const length = scan.valuesLength();
+    if (!Number.isFinite(length) || length <= 0) return null;
+
+    const values = new Float64Array(length);
+    for (let i = 0; i < length; i++) {
+        const value = scan.values(i);
+        if (typeof value !== 'number' || !Number.isFinite(value)) {
+            return null;
+        }
+        values[i] = value;
+    }
+
+    return values;
 }
 
 export function calculateSourceSampleTimestamps(

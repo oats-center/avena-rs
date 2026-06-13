@@ -641,6 +641,7 @@ NATS_SERVERS = nats://127.0.0.1:4222
 JS_DOMAIN    = edge-i69-mu2
 CFG_BUCKET   = avenabox
 CFG_KEY      = labjackd.config.i69-mu2
+CENTRAL_NATS_SERVERS = nats://nats1.oats:4222,nats://nats2.oats:4222
 BOX_ID       = i69-mu2
 LABJACK_IP   = 192.168.1.111
 LABJACK_SERIAL = 470036330
@@ -652,6 +653,12 @@ Validate with commands:
 jq -r '.env.NATS_SERVERS, .env.JS_DOMAIN, .env.CFG_KEY, .env.BOX_ID, .env.LABJACK_IP, .env.LABJACK_SERIAL' rust-ljm/streamer.env.json
 jq -r '.env.NATS_SERVERS, .env.JS_DOMAIN, .env.CFG_KEY, .env.BOX_ID' rust-ljm/archiver.env.json
 ```
+
+If `CENTRAL_NATS_SERVERS` is present in `rust-ljm/streamer.env.json`, the edge
+`streamer` mirrors `CENTRAL_CFG_BUCKET:CENTRAL_CFG_KEY` from central OATS into
+the local `CFG_BUCKET:CFG_KEY` and keeps watching for updates. Edit the central
+KV entry if you want the running edge box to pick up config changes
+automatically.
 
 ## Step 7: Write The Current LabJack KV Config
 
