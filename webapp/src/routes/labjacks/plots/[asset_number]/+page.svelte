@@ -177,8 +177,11 @@
     
     // Get asset number from URL params
     $effect(() => {
-        assetNumber = parseInt($page.params.asset_number || '0');
-        if (assetNumber > 0) {
+        const nextAssetNumber = parseInt($page.params.asset_number || '0');
+        const nextConfigKey = $page.url.searchParams.get('key')?.trim() || "";
+        assetNumber = nextAssetNumber;
+        if (nextAssetNumber > 0) {
+            console.log("Loading plot config", { assetNumber: nextAssetNumber, key: nextConfigKey });
             loadLabJackConfig();
         }
     });
