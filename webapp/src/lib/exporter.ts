@@ -49,6 +49,18 @@ type Frame = SummaryFrame | MetaFrame | ErrorFrame | CompleteFrame | Record<stri
 
 const EXPORT_FRAME_HEADER = "Avena-Export-Frame";
 
+function isMetaFrame(frame: Frame): frame is MetaFrame {
+  return (frame as { type?: unknown }).type === "meta";
+}
+
+function isSummaryFrame(frame: Frame): frame is SummaryFrame {
+  return (frame as { type?: unknown }).type === "summary";
+}
+
+function isErrorFrame(frame: Frame): frame is ErrorFrame {
+  return (frame as { type?: unknown }).type === "error";
+}
+
 export async function downloadExportViaNats(
   nats: NatsService,
   requestSubject: string,
@@ -105,11 +117,9 @@ export async function downloadExportViaNats(
 
       if (frame === "chunk") {
         const data = msg.data instanceof Uint8Array ? msg.data : new Uint8Array(msg.data);
-        const copy =
-          data.byteOffset === 0 && data.byteLength === data.buffer.byteLength
-            ? data.buffer.slice(0)
-            : data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
-        chunks.push(copy);
+        const copy = new Uint8Array(data.byteLength);
+        copy.set(data);
+        chunks.push(copy.buffer as ArrayBuffer);
         totalBytes += data.byteLength;
         nats.connection.publish(ackSubject);
         if (typeof nats.connection.flush === "function") {
@@ -130,18 +140,18 @@ export async function downloadExportViaNats(
         );
       }
 
-      if (frame === "meta" && parsed.type === "meta") {
+      if (frame === "meta" && isMetaFrame(parsed)) {
         meta = parsed;
         continue;
       }
 
-      if (frame === "summary" && parsed.type === "summary") {
+      if (frame === "summary" && isSummaryFrame(parsed)) {
         summary = parsed;
         options.onSummary?.(parsed.missingChannels ?? []);
         continue;
       }
 
-      if (frame === "error" && parsed.type === "error") {
+      if (frame === "error" && isErrorFrame(parsed)) {
         throw new Error(`Export server error: ${parsed.message}`);
       }
 

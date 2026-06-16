@@ -1,10 +1,21 @@
-name: Deploy static webpage
+name: Deploy documentation site
 
 on:
   push:
     branches: [main]
     paths:
-      - "webpage/**"
+      - "README.md"
+      - "docs/**"
+      - "docs-site/**"
+      - "rust-ljm/**"
+      - "schematics/README.md"
+      - "scripts/build-docs-site.*"
+      - "webapp/README.md"
+      - "webapp/package.json"
+      - "webapp/pnpm-lock.yaml"
+      - "webapp/pnpm-workspace.yaml"
+      - "webapp/src/lib/**"
+      - "webapp/typedoc.json"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -27,13 +38,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+          package_json_file: webapp/package.json
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: webapp/pnpm-lock.yaml
+
+      - name: Install webapp dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: webapp
+
+      - name: Build docs site
+        run: ./scripts/build-docs-site.sh
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload static site
+      - name: Upload documentation site
         uses: actions/upload-pages-artifact@v4
         with:
-          path: webpage
+          path: target/docs-site
 
       - name: Deploy to GitHub Pages
         id: deployment

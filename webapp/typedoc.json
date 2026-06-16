@@ -1,0 +1,10 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "Avena Webapp API",
+  "entryPoints": ["src/lib/**/*.ts"],
+  "exclude": ["src/lib/sampler/**"],
+  "excludeInternal": true,
+  "excludePrivate": false,
+  "includeVersion": true,
+  "readme": "README.md"
+}

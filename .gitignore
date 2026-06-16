@@ -5,6 +5,7 @@
 .claude
 __pycache__/
 *.py[cod]
+/target/
 
 # Local NATS/NSC credentials and signing material.
 *.creds

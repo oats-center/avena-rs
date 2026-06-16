@@ -19,3 +19,15 @@ See `rust-ljm/README.md` for binary details and config format.
 
 For edge boxes with a local NATS leaf node, JetStream, and Prometheus/Alloy
 monitoring, see [docs/setup-guide.md](docs/setup-guide.md).
+
+## Documentation Site
+
+Build the local documentation site with:
+
+```bash
+./scripts/build-docs-site.sh
+```
+
+The generated site is written to `target/docs-site`. It includes the setup
+guide, repo notes, Rust API docs from `cargo doc`, and frontend API docs from
+TypeDoc. The GitHub Pages workflow builds and publishes the same output.
