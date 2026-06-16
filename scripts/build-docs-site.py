@@ -8,9 +8,6 @@ from pathlib import Path
 
 DOCS = [
     ("Setup Guide", "docs/setup-guide.md", "docs/setup-guide/index.html"),
-    ("Repository Overview", "README.md", "docs/repository/index.html"),
-    ("Rust Pipeline", "rust-ljm/README.md", "docs/rust-pipeline/index.html"),
-    ("Webapp", "webapp/README.md", "docs/webapp/index.html"),
     ("Schematics", "schematics/README.md", "docs/schematics/index.html"),
 ]
 
@@ -120,6 +117,7 @@ def layout(title: str, body: str, root_prefix: str = "") -> str:
       <a class="brand" href="{root_prefix}index.html">Avena Docs</a>
       <nav>
         <a href="{root_prefix}docs/setup-guide/">Setup</a>
+        <a href="{root_prefix}docs/schematics/">Schematics</a>
         <a href="{root_prefix}api/rust/">Rust API</a>
         <a href="{root_prefix}api/frontend/">Frontend API</a>
       </nav>
@@ -177,6 +175,7 @@ def write_index(site: Path) -> None:
         </p>
         <div class="actions">
           <a class="button primary" href="docs/setup-guide/">Setup guide</a>
+          <a class="button" href="docs/schematics/">Schematics</a>
           <a class="button" href="api/rust/">Rust API</a>
           <a class="button" href="api/frontend/">Frontend API</a>
         </div>

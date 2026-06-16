@@ -1,3 +1,8 @@
+//! Prints metadata for the configured LabJack.
+//!
+//! This example opens the device through the shared environment-driven helper,
+//! reports handle information, and closes the handle.
+
 use ljmrs::LJMLibrary;
 
 #[path = "common/example_env.rs"]
@@ -7,6 +12,7 @@ mod labjack;
 #[path = "../src/ljm_mode.rs"]
 mod ljm_mode;
 
+/// Runs the LabJack information example.
 fn main() {
     match example_env::load_example_env() {
         Ok(Some(path)) => println!("Loaded example env from {}", path.display()),

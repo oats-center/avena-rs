@@ -1,3 +1,9 @@
+//! Debug subscriber that writes live NATS LabJack samples to CSV files.
+//!
+//! This binary is useful for inspecting the live FlatBuffer stream without
+//! running the Parquet archiver. It subscribes to the configured live subject
+//! wildcard and appends one CSV file per channel.
+
 use async_nats::{self, ConnectOptions};
 use flatbuffers::root;
 use futures_util::stream::StreamExt;
@@ -7,19 +13,20 @@ use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-// Import your generated FlatBuffers schema
 mod sample_data_generated {
     #![allow(dead_code, unused_imports)]
-    include!("data_generated.rs"); // path relative to examples/
+    include!("data_generated.rs");
 }
 mod nats_config;
 mod subjects;
 use sample_data_generated::sampler;
 
+/// Extracts the final subject token, which is expected to be the channel name.
 fn extract_channel_token(subject: &str) -> Option<String> {
     subject.split('.').last().map(|s| s.to_string())
 }
 
+/// Opens or creates the per-channel CSV file and writes its header if needed.
 fn open_csv_for_channel(out_dir: &Path, asset: u32, ch_token: &str) -> std::io::Result<File> {
     let fname = format!("labjack_{}_{}.csv", subjects::pad_asset(asset), ch_token);
     let path = out_dir.join(fname);
@@ -32,11 +39,13 @@ fn open_csv_for_channel(out_dir: &Path, asset: u32, ch_token: &str) -> std::io::
     Ok(file)
 }
 
+/// Converts a Unix nanosecond timestamp into RFC 3339 text.
 fn timestamp_unix_ns_to_rfc3339(timestamp_unix_ns: i64) -> Option<String> {
     Some(chrono::DateTime::<chrono::Utc>::from_timestamp_nanos(timestamp_unix_ns).to_rfc3339())
 }
 
 #[tokio::main]
+/// Starts the live NATS subscriber and appends decoded samples to CSV.
 async fn main() -> Result<(), Box<dyn Error>> {
     // match JSON config keys
     let subject_prefix = std::env::var("NATS_SUBJECT").unwrap_or_else(|_| "avenabox".to_string());

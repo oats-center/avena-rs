@@ -1,3 +1,9 @@
+//! Reads LabJack analog inputs in a simple polling loop.
+//!
+//! This example opens the configured LabJack, configures analog inputs, and
+//! prints AIN values repeatedly. It is intended as a quick hardware smoke test
+//! outside the NATS streaming pipeline.
+
 use ljmrs::handle::DeviceType;
 use ljmrs::{LJMError, LJMLibrary};
 use std::thread;
@@ -10,6 +16,7 @@ mod labjack;
 #[path = "../src/ljm_mode.rs"]
 mod ljm_mode;
 
+/// Runs the polling read example.
 fn main() -> Result<(), LJMError> {
     match example_env::load_example_env() {
         Ok(Some(path)) => println!("Loaded example env from {}", path.display()),

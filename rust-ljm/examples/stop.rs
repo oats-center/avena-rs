@@ -1,3 +1,8 @@
+//! Stops an active LabJack stream without running the normal self-test path.
+//!
+//! Use this helper when a previous process left a stream active and the normal
+//! examples or streamer cannot configure the device cleanly.
+
 use ljmrs::handle::{ConnectionType, DeviceType};
 use ljmrs::{LJMError, LJMLibrary};
 
@@ -6,6 +11,7 @@ mod example_env;
 #[path = "../src/ljm_mode.rs"]
 mod ljm_mode;
 
+/// Reads the direct Ethernet LabJack IP required by this recovery helper.
 fn labjack_ip_from_env() -> Result<String, LJMError> {
     std::env::var("LABJACK_IP")
         .ok()
@@ -14,6 +20,7 @@ fn labjack_ip_from_env() -> Result<String, LJMError> {
         .ok_or_else(|| LJMError::LibraryError("LABJACK_IP is required".to_string()))
 }
 
+/// Opens the configured LabJack and sends `stream_stop`.
 fn main() -> Result<(), LJMError> {
     match example_env::load_example_env() {
         Ok(Some(path)) => println!("Loaded example env from {}", path.display()),

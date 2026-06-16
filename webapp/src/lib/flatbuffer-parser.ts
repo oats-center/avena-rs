@@ -1,19 +1,32 @@
 import * as flatbuffers from 'flatbuffers';
 import { Scan } from './sampler.js';
 
+/** Decoded LabJack scan batch from the generated FlatBuffer schema. */
 export interface ScanData {
+    /** Unix nanosecond timestamp for the first sample in the batch. */
     firstSampleUnixNs: bigint;
+    /** Fixed interval between samples in the batch, in nanoseconds. */
     sampleIntervalNs: bigint;
+    /** Actual scan rate reported by the LabJack stream. */
     actualScanRateHz: number;
+    /** Monotonic per-run sequence number assigned by the streamer. */
     sequence: bigint;
+    /** Channel values contained in this scan batch. */
     values: Float64Array;
 }
 
+/** Converts a Unix nanosecond timestamp to JavaScript milliseconds. */
 function nsToMs(timestampNs: bigint): number {
     return Number(timestampNs) / 1_000_000;
 }
 
+/** Parser for streamer FlatBuffer scan payloads received over NATS. */
 export class FlatBufferParser {
+    /**
+     * Decodes a FlatBuffer scan payload into plot-ready sample data.
+     *
+     * Returns `null` when the payload cannot be decoded or has no values.
+     */
     parse(buffer: ArrayBuffer | Uint8Array): ScanData | null {
         try {
             const input = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
@@ -48,6 +61,12 @@ export class FlatBufferParser {
     }
 }
 
+/**
+ * Extracts sample values from a generated `Scan` object.
+ *
+ * The generated vector view is fast but can fail on misaligned websocket
+ * buffers, so this falls back to scalar access when needed.
+ */
 function extractValues(scan: Scan): Float64Array | null {
     try {
         const direct = scan.valuesArray();
@@ -75,6 +94,9 @@ function extractValues(scan: Scan): Float64Array | null {
     return values;
 }
 
+/**
+ * Calculates JavaScript millisecond timestamps for every value in a scan batch.
+ */
 export function calculateSourceSampleTimestamps(
     firstSampleUnixNs: bigint,
     sampleIntervalNs: bigint,

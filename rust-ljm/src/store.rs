@@ -1,3 +1,10 @@
+//! Archives LabJack scan batches from NATS JetStream into Parquet files.
+//!
+//! The archiver reads the same dashboard configuration as the streamer,
+//! subscribes to each configured channel with a durable pull consumer, decodes
+//! FlatBuffer scan payloads, reconstructs per-sample timestamps, and writes
+//! partitioned Parquet files with calibration metadata.
+
 use async_nats;
 use async_nats::ConnectOptions;
 use async_nats::jetstream::{
@@ -33,10 +40,12 @@ use sample_data_generated::sampler;
 use calibration::CalibrationSpec;
 use serde::{Deserialize, Serialize};
 
+/// Error type used by the archiver for fallible async setup and IO paths.
 type DynError = Box<dyn std::error::Error + Send + Sync>;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
+/// Raw top-level dashboard configuration loaded from NATS KV.
 struct NestedConfig {
     labjack_name: String,
     asset_number: u32,
@@ -57,6 +66,10 @@ struct NestedConfig {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
+/// Raw sensor settings section from the dashboard configuration.
+///
+/// The archiver keeps calibration definitions from this section and otherwise
+/// normalizes the same sampling fields used by the streamer.
 struct SensorConfig {
     #[serde(rename = "scans_per_read", alias = "scan_rate")]
     scans_per_read: i32,
@@ -71,6 +84,10 @@ struct SensorConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+/// Normalized archiver configuration used to manage channel loggers.
+///
+/// This shape combines stream identity, channel list, rotation cadence, and
+/// parsed per-channel calibrations.
 struct SampleConfig {
     scans_per_read: i32,
     scan_rate_hz: f64,
@@ -88,6 +105,11 @@ struct SampleConfig {
 }
 
 impl From<(SensorConfig, &SampleConfig)> for SampleConfig {
+    /// Replaces sensor-level settings while preserving source identity fields.
+    ///
+    /// This conversion is useful when a dashboard update changes only the
+    /// nested sensor section but the archiver should keep the existing
+    /// namespace and asset context.
     fn from((raw, base): (SensorConfig, &SampleConfig)) -> Self {
         let calibrations = parse_calibrations(&raw);
         SampleConfig {
@@ -108,6 +130,10 @@ impl From<(SensorConfig, &SampleConfig)> for SampleConfig {
     }
 }
 
+/// Parses dashboard calibration map keys into numeric LabJack channels.
+///
+/// Invalid channel keys are ignored after logging because one malformed
+/// calibration entry should not prevent unrelated channels from being archived.
 fn parse_calibrations(raw: &SensorConfig) -> HashMap<u8, CalibrationSpec> {
     let mut out = HashMap::new();
     let Some(calibrations) = raw.calibrations.as_ref() else {
@@ -126,6 +152,7 @@ fn parse_calibrations(raw: &SensorConfig) -> HashMap<u8, CalibrationSpec> {
     out
 }
 
+/// Converts the nested dashboard configuration into archiver runtime config.
 fn sample_config_from_nested(nested: NestedConfig) -> SampleConfig {
     let calibrations = parse_calibrations(&nested.sensor_settings);
     let raw = nested.sensor_settings;
@@ -146,6 +173,7 @@ fn sample_config_from_nested(nested: NestedConfig) -> SampleConfig {
     }
 }
 
+/// Returns a trimmed environment variable value when it is set and non-empty.
 fn env_nonempty(name: &str) -> Option<String> {
     std::env::var(name)
         .ok()
@@ -154,6 +182,7 @@ fn env_nonempty(name: &str) -> Option<String> {
 }
 
 #[derive(Debug, Clone)]
+/// Connection and key details for mirroring dashboard config from central NATS.
 struct CentralKvSyncConfig {
     servers: Vec<async_nats::ServerAddr>,
     creds_path: String,
@@ -162,7 +191,10 @@ struct CentralKvSyncConfig {
     domain: Option<String>,
 }
 
-fn central_kv_sync_config_from_env(creds_path: &str) -> Result<Option<CentralKvSyncConfig>, DynError> {
+/// Builds optional central KV mirroring settings from environment variables.
+fn central_kv_sync_config_from_env(
+    creds_path: &str,
+) -> Result<Option<CentralKvSyncConfig>, DynError> {
     let Some(raw_servers) =
         env_nonempty("CENTRAL_NATS_SERVERS").or_else(|| env_nonempty("CFG_NATS_SERVERS"))
     else {
@@ -178,7 +210,8 @@ fn central_kv_sync_config_from_env(creds_path: &str) -> Result<Option<CentralKvS
         .or_else(|| env_nonempty("CFG_KEY"))
         .unwrap_or_else(|| "unknown-site.macbook.unknown-source.config".to_string());
     let domain = env_nonempty("CENTRAL_JS_DOMAIN").or_else(|| env_nonempty("CFG_JS_DOMAIN"));
-    let creds_path = env_nonempty("CENTRAL_NATS_CREDS_FILE").unwrap_or_else(|| creds_path.to_string());
+    let creds_path =
+        env_nonempty("CENTRAL_NATS_CREDS_FILE").unwrap_or_else(|| creds_path.to_string());
 
     Ok(Some(CentralKvSyncConfig {
         servers,
@@ -189,6 +222,7 @@ fn central_kv_sync_config_from_env(creds_path: &str) -> Result<Option<CentralKvS
     }))
 }
 
+/// Connects to NATS with a credentials file and explicit server list.
 async fn connect_nats_with_creds(
     servers: Vec<async_nats::ServerAddr>,
     creds_path: String,
@@ -197,10 +231,8 @@ async fn connect_nats_with_creds(
     Ok(opts.connect(servers).await?)
 }
 
-async fn ensure_kv_bucket(
-    js: &jetstream::Context,
-    bucket: &str,
-) -> Result<kv::Store, DynError> {
+/// Opens or creates the KV bucket that contains dashboard configuration.
+async fn ensure_kv_bucket(js: &jetstream::Context, bucket: &str) -> Result<kv::Store, DynError> {
     if let Ok(store) = js.get_key_value(bucket).await {
         return Ok(store);
     }
@@ -213,12 +245,17 @@ async fn ensure_kv_bucket(
         .await?)
 }
 
+/// Copies the configured central KV entry into local KV during startup.
+///
+/// The remote payload is deserialized before writing locally so invalid central
+/// configuration does not replace the local copy.
 async fn mirror_central_kv_once(
     sync_cfg: &CentralKvSyncConfig,
     local_store: &kv::Store,
     local_key: &str,
 ) -> Result<(), DynError> {
-    let client = connect_nats_with_creds(sync_cfg.servers.clone(), sync_cfg.creds_path.clone()).await?;
+    let client =
+        connect_nats_with_creds(sync_cfg.servers.clone(), sync_cfg.creds_path.clone()).await?;
     let remote_js = nats_config::jetstream_context_for_domain(client, sync_cfg.domain.as_deref());
     let remote_store = ensure_kv_bucket(&remote_js, &sync_cfg.bucket).await?;
     let remote_entry = remote_store
@@ -231,7 +268,9 @@ async fn mirror_central_kv_once(
         None => true,
     };
     if should_put {
-        local_store.put(local_key, remote_entry.value.clone()).await?;
+        local_store
+            .put(local_key, remote_entry.value.clone())
+            .await?;
         println!(
             "[logger] Mirrored central KV '{}:{}' into local '{}'",
             sync_cfg.bucket, sync_cfg.key, local_key
@@ -240,22 +279,30 @@ async fn mirror_central_kv_once(
     Ok(())
 }
 
+/// Continuously mirrors central KV updates into the local configuration bucket.
+///
+/// This task reconnects after setup or watch failures and only writes updates
+/// that parse as a valid dashboard configuration.
 async fn run_central_kv_sync(
     sync_cfg: CentralKvSyncConfig,
     local_store: kv::Store,
     local_key: String,
 ) {
     loop {
-        let client = match connect_nats_with_creds(sync_cfg.servers.clone(), sync_cfg.creds_path.clone()).await {
-            Ok(client) => client,
-            Err(err) => {
-                let err = err.to_string();
-                eprintln!("[logger] Central KV connect failed: {err}");
-                tokio::time::sleep(Duration::from_secs(5)).await;
-                continue;
-            }
-        };
-        let remote_js = nats_config::jetstream_context_for_domain(client, sync_cfg.domain.as_deref());
+        let client =
+            match connect_nats_with_creds(sync_cfg.servers.clone(), sync_cfg.creds_path.clone())
+                .await
+            {
+                Ok(client) => client,
+                Err(err) => {
+                    let err = err.to_string();
+                    eprintln!("[logger] Central KV connect failed: {err}");
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    continue;
+                }
+            };
+        let remote_js =
+            nats_config::jetstream_context_for_domain(client, sync_cfg.domain.as_deref());
         let remote_store = match ensure_kv_bucket(&remote_js, &sync_cfg.bucket).await {
             Ok(store) => store,
             Err(err) => {
@@ -287,19 +334,29 @@ async fn run_central_kv_sync(
                         continue;
                     }
                     match local_store.entry(local_key.as_str()).await {
-                        Ok(Some(local_entry)) if local_entry.value.as_ref() == entry.value.as_ref() => {}
+                        Ok(Some(local_entry))
+                            if local_entry.value.as_ref() == entry.value.as_ref() => {}
                         Ok(_) => {
-                            if let Err(err) = local_store.put(local_key.as_str(), entry.value.clone()).await {
+                            if let Err(err) = local_store
+                                .put(local_key.as_str(), entry.value.clone())
+                                .await
+                            {
                                 eprintln!("[logger] Failed to mirror central KV update: {err}");
                             } else {
-                                println!("[logger] Mirrored central KV rev {} into local KV", entry.revision);
+                                println!(
+                                    "[logger] Mirrored central KV rev {} into local KV",
+                                    entry.revision
+                                );
                             }
                         }
                         Err(err) => eprintln!("[logger] Failed to inspect local KV key: {err}"),
                     }
                 }
                 Ok(entry) => {
-                    eprintln!("[logger] Ignoring central KV {:?} for '{}'", entry.operation, entry.key);
+                    eprintln!(
+                        "[logger] Ignoring central KV {:?} for '{}'",
+                        entry.operation, entry.key
+                    );
                 }
                 Err(err) => {
                     eprintln!("[logger] Central KV watch error: {err}");
@@ -312,6 +369,10 @@ async fn run_central_kv_sync(
 }
 
 #[allow(dead_code)]
+/// Buffered writer for one channel's Parquet file.
+///
+/// Rows are buffered to form row groups. Files are partitioned by asset, UTC
+/// date, channel, and monotonically increasing part index.
 struct ParquetLogger {
     writer: SerializedFileWriter<fs::File>,
     buffer: Vec<(i64, f64)>,
@@ -322,6 +383,11 @@ struct ParquetLogger {
     file_index: usize,
 }
 
+/// Runtime state for one active channel consumer and writer task.
+///
+/// The archiver keeps this state so KV updates can abort removed channels,
+/// rotate calibration metadata, or respawn consumers when subject identity
+/// changes.
 struct ChannelLogger {
     handle: tokio::task::JoinHandle<()>,
     calibration_tx: watch::Sender<CalibrationSpec>,
@@ -334,6 +400,10 @@ struct ChannelLogger {
 }
 
 impl ParquetLogger {
+    /// Creates a new Parquet file for one asset, channel, date, and part index.
+    ///
+    /// The calibration spec is written into file-level key-value metadata so
+    /// exported data can be interpreted without consulting the live config.
     fn new(
         asset: u32,
         channel: u8,
@@ -381,6 +451,7 @@ impl ParquetLogger {
         }
     }
 
+    /// Buffers one timestamped value and flushes when the row group is full.
     fn write_row(&mut self, timestamp_unix_ns: i64, val: f64) {
         self.buffer.push((timestamp_unix_ns, val));
         if self.buffer.len() >= self.max_rows {
@@ -388,6 +459,7 @@ impl ParquetLogger {
         }
     }
 
+    /// Writes the current buffer as a Parquet row group.
     fn flush(&mut self) {
         if self.buffer.is_empty() {
             return;
@@ -420,6 +492,7 @@ impl ParquetLogger {
         self.buffer.clear();
     }
 
+    /// Flushes buffered rows and closes the Parquet writer.
     fn close(mut self) {
         self.flush();
         if let Err(e) = self.writer.close() {
@@ -428,7 +501,7 @@ impl ParquetLogger {
     }
 }
 
-/// Scan channel/day directory to find the next available parquet file index
+/// Scans a channel/day directory to find the next available Parquet file index.
 fn next_file_index(parquet_root: &Path, asset: u32, channel: u8, date: NaiveDate) -> usize {
     let dir = parquet_root
         .join(format!("asset{:03}", asset))
@@ -453,6 +526,7 @@ fn next_file_index(parquet_root: &Path, asset: u32, channel: u8, date: NaiveDate
     max_idx + 1
 }
 
+/// Converts source identity text into a durable consumer-name token.
 fn sanitize_consumer_token(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
     for ch in raw.trim().chars() {
@@ -471,6 +545,7 @@ fn sanitize_consumer_token(raw: &str) -> String {
     }
 }
 
+/// Builds the durable JetStream consumer name for one archived channel.
 fn archiver_consumer_name(cfg: &SampleConfig, channel: u8) -> String {
     format!(
         "archiver-{}-{}-{}-{}",
@@ -485,6 +560,11 @@ fn archiver_consumer_name(cfg: &SampleConfig, channel: u8) -> String {
     )
 }
 
+/// Decodes one FlatBuffer scan payload and writes its samples to Parquet.
+///
+/// The payload contains the first sample timestamp plus a fixed interval, so
+/// this function reconstructs each sample timestamp and rotates files when the
+/// UTC date changes.
 fn process_scan_payload(
     payload: &[u8],
     channel: u8,
@@ -509,8 +589,7 @@ fn process_scan_payload(
             Some(previous) if sequence <= previous => {
                 println!(
                     "[logger] Channel {channel:02} sequence reset/new run: previous {}, current {}",
-                    previous,
-                    sequence
+                    previous, sequence
                 );
             }
             _ => {}
@@ -531,16 +610,18 @@ fn process_scan_payload(
                     Err(err) => {
                         eprintln!(
                             "[logger] Channel {channel:02} timestamp overflow at sequence {} sample {}: {}",
-                            sequence,
-                            index,
-                            err
+                            sequence, index, err
                         );
                         break;
                     }
                 };
 
                 let sample_date = timestamp_ns_to_utc_date(timestamp_unix_ns);
-                if logger.as_ref().map(|l| l.date != sample_date).unwrap_or(true) {
+                if logger
+                    .as_ref()
+                    .map(|l| l.date != sample_date)
+                    .unwrap_or(true)
+                {
                     if let Some(l) = logger.take() {
                         l.close();
                         println!("[logger] Closed file {}", *file_index);
@@ -566,6 +647,10 @@ fn process_scan_payload(
     }
 }
 
+/// Starts the durable pull consumer and writer task for one channel.
+///
+/// The returned [`ChannelLogger`] lets the config watcher update calibration
+/// metadata or abort and respawn the task when channel identity changes.
 async fn spawn_channel_logger(
     js: jetstream::Context,
     stream_name: String,
@@ -716,6 +801,7 @@ async fn spawn_channel_logger(
     })
 }
 
+/// Computes the Unix timestamp for a sample index within a FlatBuffer scan.
 fn sample_timestamp_ns(
     first_sample_unix_ns: u64,
     sample_interval_ns: u64,
@@ -727,11 +813,13 @@ fn sample_timestamp_ns(
     i64::try_from(timestamp).map_err(|_| "sample timestamp exceeds i64 range".to_string())
 }
 
+/// Converts a Unix nanosecond timestamp to its UTC calendar date.
 fn timestamp_ns_to_utc_date(timestamp_unix_ns: i64) -> NaiveDate {
     DateTime::<Utc>::from_timestamp_nanos(timestamp_unix_ns).date_naive()
 }
 
 #[tokio::main]
+/// Starts the archiver service and reacts to configuration updates.
 async fn main() -> Result<(), DynError> {
     let servers = nats_config::servers_from_env()
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
@@ -799,7 +887,8 @@ async fn main() -> Result<(), DynError> {
             cfg.rotate_secs,
             calibration,
             parquet_root.clone(),
-        ).await?;
+        )
+        .await?;
         active.insert(*ch, h);
     }
 
@@ -854,7 +943,9 @@ async fn main() -> Result<(), DynError> {
                                         new_cfg.rotate_secs,
                                         calibration,
                                         parquet_root.clone(),
-                                    ).await {
+                                    )
+                                    .await
+                                    {
                                         Ok(h) => {
                                             active.insert(*ch, h);
                                         }
@@ -900,7 +991,9 @@ async fn main() -> Result<(), DynError> {
                                             new_cfg.rotate_secs,
                                             calibration,
                                             parquet_root.clone(),
-                                        ).await {
+                                        )
+                                        .await
+                                        {
                                             Ok(h) => {
                                                 active.insert(*ch, h);
                                             }

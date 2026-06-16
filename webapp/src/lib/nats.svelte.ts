@@ -1,14 +1,17 @@
 import { Kvm } from "@nats-io/kv";
 import { wsconnect, credsAuthenticator, type NatsConnection } from "@nats-io/nats-core";
 
+/** Removes a trailing slash from a websocket URL string. */
 function stripTrailingSlash(url: string): string {
   return url.endsWith("/") ? url.slice(0, -1) : url;
 }
 
+/** Returns true when a server string already includes a URL scheme. */
 function hasScheme(server: string): boolean {
   return /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(server);
 }
 
+/** Chooses the websocket scheme that matches the current page security. */
 function defaultWebsocketScheme(): "ws" | "wss" {
   if (typeof window !== "undefined" && window.location.protocol === "https:") {
     return "wss";
@@ -16,6 +19,7 @@ function defaultWebsocketScheme(): "ws" | "wss" {
   return "ws";
 }
 
+/** Normalizes user-entered NATS server text into a websocket URL. */
 function normalizeWebsocketServer(serverName: string): string {
   const trimmed = serverName.trim();
   if (!trimmed) return "";
@@ -33,6 +37,12 @@ function normalizeWebsocketServer(serverName: string): string {
   }
 }
 
+/**
+ * Builds websocket endpoint candidates for a NATS server value.
+ *
+ * When the user omits a scheme, both `ws` and `wss` variants are tried so the
+ * dashboard can connect from local and HTTPS deployments.
+ */
 function buildServerCandidates(serverName: string): string[] {
   const normalized = normalizeWebsocketServer(serverName);
   if (!normalized) return [];
@@ -55,9 +65,13 @@ function buildServerCandidates(serverName: string): string[] {
   return Array.from(candidates);
 }
 
+/** Connected NATS client plus Key-Value manager used by dashboard actions. */
 export class NatsService {
+  /** Active websocket NATS connection. */
   public connection: NatsConnection;
+  /** Key-Value manager bound to the active connection. */
   public kvm: Kvm;
+  /** Creates a wrapper around an established NATS connection and KV manager. */
   constructor (
     connection: NatsConnection,
     kvm: Kvm
@@ -67,7 +81,7 @@ export class NatsService {
   }
 }
 
-//connects to a nats server & initialized kvm
+/** Connects to NATS over websocket and initializes KV access. */
 export async function connect(serverName: string, credentialsContent?: string): Promise<NatsService | null> {
   const servers = buildServerCandidates(serverName);
   if (servers.length === 0) return null;
@@ -107,7 +121,7 @@ export async function connect(serverName: string, credentialsContent?: string): 
   return null;
 }
 
-//gets entire list of keys that bucket contains
+/** Lists keys in a NATS KV bucket, optionally filtered by a subject pattern. */
 export async function getKeys(nats: NatsService, bucket: string, filter?: string): Promise<string[]> {
   if (!nats) throw new Error("NATS connection is not initialized");
   
@@ -122,7 +136,7 @@ export async function getKeys(nats: NatsService, bucket: string, filter?: string
   return keysList;
 }
 
-//gets one value in the given bucket at the given key
+/** Reads one string value from a NATS KV bucket. */
 export async function getKeyValue(nats: NatsService, bucket: string, key: string): Promise<string> {
   if (!nats) throw new Error("Nats connection is not initialized");
   
@@ -134,15 +148,14 @@ export async function getKeyValue(nats: NatsService, bucket: string, key: string
   return valStr;
 }
 
-
-//puts a values in the given bucket at the given key
+/** Writes one string value to a NATS KV bucket. */
 export async function putKeyValue(nats: NatsService, bucket: string, key: string, newValue: string): Promise<void> {
   if (!nats) throw new Error("Nats connection is not initialized");
   const kv = await nats.kvm.open(bucket);
   await kv.put(key, newValue);
 }
 
-//updates a configuration in NATS using credentials
+/** Connects with credentials and writes a JSON configuration object to KV. */
 export async function updateConfig(serverName: string, credentialsContent: string, bucket: string, key: string, configData: any): Promise<boolean> {
   try {
     const nats = await connect(serverName, credentialsContent);
@@ -162,7 +175,7 @@ export async function updateConfig(serverName: string, credentialsContent: strin
   }
 }
 
-//deletes a key from NATS bucket using credentials
+/** Connects with credentials and deletes one key from a NATS KV bucket. */
 export async function deleteKey(serverName: string, credentialsContent: string, bucket: string, key: string): Promise<boolean> {
   try {
     const nats = await connect(serverName, credentialsContent);

@@ -1,5 +1,11 @@
+//! NATS subject naming helpers for LabJack live data and exports.
+//!
+//! The code supports the original asset-number subject layout and the newer
+//! structured namespace that includes site, box, and source identity.
+
 #![allow(dead_code)]
 
+/// Converts arbitrary identity text into a NATS subject token.
 fn sanitize_token(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
     for ch in raw.trim().chars() {
@@ -18,26 +24,30 @@ fn sanitize_token(raw: &str) -> String {
     }
 }
 
+/// Formats a LabJack channel number as the `chNN` token used in subjects.
 pub fn pad_channel(ch: u8) -> String {
     format!("ch{ch:02}")
 }
 
+/// Formats an asset number with the three-digit legacy subject width.
 pub fn pad_asset(n: u32) -> String {
     format!("{n:03}")
 }
 
+/// Decides whether a config should use the structured subject namespace.
 fn uses_structured_namespace(
     nats_subject: &str,
     site_id: Option<&str>,
     box_id: Option<&str>,
     source_id: Option<&str>,
 ) -> bool {
-    nats_subject.trim() == "avenars"
-        || site_id.is_some()
-        || box_id.is_some()
-        || source_id.is_some()
+    nats_subject.trim() == "avenars" || site_id.is_some() || box_id.is_some() || source_id.is_some()
 }
 
+/// Builds the live-data subject for one LabJack channel.
+///
+/// Legacy configs use `<root>.<asset>.data.<channel>`. Structured configs use
+/// `<root>.<site>.<box>.<source>.live.<channel>`.
 pub fn live_labjack_channel_subject(
     nats_subject: &str,
     asset: u32,
@@ -68,9 +78,13 @@ pub fn live_labjack_channel_subject(
 
     let _ = source_type;
 
-    format!("{root}.{site_id}.{box_id}.{source_id}.live.{}", pad_channel(channel))
+    format!(
+        "{root}.{site_id}.{box_id}.{source_id}.live.{}",
+        pad_channel(channel)
+    )
 }
 
+/// Builds the JetStream subject wildcard for all live channels from one source.
 pub fn live_labjack_stream_subject(
     nats_subject: &str,
     site_id: Option<&str>,
@@ -93,6 +107,7 @@ pub fn live_labjack_stream_subject(
     format!("{root}.{site_id}.{box_id}.{source_id}.live.*")
 }
 
+/// Builds the NATS worker request subject for archive exports.
 pub fn archive_export_request_subject(
     nats_subject: &str,
     site_id: Option<&str>,
@@ -110,6 +125,10 @@ pub fn archive_export_request_subject(
     format!("{root}.{site}.{box_id}.{source_id}.export.request")
 }
 
+/// Checks whether an existing stream subject covers a desired namespace.
+///
+/// This keeps stream reconciliation tolerant of older legacy subject patterns
+/// while still detecting incompatible configured streams.
 pub fn stream_subject_is_compatible(existing: &str, desired_namespace: &str) -> bool {
     if existing == desired_namespace {
         return true;

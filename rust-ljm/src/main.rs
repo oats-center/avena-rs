@@ -1,3 +1,11 @@
+//! Streams LabJack analog input samples into NATS JetStream.
+//!
+//! The streamer reads its active configuration from a local NATS KV bucket,
+//! optionally mirrors that entry from a central NATS deployment, opens the
+//! configured LabJack, and publishes FlatBuffer scan batches per channel.
+//! Runtime configuration changes stop the active LabJack stream and restart it
+//! with the new channel list, scan rate, and subject namespace.
+
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::{mpsc, watch};
@@ -24,6 +32,10 @@ use sample_data_generated::sampler::{self, ScanArgs};
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
+/// Raw top-level configuration document stored in NATS KV.
+///
+/// The web dashboard writes this nested shape. The streamer normalizes it into
+/// [`SampleConfig`] before applying it to LabJack and NATS runtime state.
 struct NestedConfig {
     labjack_name: String,
     asset_number: u32,
@@ -44,6 +56,11 @@ struct NestedConfig {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
+/// Raw sensor settings section from the dashboard configuration document.
+///
+/// Field aliases preserve compatibility with older configuration names while
+/// letting the runtime use the clearer `scans_per_read` and `scan_rate_hz`
+/// names internally.
 struct SensorSettings {
     #[serde(rename = "scans_per_read", alias = "scan_rate")]
     scans_per_read: i32,
@@ -57,6 +74,11 @@ struct SensorSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+/// Normalized streamer configuration used by the sampling loop.
+///
+/// This is the compact runtime shape derived from the dashboard's nested JSON.
+/// Equality is used by the KV watcher to decide whether a new value should
+/// restart the LabJack stream.
 struct SampleConfig {
     labjack_on_off: bool,
     scans_per_read: i32,
@@ -73,6 +95,7 @@ struct SampleConfig {
     rotate_secs: u64,
 }
 
+/// Converts dashboard JSON shape into the runtime sampling configuration.
 fn sample_config_from_nested(nested: NestedConfig) -> SampleConfig {
     let raw = nested.sensor_settings;
     SampleConfig {
@@ -92,6 +115,11 @@ fn sample_config_from_nested(nested: NestedConfig) -> SampleConfig {
     }
 }
 
+/// Parses a NATS KV JSON value into a validated runtime sampling config.
+///
+/// This is the deserialization boundary for streamer configuration. It accepts
+/// the dashboard's nested schema and reports JSON errors as `LJMError` values so
+/// the rest of the streamer can use one error type.
 fn sample_config_from_json(bytes: &[u8]) -> Result<SampleConfig, LJMError> {
     let nested_cfg: NestedConfig = serde_json::from_slice(bytes)
         .map_err(|e| LJMError::LibraryError(format!("Config JSON parse error: {}", e)))?;
@@ -99,6 +127,7 @@ fn sample_config_from_json(bytes: &[u8]) -> Result<SampleConfig, LJMError> {
 }
 
 #[derive(Debug, Clone)]
+/// Connection and key details for mirroring configuration from central NATS.
 struct CentralKvSyncConfig {
     servers: Vec<async_nats::ServerAddr>,
     creds_path: String,
@@ -107,27 +136,33 @@ struct CentralKvSyncConfig {
     domain: Option<String>,
 }
 
+/// RAII guard that stops streaming and closes the LabJack handle on drop.
+///
+/// The sampling loop exits through several error and shutdown paths, so cleanup
+/// is tied to ownership of the handle instead of each branch remembering to
+/// close the device.
 struct LabJackGuard {
     handle: i32,
 }
 
 impl Drop for LabJackGuard {
+    /// Stops any active LabJack stream and closes the device handle.
     fn drop(&mut self) {
         let _ = LJMLibrary::stream_stop(self.handle);
         let _ = LJMLibrary::close_jack(self.handle);
     }
 }
 
+/// Reads the optional JetStream stream byte limit from `STREAM_MAX_BYTES`.
+///
+/// A missing value returns `-1`, matching JetStream's unbounded limit.
 fn stream_max_bytes_from_env() -> Result<i64, LJMError> {
     let Some(raw) = env_nonempty("STREAM_MAX_BYTES") else {
         return Ok(-1);
     };
 
     let parsed = raw.parse::<i64>().map_err(|e| {
-        LJMError::LibraryError(format!(
-            "Invalid STREAM_MAX_BYTES value '{}': {}",
-            raw, e
-        ))
+        LJMError::LibraryError(format!("Invalid STREAM_MAX_BYTES value '{}': {}", raw, e))
     })?;
 
     if parsed <= 0 {
@@ -140,6 +175,7 @@ fn stream_max_bytes_from_env() -> Result<i64, LJMError> {
     Ok(parsed)
 }
 
+/// Reads the repeated LabJack failure threshold before the streamer exits.
 fn max_labjack_failures_from_env() -> usize {
     std::env::var("STREAMER_MAX_LABJACK_FAILURES")
         .ok()
@@ -148,6 +184,7 @@ fn max_labjack_failures_from_env() -> usize {
         .unwrap_or(5)
 }
 
+/// Reads the delay between sampler restarts after LabJack read/start failures.
 fn labjack_retry_delay_from_env() -> Duration {
     let secs = std::env::var("STREAMER_LABJACK_RETRY_DELAY_SECS")
         .ok()
@@ -156,6 +193,10 @@ fn labjack_retry_delay_from_env() -> Duration {
     Duration::from_secs(secs)
 }
 
+/// Creates or reconciles the JetStream stream used for live LabJack samples.
+///
+/// The stream is configured with file storage, limit retention, old-message
+/// discard, and the exact subject wildcard needed for the current source.
 async fn ensure_stream_exists(
     js: &jetstream::Context,
     stream_name: &str,
@@ -186,11 +227,7 @@ async fn ensure_stream_exists(
 
         println!(
             "Reconciling JetStream stream '{}': subjects {:?} -> {:?}, max_bytes {} -> {}.",
-            stream_name,
-            info.config.subjects,
-            desired_subjects,
-            info.config.max_bytes,
-            max_bytes
+            stream_name, info.config.subjects, desired_subjects, info.config.max_bytes, max_bytes
         );
     }
 
@@ -221,6 +258,7 @@ async fn ensure_stream_exists(
     Ok(())
 }
 
+/// Opens or creates the local configuration KV bucket.
 async fn ensure_kv_bucket(js: &jetstream::Context, bucket: &str) -> Result<kv::Store, LJMError> {
     if let Ok(store) = js.get_key_value(bucket).await {
         println!("KV bucket '{}' already exists.", bucket);
@@ -237,6 +275,7 @@ async fn ensure_kv_bucket(js: &jetstream::Context, bucket: &str) -> Result<kv::S
         .map_err(|e| LJMError::LibraryError(format!("Failed to create KV bucket: {}", e)))
 }
 
+/// Loads and parses the initial streamer configuration from local NATS KV.
 async fn load_config_from_kv(store: &kv::Store, key: &str) -> Result<SampleConfig, LJMError> {
     match store.entry(key).await {
         Ok(Some(entry)) => sample_config_from_json(entry.value.as_ref()),
@@ -251,6 +290,7 @@ async fn load_config_from_kv(store: &kv::Store, key: &str) -> Result<SampleConfi
     }
 }
 
+/// Returns a trimmed environment variable value when it is set and non-empty.
 fn env_nonempty(name: &str) -> Option<String> {
     std::env::var(name)
         .ok()
@@ -258,10 +298,15 @@ fn env_nonempty(name: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+/// Returns the credentials file used for local NATS connections.
 fn local_creds_path_from_env() -> String {
     std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| "apt.creds".into())
 }
 
+/// Builds central-to-local KV mirroring settings from environment variables.
+///
+/// If no central server list is configured, the streamer runs against local KV
+/// only and this returns `Ok(None)`.
 fn central_kv_sync_config_from_env() -> Result<Option<CentralKvSyncConfig>, LJMError> {
     let Some(raw_servers) =
         env_nonempty("CENTRAL_NATS_SERVERS").or_else(|| env_nonempty("CFG_NATS_SERVERS"))
@@ -271,7 +316,8 @@ fn central_kv_sync_config_from_env() -> Result<Option<CentralKvSyncConfig>, LJME
 
     let servers = nats_config::servers_from_env_var("CENTRAL_NATS_SERVERS", &raw_servers)
         .map_err(LJMError::LibraryError)?;
-    let creds_path = env_nonempty("CENTRAL_NATS_CREDS_FILE").unwrap_or_else(local_creds_path_from_env);
+    let creds_path =
+        env_nonempty("CENTRAL_NATS_CREDS_FILE").unwrap_or_else(local_creds_path_from_env);
     let bucket = env_nonempty("CENTRAL_CFG_BUCKET")
         .or_else(|| env_nonempty("CFG_BUCKET"))
         .unwrap_or_else(|| "avenabox".to_string());
@@ -289,12 +335,14 @@ fn central_kv_sync_config_from_env() -> Result<Option<CentralKvSyncConfig>, LJME
     }))
 }
 
+/// Performs one central-to-local KV mirror pass during streamer bootstrap.
 async fn mirror_central_kv_once(
     sync_cfg: &CentralKvSyncConfig,
     local_store: &kv::Store,
     local_key: &str,
 ) -> Result<bool, LJMError> {
-    let client = connect_nats_with_creds(sync_cfg.servers.clone(), sync_cfg.creds_path.clone()).await?;
+    let client =
+        connect_nats_with_creds(sync_cfg.servers.clone(), sync_cfg.creds_path.clone()).await?;
     let remote_js = nats_config::jetstream_context_for_domain(client, sync_cfg.domain.as_deref());
     let remote_store = ensure_kv_bucket(&remote_js, &sync_cfg.bucket).await?;
     mirror_remote_kv_entry_to_local(
@@ -307,6 +355,7 @@ async fn mirror_central_kv_once(
     .await
 }
 
+/// Connects to NATS using a credentials file and explicit server list.
 async fn connect_nats_with_creds(
     servers: Vec<async_nats::ServerAddr>,
     creds_path: String,
@@ -320,6 +369,10 @@ async fn connect_nats_with_creds(
         .map_err(|e| LJMError::LibraryError(format!("NATS connect failed: {}", e)))
 }
 
+/// Copies one remote KV configuration entry into the local KV bucket if needed.
+///
+/// The remote value is parsed before it is written locally so an invalid central
+/// configuration cannot replace the last known local configuration.
 async fn mirror_remote_kv_entry_to_local(
     remote_store: &kv::Store,
     remote_bucket: &str,
@@ -372,13 +425,15 @@ async fn mirror_remote_kv_entry_to_local(
 
     println!(
         "[central_kv_sync] mirrored '{}:{}' into local '{}'",
-        remote_bucket,
-        remote_key,
-        local_key
+        remote_bucket, remote_key, local_key
     );
     Ok(true)
 }
 
+/// Watches central NATS KV and mirrors valid updates into the local bucket.
+///
+/// This task reconnects after connection, bucket, or watch failures and exits
+/// when the shared shutdown channel is set.
 async fn run_central_kv_sync(
     sync_cfg: CentralKvSyncConfig,
     local_store: kv::Store,
@@ -429,15 +484,14 @@ async fn run_central_kv_sync(
             }
         };
 
-        if let Err(err) =
-            mirror_remote_kv_entry_to_local(
-                &remote_store,
-                &sync_cfg.bucket,
-                &sync_cfg.key,
-                &local_store,
-                &local_key,
-            )
-                .await
+        if let Err(err) = mirror_remote_kv_entry_to_local(
+            &remote_store,
+            &sync_cfg.bucket,
+            &sync_cfg.key,
+            &local_store,
+            &local_key,
+        )
+        .await
         {
             eprintln!("[central_kv_sync] initial mirror failed: {:?}", err);
         }
@@ -538,6 +592,10 @@ async fn run_central_kv_sync(
     }
 }
 
+/// Watches local NATS KV for streamer configuration updates.
+///
+/// Parsed changes are sent through a watch channel so the active sampler can
+/// stop cleanly and restart with the new settings.
 async fn watch_kv_config(
     store: kv::Store,
     key: String,
@@ -594,6 +652,11 @@ use std::sync::{
 };
 
 #[derive(Debug, Clone, Copy)]
+/// Tracks timestamp continuity for successive LabJack stream batches.
+///
+/// The LabJack stream API returns value batches without per-sample timestamps,
+/// so the streamer derives the first timestamp and sequence number for each
+/// published batch from the actual stream rate.
 struct StreamClock {
     sample_interval_ns: u64,
     next_first_sample_unix_ns: u64,
@@ -603,6 +666,7 @@ struct StreamClock {
 }
 
 impl StreamClock {
+    /// Creates a stream clock from a nanosecond sample interval.
     fn new(sample_interval_ns: u64) -> Self {
         Self {
             sample_interval_ns,
@@ -613,6 +677,10 @@ impl StreamClock {
         }
     }
 
+    /// Returns the first sample timestamp and sequence for the next batch.
+    ///
+    /// The first batch is anchored to wall-clock time minus the batch span. Each
+    /// later batch advances from the previously expected next timestamp.
     fn next_batch(&mut self, batch_samples: usize) -> Result<(u64, u64), LJMError> {
         if batch_samples == 0 {
             return Err(LJMError::LibraryError(
@@ -647,6 +715,7 @@ impl StreamClock {
     }
 }
 
+/// Returns the current Unix timestamp in nanoseconds.
 fn unix_time_now_ns() -> Result<u64, LJMError> {
     let duration = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -655,6 +724,7 @@ fn unix_time_now_ns() -> Result<u64, LJMError> {
         .map_err(|_| LJMError::LibraryError("system time nanoseconds overflowed u64".to_string()))
 }
 
+/// Converts the actual LabJack scan rate into a rounded sample interval.
 fn derive_sample_interval_ns(actual_rate: f64) -> Result<u64, LJMError> {
     if !actual_rate.is_finite() || actual_rate <= 0.0 {
         return Err(LJMError::LibraryError(format!(
@@ -672,6 +742,12 @@ fn derive_sample_interval_ns(actual_rate: f64) -> Result<u64, LJMError> {
     Ok(interval as u64)
 }
 
+/// Runs one LabJack streaming session with a fixed configuration.
+///
+/// The session configures LabJack analog inputs, starts the hardware stream,
+/// reads batches on a blocking thread, transposes samples by channel, encodes
+/// FlatBuffers, and publishes them to NATS until config change, shutdown, or a
+/// stream error occurs.
 async fn sample_with_config(
     run_id: usize,
     cfg: SampleConfig,
@@ -885,6 +961,10 @@ async fn sample_with_config(
     }
 }
 
+/// Supervises LabJack sampling across config changes and transient failures.
+///
+/// Returns `true` when repeated LabJack failures reached the configured limit,
+/// which lets the process exit cleanly instead of relying on service restarts.
 async fn run_sampler(
     mut config_rx: tokio::sync::watch::Receiver<SampleConfig>,
     mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
@@ -974,6 +1054,7 @@ async fn run_sampler(
 }
 
 #[tokio::main]
+/// Starts the streamer service, configuration watchers, and sampler supervisor.
 async fn main() -> Result<(), LJMError> {
     let creds_path = std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| "apt.creds".into());
     let sample_opts = ConnectOptions::with_credentials_file(creds_path.clone())

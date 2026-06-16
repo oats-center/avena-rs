@@ -1,3 +1,8 @@
+//! Minimal WebSocket client for testing direct exporter mode.
+//!
+//! The client sends a fixed CSV export request, writes binary CSV chunks to
+//! `target/export_test.csv`, and prints JSON control frames from the exporter.
+
 use std::{fs::File, io::Write, path::PathBuf};
 
 use anyhow::Result;
@@ -6,6 +11,7 @@ use serde_json::json;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 #[tokio::main]
+/// Connects to the exporter WebSocket and saves a sample CSV export.
 async fn main() -> Result<()> {
     let ws_url =
         std::env::var("EXPORT_WS_URL").unwrap_or_else(|_| "ws://127.0.0.1:9001/export".into());

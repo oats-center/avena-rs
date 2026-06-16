@@ -1,3 +1,10 @@
+//! Exports archived Parquet data as streamed CSV.
+//!
+//! The exporter can run as a direct WebSocket server or as a NATS worker. Both
+//! modes share the same export request format and CSV scanning logic: they read
+//! channel/date Parquet partitions, apply calibration metadata, and stream
+//! framed CSV chunks back to the caller.
+
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -30,17 +37,26 @@ mod subjects;
 
 use calibration::CalibrationSpec;
 
+/// NATS header used to label each export response frame.
 const EXPORT_FRAME_HEADER: &str = "Avena-Export-Frame";
+/// Frame name for export metadata such as file name and content type.
 const EXPORT_FRAME_META: &str = "meta";
+/// Frame name for a binary CSV payload chunk.
 const EXPORT_FRAME_CHUNK: &str = "chunk";
+/// Frame name for final byte count and missing-channel summary.
 const EXPORT_FRAME_SUMMARY: &str = "summary";
+/// Frame name indicating the export stream is complete.
 const EXPORT_FRAME_COMPLETE: &str = "complete";
+/// Frame name for request or processing errors.
 const EXPORT_FRAME_ERROR: &str = "error";
+/// Default runtime mode used when `EXPORTER_MODE` is unset.
 const DEFAULT_EXPORTER_MODE: &str = "worker";
+/// Default WebSocket listen address for direct mode.
 const DEFAULT_EXPORTER_ADDR: &str = "0.0.0.0:9001";
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Metadata frame sent before CSV chunks.
 struct MetaFrame<'a> {
     #[serde(rename = "type")]
     frame_type: &'static str,
@@ -50,6 +66,7 @@ struct MetaFrame<'a> {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Summary frame sent after all CSV chunks are delivered.
 struct SummaryFrame<'a> {
     #[serde(rename = "type")]
     frame_type: &'static str,
@@ -58,6 +75,7 @@ struct SummaryFrame<'a> {
 }
 
 #[derive(Serialize)]
+/// Error frame sent when an export request cannot be served.
 struct ErrorFrame<'a> {
     #[serde(rename = "type")]
     frame_type: &'static str,
@@ -65,18 +83,23 @@ struct ErrorFrame<'a> {
 }
 
 #[derive(Clone)]
+/// Shared Axum/NATS worker state.
 struct AppState {
     mode: ExporterMode,
     parquet_root: Arc<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Exporter runtime mode.
 enum ExporterMode {
+    /// Serve export requests directly over a local WebSocket endpoint.
     Direct,
+    /// Subscribe to NATS export request subjects and reply with framed chunks.
     Worker,
 }
 
 impl ExporterMode {
+    /// Reads and validates `EXPORTER_MODE`.
     fn from_env() -> Result<Self> {
         match std::env::var("EXPORTER_MODE")
             .unwrap_or_else(|_| DEFAULT_EXPORTER_MODE.to_string())
@@ -95,12 +118,19 @@ impl ExporterMode {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "lowercase")]
+/// Requested export format.
 enum ExportFormat {
+    /// Stream a generated CSV file.
     Csv,
+    /// Placeholder for future Parquet passthrough support.
     Parquet,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
+/// Export request accepted by both WebSocket and NATS worker modes.
+///
+/// The time range is expressed as RFC 3339 strings. `ack_subject` is used only
+/// by NATS worker mode to apply simple receiver-driven backpressure.
 struct ExportRequest {
     asset: u32,
     channels: Vec<u8>,
@@ -112,11 +142,13 @@ struct ExportRequest {
     ack_subject: Option<String>,
 }
 
+/// Default export format used when a request omits `format`.
 fn default_format() -> ExportFormat {
     ExportFormat::Csv
 }
 
 #[tokio::main]
+/// Starts the exporter in direct WebSocket mode or NATS worker mode.
 async fn main() -> Result<()> {
     let mode = ExporterMode::from_env()?;
     let listen_addr =
@@ -158,6 +190,7 @@ async fn main() -> Result<()> {
     }
 }
 
+/// Connects to NATS using the standard credentials and server environment.
 async fn connect_nats_from_env() -> Result<async_nats::Client> {
     let creds_path = std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| "apt.creds".into());
     let opts = ConnectOptions::with_credentials_file(creds_path)
@@ -171,6 +204,7 @@ async fn connect_nats_from_env() -> Result<async_nats::Client> {
     Ok(client)
 }
 
+/// Reads the box identifier required to construct the worker request subject.
 fn worker_box_id_from_env() -> Result<String> {
     std::env::var("EXPORT_BOX_ID")
         .or_else(|_| std::env::var("BOX_ID"))
@@ -178,6 +212,7 @@ fn worker_box_id_from_env() -> Result<String> {
         .map_err(|_| anyhow!("worker mode requires EXPORT_BOX_ID or BOX_ID"))
 }
 
+/// Normalizes namespace text into a subject-safe token.
 fn sanitize_token(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
     for ch in raw.trim().chars() {
@@ -196,6 +231,10 @@ fn sanitize_token(raw: &str) -> String {
     }
 }
 
+/// Runs exporter worker mode by subscribing to one NATS request subject.
+///
+/// Each incoming request is handled in its own task and replies to the message
+/// reply subject with JSON control frames and binary CSV chunks.
 async fn run_worker(parquet_root: PathBuf) -> Result<()> {
     let client = connect_nats_from_env().await?;
     let state = AppState {
@@ -229,8 +268,13 @@ async fn run_worker(parquet_root: PathBuf) -> Result<()> {
                 eprintln!("[exporter] ignoring NATS export request without reply subject");
                 return;
             };
-            if let Err(err) =
-                process_nats_request(client.clone(), reply.clone(), message.payload.to_vec(), state).await
+            if let Err(err) = process_nats_request(
+                client.clone(),
+                reply.clone(),
+                message.payload.to_vec(),
+                state,
+            )
+            .await
             {
                 eprintln!("[exporter] worker request failed: {err:#}");
                 let _ = publish_nats_json(
@@ -247,6 +291,7 @@ async fn run_worker(parquet_root: PathBuf) -> Result<()> {
     Ok(())
 }
 
+/// Validates and serves one NATS export request payload.
 async fn process_nats_request(
     nc: async_nats::Client,
     reply: async_nats::Subject,
@@ -325,6 +370,7 @@ async fn process_nats_request(
     Ok(())
 }
 
+/// Publishes a JSON export control frame on a NATS reply subject.
 async fn publish_nats_json(
     nc: &async_nats::Client,
     reply: async_nats::Subject,
@@ -338,6 +384,7 @@ async fn publish_nats_json(
     Ok(())
 }
 
+/// Upgrades an HTTP request into a WebSocket export session.
 async fn handle_ws(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
     ws.on_upgrade(move |socket| async move {
         if let Err(err) = process_socket(socket, state).await {
@@ -346,6 +393,7 @@ async fn handle_ws(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl 
     })
 }
 
+/// Handles one direct-mode WebSocket export session.
 async fn process_socket(mut socket: WebSocket, state: AppState) -> Result<()> {
     let request = read_export_request(&mut socket).await?;
 
@@ -366,6 +414,7 @@ async fn process_socket(mut socket: WebSocket, state: AppState) -> Result<()> {
     Ok(())
 }
 
+/// Reads the initial JSON export request from a WebSocket.
 async fn read_export_request(socket: &mut WebSocket) -> Result<ExportRequest> {
     let Some(msg) = socket.next().await else {
         return Err(anyhow!("websocket closed before export request"));
@@ -386,6 +435,7 @@ async fn read_export_request(socket: &mut WebSocket) -> Result<ExportRequest> {
     Ok(req)
 }
 
+/// Validates a request and streams its CSV response through an export sink.
 async fn serve_export_request<S: ExportSink + Send>(
     parquet_root: &Path,
     sink: &mut S,
@@ -426,23 +476,32 @@ async fn serve_export_request<S: ExportSink + Send>(
 }
 
 #[async_trait]
+/// Transport abstraction for framed export responses.
 trait ExportSink {
+    /// Sends the file metadata frame.
     async fn send_meta(&mut self, file_name: &str, content_type: &str) -> Result<()>;
+    /// Sends one CSV payload chunk.
     async fn send_chunk(&mut self, data: Vec<u8>) -> Result<()>;
+    /// Sends the final export summary.
     async fn send_summary(&mut self, bytes_sent: usize, missing_channels: &[u8]) -> Result<()>;
+    /// Sends the completion frame.
     async fn send_complete(&mut self) -> Result<()>;
+    /// Sends an error frame.
     async fn send_error(&mut self, message: &str) -> Result<()>;
 }
 
+/// WebSocket implementation of [`ExportSink`].
 struct WebSocketSink {
     socket: WebSocket,
 }
 
 impl WebSocketSink {
+    /// Wraps a WebSocket as an export sink.
     fn new(socket: WebSocket) -> Self {
         Self { socket }
     }
 
+    /// Sends a WebSocket close frame.
     async fn send_close(&mut self) -> Result<()> {
         self.socket.send(Message::Close(None)).await?;
         Ok(())
@@ -451,6 +510,7 @@ impl WebSocketSink {
 
 #[async_trait]
 impl ExportSink for WebSocketSink {
+    /// Sends metadata as a text JSON WebSocket message.
     async fn send_meta(&mut self, file_name: &str, content_type: &str) -> Result<()> {
         self.socket
             .send(Message::Text(serde_json::to_string(&MetaFrame {
@@ -462,11 +522,13 @@ impl ExportSink for WebSocketSink {
         Ok(())
     }
 
+    /// Sends a CSV chunk as a binary WebSocket message.
     async fn send_chunk(&mut self, data: Vec<u8>) -> Result<()> {
         self.socket.send(Message::Binary(data)).await?;
         Ok(())
     }
 
+    /// Sends byte count and missing channels as a text JSON message.
     async fn send_summary(&mut self, bytes_sent: usize, missing_channels: &[u8]) -> Result<()> {
         self.socket
             .send(Message::Text(serde_json::to_string(&SummaryFrame {
@@ -478,6 +540,7 @@ impl ExportSink for WebSocketSink {
         Ok(())
     }
 
+    /// Sends a text JSON completion message.
     async fn send_complete(&mut self) -> Result<()> {
         self.socket
             .send(Message::Text(json!({"type":"complete"}).to_string()))
@@ -485,6 +548,7 @@ impl ExportSink for WebSocketSink {
         Ok(())
     }
 
+    /// Sends a text JSON error message.
     async fn send_error(&mut self, message: &str) -> Result<()> {
         self.socket
             .send(Message::Text(serde_json::to_string(&ErrorFrame {
@@ -496,6 +560,7 @@ impl ExportSink for WebSocketSink {
     }
 }
 
+/// CSV stream builder for direct WebSocket exports.
 struct CsvStreamer<'a, S: ExportSink + Send> {
     sink: &'a mut S,
     chunk: Vec<u8>,
@@ -505,6 +570,10 @@ struct CsvStreamer<'a, S: ExportSink + Send> {
     end: DateTime<Utc>,
 }
 
+/// CSV stream builder for NATS worker exports.
+///
+/// This variant uses larger chunks and optional acknowledgement subjects to
+/// avoid flooding slower clients while sending through NATS.
 struct NatsCsvStreamer {
     client: async_nats::Client,
     reply: async_nats::Subject,
@@ -519,10 +588,14 @@ struct NatsCsvStreamer {
 }
 
 impl NatsCsvStreamer {
+    /// Target chunk size for NATS CSV frames.
     const CHUNK_SIZE: usize = 512 * 1024;
+    /// Number of chunks to publish before forcing a NATS flush.
     const FLUSH_EVERY_CHUNKS: usize = 8;
+    /// Maximum time to wait for a client chunk acknowledgement.
     const ACK_TIMEOUT_SECS: u64 = 30;
 
+    /// Creates a NATS CSV streamer and writes the CSV header into the buffer.
     fn new(
         client: async_nats::Client,
         reply: async_nats::Subject,
@@ -547,6 +620,7 @@ impl NatsCsvStreamer {
         }
     }
 
+    /// Streams all requested channels and returns channels with no matching rows.
     async fn stream_channels(&mut self, parquet_root: &Path, channels: &[u8]) -> Result<Vec<u8>> {
         let mut missing = Vec::new();
         for &channel in channels {
@@ -561,6 +635,7 @@ impl NatsCsvStreamer {
         Ok(missing)
     }
 
+    /// Publishes the current CSV buffer as one NATS chunk frame.
     async fn flush(&mut self) -> Result<()> {
         if self.chunk.is_empty() {
             return Ok(());
@@ -585,6 +660,7 @@ impl NatsCsvStreamer {
         Ok(())
     }
 
+    /// Waits for client acknowledgements for recently published chunks.
     async fn wait_for_acks(&mut self) -> Result<()> {
         let Some(ack_sub) = self.ack_sub.as_mut() else {
             return Ok(());
@@ -608,6 +684,7 @@ impl NatsCsvStreamer {
         Ok(())
     }
 
+    /// Appends one CSV row to the current chunk.
     async fn push_record(
         &mut self,
         timestamp: &str,
@@ -625,6 +702,7 @@ impl NatsCsvStreamer {
         Ok(())
     }
 
+    /// Flushes data and sends summary and completion frames.
     async fn finish(mut self, mut missing_channels: Vec<u8>) -> Result<()> {
         self.flush().await?;
         self.wait_for_acks().await?;
@@ -652,6 +730,7 @@ impl NatsCsvStreamer {
         Ok(())
     }
 
+    /// Streams all Parquet files for one asset/channel over the requested date range.
     async fn stream_channel(&mut self, root: &Path, channel: u8) -> Result<bool> {
         let mut found = false;
         for day in date_range(self.start.date_naive(), self.end.date_naive()) {
@@ -684,6 +763,7 @@ impl NatsCsvStreamer {
         Ok(found)
     }
 
+    /// Reads one Parquet file and emits matching rows as CSV records.
     async fn stream_parquet_file(
         &mut self,
         path: &Path,
@@ -722,8 +802,10 @@ impl NatsCsvStreamer {
 }
 
 impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
+    /// Target chunk size for direct WebSocket CSV frames.
     const CHUNK_SIZE: usize = 128 * 1024;
 
+    /// Creates a direct CSV streamer and writes the CSV header into the buffer.
     fn new(sink: &'a mut S, asset: u32, start: DateTime<Utc>, end: DateTime<Utc>) -> Self {
         let mut chunk = Vec::with_capacity(Self::CHUNK_SIZE);
         chunk.extend_from_slice(b"timestamp,channel,raw_value,calibrated_value,calibration_id\n");
@@ -737,6 +819,7 @@ impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
         }
     }
 
+    /// Streams all requested channels and returns channels with no matching rows.
     async fn stream_channels(&mut self, parquet_root: &Path, channels: &[u8]) -> Result<Vec<u8>> {
         let mut missing = Vec::new();
         for &channel in channels {
@@ -751,6 +834,7 @@ impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
         Ok(missing)
     }
 
+    /// Sends the current CSV buffer through the sink.
     async fn flush(&mut self) -> Result<()> {
         if self.chunk.is_empty() {
             return Ok(());
@@ -762,6 +846,7 @@ impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
         Ok(())
     }
 
+    /// Appends one CSV row to the current chunk.
     async fn push_record(
         &mut self,
         timestamp: &str,
@@ -779,6 +864,7 @@ impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
         Ok(())
     }
 
+    /// Flushes data and sends summary and completion frames.
     async fn finish(mut self, mut missing_channels: Vec<u8>) -> Result<()> {
         self.flush().await?;
         missing_channels.sort_unstable();
@@ -790,6 +876,7 @@ impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
         Ok(())
     }
 
+    /// Streams all Parquet files for one asset/channel over the requested date range.
     async fn stream_channel(&mut self, root: &Path, channel: u8) -> Result<bool> {
         let mut found = false;
         for day in date_range(self.start.date_naive(), self.end.date_naive()) {
@@ -822,6 +909,7 @@ impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
         Ok(found)
     }
 
+    /// Reads one Parquet file and emits matching rows as CSV records.
     async fn stream_parquet_file(
         &mut self,
         path: &Path,
@@ -859,10 +947,12 @@ impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
     }
 }
 
+/// Converts a Unix nanosecond timestamp into RFC 3339 text.
 fn timestamp_unix_ns_to_rfc3339(timestamp_unix_ns: i64) -> Option<String> {
     Some(DateTime::<Utc>::from_timestamp_nanos(timestamp_unix_ns).to_rfc3339())
 }
 
+/// Reads calibration metadata written by the archiver from a Parquet file.
 fn read_calibration_from_metadata(
     reader: &SerializedFileReader<fs::File>,
     path: &Path,
@@ -895,6 +985,7 @@ fn read_calibration_from_metadata(
     }
 }
 
+/// Parses an RFC 3339 start/end range into UTC instants.
 fn parse_range(start: &str, end: &str) -> Result<(DateTime<Utc>, DateTime<Utc>)> {
     let start = DateTime::parse_from_rfc3339(start)
         .map_err(|e| anyhow!("invalid start timestamp: {e}"))?
@@ -905,6 +996,7 @@ fn parse_range(start: &str, end: &str) -> Result<(DateTime<Utc>, DateTime<Utc>)>
     Ok((start, end))
 }
 
+/// Builds an inclusive list of UTC dates covered by an export request.
 fn date_range(start: NaiveDate, end: NaiveDate) -> Vec<NaiveDate> {
     let mut days = Vec::new();
     let mut current = start;

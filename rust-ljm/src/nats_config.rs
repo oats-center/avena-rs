@@ -1,9 +1,15 @@
+//! Shared NATS and JetStream configuration helpers.
+
 #![allow(dead_code)]
 
 use async_nats::ServerAddr;
 
+/// Default local NATS server used when `NATS_SERVERS` is unset.
 const DEFAULT_NATS_SERVERS: &str = "nats://127.0.0.1:4222";
 
+/// Parses a comma-separated NATS server list from an environment variable.
+///
+/// Empty entries are ignored, and `default` is used when the variable is unset.
 pub fn servers_from_env_var(var_name: &str, default: &str) -> Result<Vec<ServerAddr>, String> {
     let raw = std::env::var(var_name).unwrap_or_else(|_| default.to_string());
     let servers: Result<Vec<ServerAddr>, _> = raw
@@ -21,10 +27,12 @@ pub fn servers_from_env_var(var_name: &str, default: &str) -> Result<Vec<ServerA
     Ok(servers)
 }
 
+/// Parses `NATS_SERVERS`, defaulting to the local NATS server.
 pub fn servers_from_env() -> Result<Vec<ServerAddr>, String> {
     servers_from_env_var("NATS_SERVERS", DEFAULT_NATS_SERVERS)
 }
 
+/// Creates a JetStream context using a domain name read from an env var.
 pub fn jetstream_context_from_env(
     client: async_nats::Client,
     domain_var: &str,
@@ -37,6 +45,7 @@ pub fn jetstream_context_from_env(
     }
 }
 
+/// Creates a JetStream context for an explicit optional domain.
 pub fn jetstream_context_for_domain(
     client: async_nats::Client,
     domain: Option<&str>,
@@ -47,6 +56,7 @@ pub fn jetstream_context_for_domain(
     }
 }
 
+/// Creates the default JetStream context, honoring `JS_DOMAIN`.
 pub fn jetstream_context(client: async_nats::Client) -> async_nats::jetstream::Context {
     jetstream_context_from_env(client, "JS_DOMAIN")
 }
