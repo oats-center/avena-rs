@@ -1,6 +1,6 @@
 {
   "site_id": "i69",
-  "box_id": "i69-mu1",
+  "box_id": "i69-mu2",
   "run_exporter_on_edge": false,
   "source": {
     "type": "labjack",
@@ -14,7 +14,7 @@
     "leaf_server_name": "i69-mu2-leaf",
     "leaf_listen": "127.0.0.1:4222",
     "monitor_listen": "127.0.0.1:8222",
-    "jetstream_domain": "edge-i69-mu1",
+    "jetstream_domain": "edge-i69-mu2",
     "jetstream_store_dir": "/var/lib/nats/jetstream",
     "leaf_credentials_path": "/etc/nats/creds/leaf.creds",
     "leaf_remotes": [
@@ -23,13 +23,13 @@
     ],
     "stream_max_bytes": 100000000000,
     "kv_bucket": "avenabox",
-    "kv_key": "v1.i69-mu1.i69-lj2.config",
+    "kv_key": "v1.i69-mu2.i69-lj2.config",
     "stream_name": "labjacks"
   },
   "paths": {
     "rust_creds_file": "apt.creds",
-    "output_dir": "/extstore/home/user/avena-rs/rust-ljm/outputs",
-    "parquet_dir": "/extstore/home/user/avena-rs/rust-ljm/parquet",
+    "output_dir": "/home/user/avena-rs/rust-ljm/outputs",
+    "parquet_dir": "/home/user/avena-rs/rust-ljm/parquet",
     "exporter_http_url": "http://127.0.0.1:9001"
   },
   "labjack": {
@@ -37,7 +37,7 @@
     "asset_number": 1001,
     "max_channels": 14,
     "ip": "192.168.1.111",
-    "serial": "470036312",
+    "serial": "470036330",
     "identifier": "",
     "usb_id": "ANY",
     "open_order": "ethernet",

@@ -6,6 +6,7 @@ use std::{
 
 use anyhow::{Context, Result, anyhow};
 use async_nats::{ConnectOptions, HeaderMap};
+use async_trait::async_trait;
 use axum::{
     Router,
     extract::{
@@ -30,6 +31,38 @@ mod subjects;
 use calibration::CalibrationSpec;
 
 const EXPORT_FRAME_HEADER: &str = "Avena-Export-Frame";
+const EXPORT_FRAME_META: &str = "meta";
+const EXPORT_FRAME_CHUNK: &str = "chunk";
+const EXPORT_FRAME_SUMMARY: &str = "summary";
+const EXPORT_FRAME_COMPLETE: &str = "complete";
+const EXPORT_FRAME_ERROR: &str = "error";
+const DEFAULT_EXPORTER_MODE: &str = "worker";
+const DEFAULT_EXPORTER_ADDR: &str = "0.0.0.0:9001";
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MetaFrame<'a> {
+    #[serde(rename = "type")]
+    frame_type: &'static str,
+    file_name: &'a str,
+    content_type: &'a str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SummaryFrame<'a> {
+    #[serde(rename = "type")]
+    frame_type: &'static str,
+    bytes_sent: usize,
+    missing_channels: &'a [u8],
+}
+
+#[derive(Serialize)]
+struct ErrorFrame<'a> {
+    #[serde(rename = "type")]
+    frame_type: &'static str,
+    message: &'a str,
+}
 
 #[derive(Clone)]
 struct AppState {
@@ -138,26 +171,11 @@ async fn connect_nats_from_env() -> Result<async_nats::Client> {
     Ok(client)
 }
 
-fn export_subject_prefix_from_env() -> String {
-    std::env::var("EXPORT_NATS_SUBJECT_PREFIX")
-        .unwrap_or_else(|_| DEFAULT_EXPORT_SUBJECT_PREFIX.to_string())
-        .trim()
-        .to_string()
-}
-
 fn worker_box_id_from_env() -> Result<String> {
     std::env::var("EXPORT_BOX_ID")
         .or_else(|_| std::env::var("BOX_ID"))
         .map(|value| sanitize_token(&value))
         .map_err(|_| anyhow!("worker mode requires EXPORT_BOX_ID or BOX_ID"))
-}
-
-fn request_subject(prefix: &str, box_id: &str) -> String {
-    format!(
-        "{}.request.{}",
-        prefix.trim_end_matches('.'),
-        sanitize_token(box_id)
-    )
 }
 
 fn sanitize_token(raw: &str) -> String {
@@ -180,9 +198,22 @@ fn sanitize_token(raw: &str) -> String {
 
 async fn run_worker(parquet_root: PathBuf) -> Result<()> {
     let client = connect_nats_from_env().await?;
-    let subject_prefix = export_subject_prefix_from_env();
+    let state = AppState {
+        mode: ExporterMode::Worker,
+        parquet_root: Arc::new(parquet_root),
+    };
+    let nats_subject = std::env::var("NATS_SUBJECT").unwrap_or_else(|_| "avenars".to_string());
+    let site_id = std::env::var("SITE_ID").unwrap_or_else(|_| "unknown-site".to_string());
     let box_id = worker_box_id_from_env()?;
-    let subject = request_subject(&subject_prefix, &box_id);
+    let source_type = std::env::var("SOURCE_TYPE").unwrap_or_else(|_| "labjack".to_string());
+    let source_id = std::env::var("SOURCE_ID").unwrap_or_else(|_| "unknown-source".to_string());
+    let subject = subjects::archive_export_request_subject(
+        &nats_subject,
+        Some(&site_id),
+        Some(&box_id),
+        Some(&source_type),
+        Some(&source_id),
+    );
     let mut subscriber = client
         .subscribe(subject.clone())
         .await
@@ -192,94 +223,20 @@ async fn run_worker(parquet_root: PathBuf) -> Result<()> {
 
     while let Some(message) = subscriber.next().await {
         let client = client.clone();
-        let parquet_root = parquet_root.clone();
-        tokio::spawn(async move {
-            if let Err(err) = handle_worker_request(client, parquet_root, message).await {
-                eprintln!("[exporter] worker request failed: {err:#}");
-            }
-        });
-    }
-
-    Ok(())
-}
-
-async fn handle_worker_request(
-    client: async_nats::Client,
-    parquet_root: PathBuf,
-    message: async_nats::Message,
-) -> Result<()> {
-    let req: NatsExportRequest = serde_json::from_slice(&message.payload)
-        .map_err(|e| anyhow!("invalid export request payload: {e}"))?;
-    let export_req = ExportRequest {
-        asset: req.asset,
-        channels: req.channels,
-        start: req.start,
-        end: req.end,
-        format: req.format,
-        download_name: req.download_name,
-        box_id: None,
-    };
-
-    if std::env::var("NATS_SERVERS").is_ok() {
-        let nats_state = state.clone();
-        tokio::spawn(async move {
-            if let Err(err) = run_nats_exporter(nats_state).await {
-                eprintln!("[exporter] NATS exporter stopped: {err:?}");
-            }
-        });
-    }
-
-    let app = Router::new()
-        .route("/export", get(handle_ws))
-        .with_state(state);
-
-    Ok(())
-}
-
-async fn run_nats_exporter(state: AppState) -> Result<()> {
-    let creds_path = std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| "apt.creds".into());
-    let opts = ConnectOptions::with_credentials_file(creds_path)
-        .await
-        .map_err(|e| anyhow!("failed to load NATS creds: {e}"))?;
-    let servers = nats_config::servers_from_env().map_err(|e| anyhow!(e))?;
-    let nc = opts
-        .connect(servers)
-        .await
-        .map_err(|e| anyhow!("NATS connect failed: {e}"))?;
-
-    let nats_subject = std::env::var("NATS_SUBJECT").unwrap_or_else(|_| "avenars".to_string());
-    let site_id = std::env::var("SITE_ID").unwrap_or_else(|_| "unknown-site".to_string());
-    let box_id = std::env::var("BOX_ID").unwrap_or_else(|_| "unknown-box".to_string());
-    let source_type = std::env::var("SOURCE_TYPE").unwrap_or_else(|_| "labjack".to_string());
-    let source_id = std::env::var("SOURCE_ID").unwrap_or_else(|_| "unknown-source".to_string());
-    let request_subject = subjects::archive_export_request_subject(
-        &nats_subject,
-        Some(&site_id),
-        Some(&box_id),
-        Some(&source_type),
-        Some(&source_id),
-    );
-
-    let mut sub = nc.subscribe(request_subject.clone()).await?;
-    println!("[exporter] Listening for NATS exports on {request_subject}");
-
-    while let Some(msg) = sub.next().await {
-        let Some(reply) = msg.reply.clone() else {
-            eprintln!("[exporter] ignoring NATS export request without reply subject");
-            continue;
-        };
-
-        let nc = nc.clone();
         let state = state.clone();
         tokio::spawn(async move {
+            let Some(reply) = message.reply.clone() else {
+                eprintln!("[exporter] ignoring NATS export request without reply subject");
+                return;
+            };
             if let Err(err) =
-                process_nats_request(nc.clone(), reply.clone(), msg.payload.to_vec(), state).await
+                process_nats_request(client.clone(), reply.clone(), message.payload.to_vec(), state).await
             {
-                eprintln!("[exporter] NATS export error: {err:?}");
+                eprintln!("[exporter] worker request failed: {err:#}");
                 let _ = publish_nats_json(
-                    &nc,
+                    &client,
                     reply,
-                    "error",
+                    EXPORT_FRAME_ERROR,
                     &json!({"type":"error","message": err.to_string()}),
                 )
                 .await;
@@ -303,7 +260,7 @@ async fn process_nats_request(
         publish_nats_json(
             &nc,
             reply,
-            "error",
+            EXPORT_FRAME_ERROR,
             &json!({"type":"error","message":"no channels requested"}),
         )
         .await?;
@@ -317,7 +274,7 @@ async fn process_nats_request(
         publish_nats_json(
             &nc,
             reply,
-            "error",
+            EXPORT_FRAME_ERROR,
             &json!({"type":"error","message":"end must be after start"}),
         )
         .await?;
@@ -328,7 +285,7 @@ async fn process_nats_request(
         publish_nats_json(
             &nc,
             reply,
-            "error",
+            EXPORT_FRAME_ERROR,
             &json!({"type":"error","message":"parquet streaming not yet supported"}),
         )
         .await?;
@@ -347,7 +304,7 @@ async fn process_nats_request(
     publish_nats_json(
         &nc,
         reply.clone(),
-        "meta",
+        EXPORT_FRAME_META,
         &json!({
             "type": "meta",
             "fileName": file_name,
@@ -539,86 +496,6 @@ impl ExportSink for WebSocketSink {
     }
 }
 
-struct NatsReplySink {
-    client: async_nats::Client,
-    subject: String,
-}
-
-impl NatsReplySink {
-    fn new(client: async_nats::Client, subject: String) -> Self {
-        Self { client, subject }
-    }
-
-    async fn publish_json<T: Serialize>(
-        &self,
-        frame_type: &'static str,
-        payload: &T,
-    ) -> Result<()> {
-        let mut headers = HeaderMap::new();
-        headers.insert(EXPORT_FRAME_HEADER, frame_type);
-        self.client
-            .publish_with_headers(
-                self.subject.clone(),
-                headers,
-                serde_json::to_vec(payload)?.into(),
-            )
-            .await?;
-        Ok(())
-    }
-}
-
-#[async_trait]
-impl ExportSink for NatsReplySink {
-    async fn send_meta(&mut self, file_name: &str, content_type: &str) -> Result<()> {
-        self.publish_json(
-            EXPORT_FRAME_META,
-            &MetaFrame {
-                frame_type: EXPORT_FRAME_META,
-                file_name,
-                content_type,
-            },
-        )
-        .await
-    }
-
-    async fn send_chunk(&mut self, data: Vec<u8>) -> Result<()> {
-        let mut headers = HeaderMap::new();
-        headers.insert(EXPORT_FRAME_HEADER, EXPORT_FRAME_CHUNK);
-        self.client
-            .publish_with_headers(self.subject.clone(), headers, data.into())
-            .await?;
-        Ok(())
-    }
-
-    async fn send_summary(&mut self, bytes_sent: usize, missing_channels: &[u8]) -> Result<()> {
-        self.publish_json(
-            EXPORT_FRAME_SUMMARY,
-            &SummaryFrame {
-                frame_type: EXPORT_FRAME_SUMMARY,
-                bytes_sent,
-                missing_channels,
-            },
-        )
-        .await
-    }
-
-    async fn send_complete(&mut self) -> Result<()> {
-        self.publish_json(EXPORT_FRAME_COMPLETE, &json!({"type":"complete"}))
-            .await
-    }
-
-    async fn send_error(&mut self, message: &str) -> Result<()> {
-        self.publish_json(
-            EXPORT_FRAME_ERROR,
-            &ErrorFrame {
-                frame_type: EXPORT_FRAME_ERROR,
-                message,
-            },
-        )
-        .await
-    }
-}
-
 struct CsvStreamer<'a, S: ExportSink + Send> {
     sink: &'a mut S,
     chunk: Vec<u8>,
@@ -691,7 +568,7 @@ impl NatsCsvStreamer {
         let data = std::mem::take(&mut self.chunk);
         self.bytes_sent += data.len();
         let mut headers = HeaderMap::new();
-        headers.insert(EXPORT_FRAME_HEADER, "chunk");
+        headers.insert(EXPORT_FRAME_HEADER, EXPORT_FRAME_CHUNK);
         self.client
             .publish_with_headers(self.reply.clone(), headers, data.into())
             .await?;
@@ -756,7 +633,7 @@ impl NatsCsvStreamer {
         publish_nats_json(
             &self.client,
             self.reply.clone(),
-            "summary",
+            EXPORT_FRAME_SUMMARY,
             &json!({
                 "type": "summary",
                 "bytesSent": self.bytes_sent,
@@ -767,7 +644,7 @@ impl NatsCsvStreamer {
         publish_nats_json(
             &self.client,
             self.reply.clone(),
-            "complete",
+            EXPORT_FRAME_COMPLETE,
             &json!({"type":"complete"}),
         )
         .await?;
@@ -844,7 +721,7 @@ impl NatsCsvStreamer {
     }
 }
 
-impl CsvStreamer {
+impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
     const CHUNK_SIZE: usize = 128 * 1024;
 
     fn new(sink: &'a mut S, asset: u32, start: DateTime<Utc>, end: DateTime<Utc>) -> Self {

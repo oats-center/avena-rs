@@ -23,8 +23,8 @@ Rust binaries for LabJack streaming, parquet archiving, and export serving.
   publish chunked CSV responses back over core NATS
 
 In `direct` mode, `exporter` must run on the same host as the parquet
-directory it serves. For a simple setup, you can also run `archiver` and
-`exporter` on the MU and point the laptop webapp at the MU's exporter address.
+directory it serves. The standard edge-box setup uses `worker` mode so the
+laptop webapp only needs a central NATS WebSocket connection.
 
 For central-webapp exports backed by edge-local parquet:
 
@@ -35,8 +35,8 @@ For central-webapp exports backed by edge-local parquet:
 
 The browser-to-worker path uses core NATS subjects, not JetStream, for export chunks:
 
-- request subject: `avenars.export.request.<box_id>`
-- reply subject: `avenars.export.reply.<job_id>`
+- request subject: `avenars.v1.<site_id>.<box_id>.archive.<source_type>.<source_id>.export.request`
+- reply subject: generated browser inbox
 
 The local LabJack KV config and live sample stream remain on JetStream-backed
 subjects as before.
@@ -46,66 +46,40 @@ subjects as before.
 `streamer` can treat the central OATS KV entry as the source of truth while
 still running against the local leaf node and local JetStream domain.
 
-When `CENTRAL_NATS_SERVERS` is set in `streamer.env.json`:
+When `CFG_NATS_SERVERS` or `CENTRAL_NATS_SERVERS` is set in `streamer.env.json`:
 
 - `streamer` connects to the local leaf node as usual
 - it bootstraps the local `CFG_BUCKET:CFG_KEY` from the central
-  `CENTRAL_CFG_BUCKET:CENTRAL_CFG_KEY`
+  central config bucket/key, defaulting to `CFG_BUCKET:CFG_KEY`
 - it keeps watching the central KV key for updates
-- each central update is mirrored into the local KV
+- each central update is mirrored into local KV
 - the existing local KV watcher then restarts the sampler with the new config
 
 This is one-way sync from central to local. Live samples still publish through
 the local JetStream domain and leaf connection.
 
-## Streamer Control
+## Service Control
 
-Edit `streamer.env.json`, then control the streamer with:
-
-```bash
-./streamerctl.sh start
-./streamerctl.sh status
-./streamerctl.sh restart
-./streamerctl.sh stop
-```
-
-Behavior:
-
-- `start` builds `target/release/streamer` if needed
-- only one streamer process is allowed at a time
-- `restart` stops the existing process before starting a new one
-- logs go to `logs/streamer.log`
-- the PID file is stored in `.runtime/streamer.pid`
-
-To use a different env file:
+Build the binaries:
 
 ```bash
-CONFIG_FILE=/path/to/streamer.env.json ./streamerctl.sh restart
+cd /home/user/avena-rs/rust-ljm
+cargo build --release
 ```
 
-## Archiver Control
-
-Edit `archiver.env.json`, then control the archiver with:
+Control the user systemd services:
 
 ```bash
-./archiverctl.sh start
-./archiverctl.sh status
-./archiverctl.sh restart
-./archiverctl.sh stop
+./avena-service.sh streamer start
+./avena-service.sh archiver start
+./avena-service.sh exporter start
+./avena-service.sh streamer status
+./avena-service.sh streamer logs
+./avena-service.sh streamer restart
+./avena-service.sh streamer stop
 ```
 
-`archiver` subscribes to NATS and writes parquet files locally under `parquet/`.
-
-## Exporter Control
-
-Edit `exporter.env.json`, then control the exporter with:
-
-```bash
-./exporterctl.sh start
-./exporterctl.sh status
-./exporterctl.sh restart
-./exporterctl.sh stop
-```
+`archiver` subscribes to NATS and writes parquet files locally under `PARQUET_DIR`.
 
 Set `EXPORTER_ADDR` to an address reachable from the laptop, for example:
 
@@ -125,7 +99,6 @@ Set `EXPORTER_ADDR` to an address reachable from the laptop, for example:
 - `PARQUET_DIR`: local parquet root for `direct` and `worker`
 - `NATS_SERVERS`: NATS URL list for `worker`
 - `NATS_CREDS_FILE`: creds file for `worker`
-- `EXPORT_NATS_SUBJECT_PREFIX`: export subject prefix, default `avenars.export`
 - `BOX_ID` or `EXPORT_BOX_ID`: worker target box id for subject binding
 
 Example `worker` config:
@@ -137,8 +110,11 @@ Example `worker` config:
     "PARQUET_DIR": "parquet",
     "NATS_SERVERS": "nats://127.0.0.1:4222",
     "NATS_CREDS_FILE": "apt.creds",
+    "NATS_SUBJECT": "avenars",
+    "SITE_ID": "i69",
     "BOX_ID": "i69-mu1",
-    "EXPORT_NATS_SUBJECT_PREFIX": "avenars.export"
+    "SOURCE_TYPE": "labjack",
+    "SOURCE_ID": "i69-lj2"
   }
 }
 ```
@@ -164,10 +140,10 @@ Important fields:
 - `LABJACK_SERIAL`: optional but recommended post-connect serial verification
 - `LABJACK_NAME`: optional logical device name for logging
 
-If `CENTRAL_NATS_SERVERS` is set, `streamer` bootstraps the local KV from the
-central KV and keeps watching the central key for updates. Central changes are
-mirrored into the local KV, and the existing local KV watcher then restarts the
-sampler with the new config.
+If `CFG_NATS_SERVERS` or `CENTRAL_NATS_SERVERS` is set, `streamer` bootstraps
+the local KV from central KV and keeps watching the central key for updates.
+Central changes are mirrored into local KV, and the existing local KV watcher
+then restarts the sampler with the new config.
 
 `streamer` now uses a strict Ethernet IP path only:
 
@@ -257,22 +233,7 @@ Legacy KV configs using `scan_rate` and `sampling_rate` are still accepted on
 read, but new configs should use `scans_per_read` and `scan_rate_hz` so the
 names match the actual LabJack stream semantics.
 
-## MU + Laptop Setup
+## Full Edge Setup
 
-If `streamer` is already running on the MU, you can also run:
-
-```bash
-./archiverctl.sh start
-./exporterctl.sh start
-```
-
-Then run the webapp on the laptop and connect it to the MU's exporter endpoint.
-That works as long as:
-
-- the laptop can reach the MU over the network
-- `EXPORTER_ADDR` is bound to a reachable interface
-- the firewall allows the exporter port
-
-This is fine for local testing or a small deployment. The main tradeoff is that
-parquet storage and export serving both stay on the MU instead of a separate
-server.
+For the reproducible NATS leaf, Alloy, Rust service, webapp, validation, and
+shutdown workflow, use [../docs/setup-guide.md](../docs/setup-guide.md).

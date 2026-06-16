@@ -1,6 +1,10 @@
 use async_nats;
 use async_nats::ConnectOptions;
-use async_nats::jetstream::kv::Operation;
+use async_nats::jetstream::{
+    self,
+    consumer::pull,
+    kv::{self, Operation},
+};
 use chrono::{DateTime, NaiveDate, Utc};
 use futures_util::StreamExt;
 use parquet::{
@@ -28,6 +32,8 @@ use sample_data_generated::sampler;
 
 use calibration::CalibrationSpec;
 use serde::{Deserialize, Serialize};
+
+type DynError = Box<dyn std::error::Error + Send + Sync>;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
@@ -137,6 +143,171 @@ fn sample_config_from_nested(nested: NestedConfig) -> SampleConfig {
         nats_stream: nested.nats_stream,
         rotate_secs: nested.rotate_secs,
         calibrations,
+    }
+}
+
+fn env_nonempty(name: &str) -> Option<String> {
+    std::env::var(name)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+#[derive(Debug, Clone)]
+struct CentralKvSyncConfig {
+    servers: Vec<async_nats::ServerAddr>,
+    creds_path: String,
+    bucket: String,
+    key: String,
+    domain: Option<String>,
+}
+
+fn central_kv_sync_config_from_env(creds_path: &str) -> Result<Option<CentralKvSyncConfig>, DynError> {
+    let Some(raw_servers) =
+        env_nonempty("CENTRAL_NATS_SERVERS").or_else(|| env_nonempty("CFG_NATS_SERVERS"))
+    else {
+        return Ok(None);
+    };
+
+    let servers = nats_config::servers_from_env_var("CENTRAL_NATS_SERVERS", &raw_servers)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+    let bucket = env_nonempty("CENTRAL_CFG_BUCKET")
+        .or_else(|| env_nonempty("CFG_BUCKET"))
+        .unwrap_or_else(|| "avenabox".to_string());
+    let key = env_nonempty("CENTRAL_CFG_KEY")
+        .or_else(|| env_nonempty("CFG_KEY"))
+        .unwrap_or_else(|| "v1.macbook.unknown-source.config".to_string());
+    let domain = env_nonempty("CENTRAL_JS_DOMAIN").or_else(|| env_nonempty("CFG_JS_DOMAIN"));
+    let creds_path = env_nonempty("CENTRAL_NATS_CREDS_FILE").unwrap_or_else(|| creds_path.to_string());
+
+    Ok(Some(CentralKvSyncConfig {
+        servers,
+        creds_path,
+        bucket,
+        key,
+        domain,
+    }))
+}
+
+async fn connect_nats_with_creds(
+    servers: Vec<async_nats::ServerAddr>,
+    creds_path: String,
+) -> Result<async_nats::Client, DynError> {
+    let opts = ConnectOptions::with_credentials_file(creds_path).await?;
+    Ok(opts.connect(servers).await?)
+}
+
+async fn ensure_kv_bucket(
+    js: &jetstream::Context,
+    bucket: &str,
+) -> Result<kv::Store, DynError> {
+    if let Ok(store) = js.get_key_value(bucket).await {
+        return Ok(store);
+    }
+    Ok(js
+        .create_key_value(kv::Config {
+            bucket: bucket.to_string(),
+            history: 5,
+            ..Default::default()
+        })
+        .await?)
+}
+
+async fn mirror_central_kv_once(
+    sync_cfg: &CentralKvSyncConfig,
+    local_store: &kv::Store,
+    local_key: &str,
+) -> Result<(), DynError> {
+    let client = connect_nats_with_creds(sync_cfg.servers.clone(), sync_cfg.creds_path.clone()).await?;
+    let remote_js = nats_config::jetstream_context_for_domain(client, sync_cfg.domain.as_deref());
+    let remote_store = ensure_kv_bucket(&remote_js, &sync_cfg.bucket).await?;
+    let remote_entry = remote_store
+        .entry(sync_cfg.key.as_str())
+        .await?
+        .ok_or_else(|| format!("central KV key '{}' not found", sync_cfg.key))?;
+    serde_json::from_slice::<NestedConfig>(&remote_entry.value)?;
+    let should_put = match local_store.entry(local_key).await? {
+        Some(local_entry) => local_entry.value.as_ref() != remote_entry.value.as_ref(),
+        None => true,
+    };
+    if should_put {
+        local_store.put(local_key, remote_entry.value.clone()).await?;
+        println!(
+            "[logger] Mirrored central KV '{}:{}' into local '{}'",
+            sync_cfg.bucket, sync_cfg.key, local_key
+        );
+    }
+    Ok(())
+}
+
+async fn run_central_kv_sync(
+    sync_cfg: CentralKvSyncConfig,
+    local_store: kv::Store,
+    local_key: String,
+) {
+    loop {
+        let client = match connect_nats_with_creds(sync_cfg.servers.clone(), sync_cfg.creds_path.clone()).await {
+            Ok(client) => client,
+            Err(err) => {
+                let err = err.to_string();
+                eprintln!("[logger] Central KV connect failed: {err}");
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                continue;
+            }
+        };
+        let remote_js = nats_config::jetstream_context_for_domain(client, sync_cfg.domain.as_deref());
+        let remote_store = match ensure_kv_bucket(&remote_js, &sync_cfg.bucket).await {
+            Ok(store) => store,
+            Err(err) => {
+                let err = err.to_string();
+                eprintln!("[logger] Central KV bucket setup failed: {err}");
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                continue;
+            }
+        };
+        let mut watch = match remote_store.watch(sync_cfg.key.as_str()).await {
+            Ok(watch) => watch,
+            Err(err) => {
+                let err = err.to_string();
+                eprintln!("[logger] Central KV watch setup failed: {err}");
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                continue;
+            }
+        };
+
+        println!(
+            "[logger] Watching central KV '{}:{}' for local key '{}'",
+            sync_cfg.bucket, sync_cfg.key, local_key
+        );
+        while let Some(event) = watch.next().await {
+            match event {
+                Ok(entry) if entry.operation == Operation::Put => {
+                    if let Err(err) = serde_json::from_slice::<NestedConfig>(&entry.value) {
+                        eprintln!("[logger] Ignoring invalid central KV update: {err}");
+                        continue;
+                    }
+                    match local_store.entry(local_key.as_str()).await {
+                        Ok(Some(local_entry)) if local_entry.value.as_ref() == entry.value.as_ref() => {}
+                        Ok(_) => {
+                            if let Err(err) = local_store.put(local_key.as_str(), entry.value.clone()).await {
+                                eprintln!("[logger] Failed to mirror central KV update: {err}");
+                            } else {
+                                println!("[logger] Mirrored central KV rev {} into local KV", entry.revision);
+                            }
+                        }
+                        Err(err) => eprintln!("[logger] Failed to inspect local KV key: {err}"),
+                    }
+                }
+                Ok(entry) => {
+                    eprintln!("[logger] Ignoring central KV {:?} for '{}'", entry.operation, entry.key);
+                }
+                Err(err) => {
+                    eprintln!("[logger] Central KV watch error: {err}");
+                    break;
+                }
+            }
+        }
+        tokio::time::sleep(Duration::from_secs(5)).await;
     }
 }
 
@@ -405,7 +576,7 @@ async fn spawn_channel_logger(
     rotate_secs: u64,
     calibration: CalibrationSpec,
     parquet_root: PathBuf,
-) -> Result<ChannelLogger, Box<dyn std::error::Error>> {
+) -> Result<ChannelLogger, DynError> {
     let stream = js.get_stream(stream_name.as_str()).await?;
     let consumer = stream
         .get_or_create_consumer(
@@ -561,7 +732,7 @@ fn timestamp_ns_to_utc_date(timestamp_unix_ns: i64) -> NaiveDate {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), DynError> {
     let servers = nats_config::servers_from_env()
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
     let parquet_root =
@@ -578,31 +749,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|e| format!("NATS connect failed: {}", e))?;
 
     println!("Connected to sample NATS via creds!");
-
-    let config_servers = match std::env::var("CFG_NATS_SERVERS")
-        .ok()
-        .filter(|v| !v.trim().is_empty())
-    {
-        Some(_) => nats_config::servers_from_env_var("CFG_NATS_SERVERS", "")
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?,
-        None => nats_config::servers_from_env()
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?,
-    };
-    let config_opts = ConnectOptions::with_credentials_file(creds_path)
-        .await
-        .map_err(|e| format!("Failed to load creds: {}", e))?;
-    let config_nc = config_opts
-        .connect(config_servers)
-        .await
-        .map_err(|e| format!("Config NATS connect failed: {}", e))?;
-
-    println!("Connected to config NATS via creds!");
-    let config_js = nats_config::jetstream_context_from_env(config_nc, "CFG_JS_DOMAIN");
+    let js = nats_config::jetstream_context(nc);
 
     // Step 2: load config from KV
     let bucket = std::env::var("CFG_BUCKET").unwrap_or_else(|_| "avenabox".into());
     let key = std::env::var("CFG_KEY").unwrap_or_else(|_| "labjackd.config.macbook".into());
-    let store = config_js.get_key_value(bucket.as_str()).await?;
+    let store = ensure_kv_bucket(&js, bucket.as_str()).await?;
+    let central_sync_cfg = central_kv_sync_config_from_env(&creds_path)?;
+    if let Some(sync_cfg) = central_sync_cfg.as_ref() {
+        if let Err(err) = mirror_central_kv_once(sync_cfg, &store, &key).await {
+            eprintln!("[logger] Initial central-to-local KV mirror failed: {err}");
+        }
+    }
     let entry = store.entry(key.as_str()).await?.ok_or("KV key not found")?;
 
     let nested = serde_json::from_slice::<NestedConfig>(&entry.value)?;
@@ -613,6 +771,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 4: spawn dynamic watcher for KV config changes
     let mut watch = store.watch(key.as_str()).await?;
     let mut active: HashMap<u8, ChannelLogger> = HashMap::new();
+    if let Some(sync_cfg) = central_sync_cfg {
+        tokio::spawn(run_central_kv_sync(sync_cfg, store.clone(), key.clone()));
+    }
 
     // initial subscriptions
     for ch in &cfg.channels {

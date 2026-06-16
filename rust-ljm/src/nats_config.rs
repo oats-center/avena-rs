@@ -37,6 +37,16 @@ pub fn jetstream_context_from_env(
     }
 }
 
+pub fn jetstream_context_for_domain(
+    client: async_nats::Client,
+    domain: Option<&str>,
+) -> async_nats::jetstream::Context {
+    match domain.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(domain) => async_nats::jetstream::with_domain(client, domain),
+        None => async_nats::jetstream::new(client),
+    }
+}
+
 pub fn jetstream_context(client: async_nats::Client) -> async_nats::jetstream::Context {
     jetstream_context_from_env(client, "JS_DOMAIN")
 }

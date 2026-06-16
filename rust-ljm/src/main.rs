@@ -247,13 +247,14 @@ fn local_creds_path_from_env() -> String {
 }
 
 fn central_kv_sync_config_from_env() -> Result<Option<CentralKvSyncConfig>, LJMError> {
-    let Some(raw_servers) = env_nonempty("CENTRAL_NATS_SERVERS") else {
+    let Some(raw_servers) =
+        env_nonempty("CENTRAL_NATS_SERVERS").or_else(|| env_nonempty("CFG_NATS_SERVERS"))
+    else {
         return Ok(None);
     };
 
-    let servers =
-        nats_config::servers_from_env_var("CENTRAL_NATS_SERVERS", Some(raw_servers.as_str()))
-            .map_err(LJMError::LibraryError)?;
+    let servers = nats_config::servers_from_env_var("CENTRAL_NATS_SERVERS", &raw_servers)
+        .map_err(LJMError::LibraryError)?;
     let creds_path = env_nonempty("CENTRAL_NATS_CREDS_FILE").unwrap_or_else(local_creds_path_from_env);
     let bucket = env_nonempty("CENTRAL_CFG_BUCKET")
         .or_else(|| env_nonempty("CFG_BUCKET"))
@@ -261,7 +262,7 @@ fn central_kv_sync_config_from_env() -> Result<Option<CentralKvSyncConfig>, LJME
     let key = env_nonempty("CENTRAL_CFG_KEY")
         .or_else(|| env_nonempty("CFG_KEY"))
         .unwrap_or_else(|| "v1.macbook.unknown-source.config".to_string());
-    let domain = env_nonempty("CENTRAL_JS_DOMAIN");
+    let domain = env_nonempty("CENTRAL_JS_DOMAIN").or_else(|| env_nonempty("CFG_JS_DOMAIN"));
 
     Ok(Some(CentralKvSyncConfig {
         servers,
@@ -270,6 +271,24 @@ fn central_kv_sync_config_from_env() -> Result<Option<CentralKvSyncConfig>, LJME
         key,
         domain,
     }))
+}
+
+async fn mirror_central_kv_once(
+    sync_cfg: &CentralKvSyncConfig,
+    local_store: &kv::Store,
+    local_key: &str,
+) -> Result<bool, LJMError> {
+    let client = connect_nats_with_creds(sync_cfg.servers.clone(), sync_cfg.creds_path.clone()).await?;
+    let remote_js = nats_config::jetstream_context_for_domain(client, sync_cfg.domain.as_deref());
+    let remote_store = ensure_kv_bucket(&remote_js, &sync_cfg.bucket).await?;
+    mirror_remote_kv_entry_to_local(
+        &remote_store,
+        &sync_cfg.bucket,
+        &sync_cfg.key,
+        local_store,
+        local_key,
+    )
+    .await
 }
 
 async fn connect_nats_with_creds(
@@ -918,26 +937,16 @@ async fn main() -> Result<(), LJMError> {
     println!("Connected to sample NATS via creds!");
     let sample_js = nats_config::jetstream_context(sample_nc);
 
-    let config_servers =
-        match std::env::var("CFG_NATS_SERVERS").ok().filter(|v| !v.trim().is_empty()) {
-            Some(_) => nats_config::servers_from_env_var("CFG_NATS_SERVERS", "")
-                .map_err(LJMError::LibraryError)?,
-            None => nats_config::servers_from_env().map_err(LJMError::LibraryError)?,
-        };
-    let config_opts = ConnectOptions::with_credentials_file(creds_path)
-        .await
-        .map_err(|e| LJMError::LibraryError(format!("Failed to load creds: {}", e)))?;
-    let config_nc = config_opts
-        .connect(config_servers)
-        .await
-        .map_err(|e| LJMError::LibraryError(format!("Config NATS connect failed: {}", e)))?;
-    println!("Connected to config NATS via creds!");
-    let config_js = nats_config::jetstream_context_from_env(config_nc, "CFG_JS_DOMAIN");
-
     let bucket = std::env::var("CFG_BUCKET").unwrap_or_else(|_| "avenabox".into());
     let key = std::env::var("CFG_KEY").unwrap_or_else(|_| "v1.macbook.unknown-source.config".into());
 
-    let store = ensure_kv_bucket(&config_js, &bucket).await?;
+    let store = ensure_kv_bucket(&sample_js, &bucket).await?;
+    let central_sync_cfg = central_kv_sync_config_from_env()?;
+    if let Some(sync_cfg) = central_sync_cfg.as_ref() {
+        if let Err(err) = mirror_central_kv_once(sync_cfg, &store, &key).await {
+            eprintln!("[bootstrap] Central-to-local KV mirror failed: {:?}", err);
+        }
+    }
     let cfg = load_config_from_kv(&store, &key).await?;
     println!(
         "[bootstrap] Loaded initial config from KV '{}:{}': {:?}",
