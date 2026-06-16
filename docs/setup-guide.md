@@ -13,6 +13,40 @@ This guide brings up one edge box, such as `i69-mu1` or `i69-mu2`, so it can:
 
 The webapp always connects to central NATS. Laptops do not connect directly to edge boxes.
 
+## Subject And Key Design
+
+Use one consistent structured namespace everywhere:
+
+```text
+<root>.<site_id>.<box_id>.<source_id>.<purpose>...
+```
+
+For this deployment, `root` is normally `avenars`.
+
+Examples for site `i69`, box `i69-mu2`, and LabJack source `i69-lj2`:
+
+```text
+KV bucket:         avenabox
+KV key:            i69.i69-mu2.i69-lj2.config
+Live wildcard:     avenars.i69.i69-mu2.i69-lj2.live.*
+Live channel:      avenars.i69.i69-mu2.i69-lj2.live.ch11
+Export request:    avenars.i69.i69-mu2.i69-lj2.export.request
+Export reply:      browser-generated NATS inbox
+```
+
+There is no `v1` token in the active design. If we need a future breaking
+subject change, use a new root or a deliberate migration, not an extra token in
+every current subject.
+
+NATS KV has internal subjects under `$KV`, but use the `nats kv` commands for
+normal operations:
+
+```bash
+nats kv get avenabox i69.i69-mu2.i69-lj2.config
+```
+
+Do not subscribe to `$KV...` directly unless you are debugging NATS internals.
+
 ## 1. Install Host Dependencies
 
 On the edge box:
@@ -78,7 +112,7 @@ For each new box, edit these values:
 - `source.id`: the LabJack source id, for example `i69-lj2`
 - `nats.leaf_server_name`: normally `<box_id>-leaf`
 - `nats.jetstream_domain`: normally `edge-<box_id>`
-- `nats.kv_key`: normally `v1.<box_id>.<source_id>.config`
+- `nats.kv_key`: normally `<site_id>.<box_id>.<source_id>.config`
 - `labjack.name`: usually the same as `source.id`
 - `labjack.asset_number`: the asset number shown in the webapp
 - `labjack.ip`: the LabJack Ethernet IP
@@ -125,7 +159,7 @@ Recommended NATS values for `i69-mu2` and LabJack `i69-lj2`:
       "nats://nats2.oats:7422"
     ],
     "kv_bucket": "avenabox",
-    "kv_key": "v1.i69-mu2.i69-lj2.config",
+    "kv_key": "i69.i69-mu2.i69-lj2.config",
     "stream_name": "labjacks",
     "stream_max_bytes": 100000000000
   }
@@ -236,9 +270,9 @@ Create or update the central key:
 cd /home/user/avena-rs
 nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds kv add avenabox --history=5 || true
 nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds \
-  kv put avenabox v1.i69-mu2.i69-lj2.config "$(cat shared/labjack-kv.generated.json)"
+  kv put avenabox i69.i69-mu2.i69-lj2.config "$(cat shared/labjack-kv.generated.json)"
 nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds \
-  kv get avenabox v1.i69-mu2.i69-lj2.config --raw | jq .
+  kv get avenabox i69.i69-mu2.i69-lj2.config --raw | jq .
 ```
 
 Seed local KV too. This lets the edge start even if central is temporarily unavailable:
@@ -246,15 +280,15 @@ Seed local KV too. This lets the edge start even if central is temporarily unava
 ```bash
 nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds --js-domain edge-i69-mu2 kv add avenabox --history=5 || true
 nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds --js-domain edge-i69-mu2 \
-  kv put avenabox v1.i69-mu2.i69-lj2.config "$(cat shared/labjack-kv.generated.json)"
+  kv put avenabox i69.i69-mu2.i69-lj2.config "$(cat shared/labjack-kv.generated.json)"
 nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds --js-domain edge-i69-mu2 \
-  kv get avenabox v1.i69-mu2.i69-lj2.config --raw | jq .
+  kv get avenabox i69.i69-mu2.i69-lj2.config --raw | jq .
 ```
 
 The underlying NATS KV subject is:
 
 ```text
-$KV.avenabox.v1.<box_id>.<source_id>.config
+$KV.avenabox.<site_id>.<box_id>.<source_id>.config
 ```
 
 Use `nats kv` for normal access instead of subscribing to `$KV...` directly.
@@ -281,7 +315,7 @@ Important env behavior:
 - `NATS_SERVERS=nats://127.0.0.1:4222`: publish/consume through the local leaf
 - `JS_DOMAIN=edge-<box_id>`: use local JetStream
 - `CFG_NATS_SERVERS=nats://nats1.oats:4222,nats://nats2.oats:4222`: mirror central KV
-- `CFG_KEY=v1.<box_id>.<source_id>.config`: central and local KV key
+- `CFG_KEY=<site_id>.<box_id>.<source_id>.config`: central and local KV key
 - `EXPORTER_MODE=worker`: exporter receives requests through NATS and sends CSV chunks back through NATS
 
 ## 8. Start Rust Services
@@ -319,11 +353,11 @@ ping -c 3 192.168.1.111
 
 Expected runtime flow:
 
-- `streamer` mirrors central `avenabox:v1.<box>.<source>.config` into local KV
+- `streamer` mirrors central `avenabox:<site>.<box>.<source>.config` into local KV
 - `streamer` watches local KV and restarts sampling when the local mirrored config changes
-- live channel samples publish to subjects such as `avenars.v1.i69-mu2.i69-lj2.ch11`
+- live channel samples publish to subjects such as `avenars.i69.i69-mu2.i69-lj2.live.ch11`
 - `archiver` consumes local JetStream and writes parquet under `rust-ljm/parquet`
-- `exporter` listens on `avenars.v1.i69.i69-mu2.archive.labjack.i69-lj2.export.request`
+- `exporter` listens on `avenars.i69.i69-mu2.i69-lj2.export.request`
 
 ## 9. Laptop Webapp
 
@@ -352,15 +386,15 @@ Credentials: a central NATS creds file with access to avenabox KV, live subjects
 The webapp reads central KV keys such as:
 
 ```text
-v1.i69-mu1.i69-lj2.config
-v1.i69-mu2.i69-lj2.config
+i69.i69-mu1.i69-lj2.config
+i69.i69-mu2.i69-lj2.config
 ```
 
 For live plots, it subscribes through central NATS to subjects such as:
 
 ```text
-avenars.v1.i69-mu1.i69-lj2.ch11
-avenars.v1.i69-mu2.i69-lj2.ch11
+avenars.i69.i69-mu1.i69-lj2.live.ch11
+avenars.i69.i69-mu2.i69-lj2.live.ch11
 ```
 
 Those are normal NATS subjects, not KV subjects. The leaf node forwards them from the edge box to central.
@@ -368,7 +402,7 @@ Those are normal NATS subjects, not KV subjects. The leaf node forwards them fro
 For CSV exports, the webapp publishes a request through central NATS to:
 
 ```text
-avenars.v1.i69.<box_id>.archive.labjack.<source_id>.export.request
+avenars.i69.<box_id>.<source_id>.export.request
 ```
 
 The edge `exporter` receives that request through the leaf connection and replies with chunked CSV frames to the webapp reply inbox.
@@ -381,10 +415,10 @@ After setup, validate this order.
 
 ```bash
 nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds \
-  kv put avenabox v1.i69-mu2.i69-lj2.config "$(cat shared/labjack-kv.generated.json)"
+  kv put avenabox i69.i69-mu2.i69-lj2.config "$(cat shared/labjack-kv.generated.json)"
 
 nats --server nats://127.0.0.1:4222 --creds rust-ljm/apt.creds --js-domain edge-i69-mu2 \
-  kv get avenabox v1.i69-mu2.i69-lj2.config --raw | jq .
+  kv get avenabox i69.i69-mu2.i69-lj2.config --raw | jq .
 ```
 
 The local value should update after `streamer` or `archiver` is running.
@@ -402,10 +436,10 @@ Change channels in the webapp. The streamer log should show a KV update and a sa
 
 ```bash
 nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds \
-  sub 'avenars.v1.i69-mu2.i69-lj2.ch11' --count=5
+  sub 'avenars.i69.i69-mu2.i69-lj2.live.ch11' --count=5
 
 nats --server nats://nats1.oats:4222 --creds rust-ljm/apt.creds \
-  sub 'avenars.v1.i69-mu2.i69-lj2.ch7' --count=5
+  sub 'avenars.i69.i69-mu2.i69-lj2.live.ch7' --count=5
 ```
 
 If channels 7 and 11 are enabled at the same scan rate, batches should arrive on both subjects at the same cadence. The exact per-batch point count is the FlatBuffer `values` length for each received message.
@@ -415,7 +449,7 @@ If channels 7 and 11 are enabled at the same scan rate, batches should arrive on
 Open the plot route for the correct config key:
 
 ```text
-/labjacks/plots/1001?key=v1.i69-mu2.i69-lj2.config
+/labjacks/plots/1001?key=i69.i69-mu2.i69-lj2.config
 ```
 
 The browser should subscribe to the central live subjects and render the enabled channels.
@@ -514,10 +548,10 @@ Live plots do not update:
 
 - confirm the webapp is connected to central WebSocket NATS
 - confirm the config key has the correct `box_id` and `source_id`
-- subscribe from central to `avenars.v1.<box_id>.<source_id>.chNN`
+- subscribe from central to `avenars.<site_id>.<box_id>.<source_id>.live.chNN`
 
 CSV export does not start:
 
 - confirm `exporter` is running in worker mode
-- confirm it listens on `avenars.v1.<site>.<box_id>.archive.labjack.<source_id>.export.request`
+- confirm it listens on `avenars.<site_id>.<box_id>.<source_id>.export.request`
 - confirm parquet files exist under `rust-ljm/parquet`

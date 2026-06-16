@@ -142,7 +142,7 @@
             await loadCalibrations();
 
             // Get all LabJack config keys from avenabox bucket
-            const keys = await getKeys(natsService, "avenabox", "v1.*.*.config");
+            const keys = await getKeys(natsService, "avenabox", "*.*.*.config");
             console.log("Found keys:", keys);
             
             const newLabJacks = new Map<string, LabJackConfig>();

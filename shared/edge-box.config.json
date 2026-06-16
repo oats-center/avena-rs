@@ -23,7 +23,7 @@
     ],
     "stream_max_bytes": 100000000000,
     "kv_bucket": "avenabox",
-    "kv_key": "v1.i69-mu2.i69-lj2.config",
+    "kv_key": "i69.i69-mu2.i69-lj2.config",
     "stream_name": "labjacks"
   },
   "paths": {

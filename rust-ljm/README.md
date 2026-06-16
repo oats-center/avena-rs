@@ -35,7 +35,7 @@ For central-webapp exports backed by edge-local parquet:
 
 The browser-to-worker path uses core NATS subjects, not JetStream, for export chunks:
 
-- request subject: `avenars.v1.<site_id>.<box_id>.archive.<source_type>.<source_id>.export.request`
+- request subject: `avenars.<site_id>.<box_id>.<source_id>.export.request`
 - reply subject: generated browser inbox
 
 The local LabJack KV config and live sample stream remain on JetStream-backed
@@ -220,14 +220,15 @@ The JSON stored in JetStream KV should use the newer structure:
 }
 ```
 
-With the v1 namespace, channel 11 from this config publishes to:
+With the structured namespace, channel 11 from this config publishes to:
 
 ```text
-avenars.v1.i69-mu1.i69-lj2.ch11
+avenars.i69.i69-mu1.i69-lj2.live.ch11
 ```
 
 Older configs using `avenabox.<asset>.data.ch##` still parse and publish with
-the legacy subject shape. New configs should use the `avenars.v1` fields above.
+the legacy subject shape. New configs should use the structured `avenars`
+fields above.
 
 Legacy KV configs using `scan_rate` and `sampling_rate` are still accepted on
 read, but new configs should use `scans_per_read` and `scan_rate_hz` so the

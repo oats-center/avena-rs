@@ -176,7 +176,7 @@ fn central_kv_sync_config_from_env(creds_path: &str) -> Result<Option<CentralKvS
         .unwrap_or_else(|| "avenabox".to_string());
     let key = env_nonempty("CENTRAL_CFG_KEY")
         .or_else(|| env_nonempty("CFG_KEY"))
-        .unwrap_or_else(|| "v1.macbook.unknown-source.config".to_string());
+        .unwrap_or_else(|| "unknown-site.macbook.unknown-source.config".to_string());
     let domain = env_nonempty("CENTRAL_JS_DOMAIN").or_else(|| env_nonempty("CFG_JS_DOMAIN"));
     let creds_path = env_nonempty("CENTRAL_NATS_CREDS_FILE").unwrap_or_else(|| creds_path.to_string());
 

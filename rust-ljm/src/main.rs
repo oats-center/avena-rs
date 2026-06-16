@@ -261,7 +261,7 @@ fn central_kv_sync_config_from_env() -> Result<Option<CentralKvSyncConfig>, LJME
         .unwrap_or_else(|| "avenabox".to_string());
     let key = env_nonempty("CENTRAL_CFG_KEY")
         .or_else(|| env_nonempty("CFG_KEY"))
-        .unwrap_or_else(|| "v1.macbook.unknown-source.config".to_string());
+        .unwrap_or_else(|| "unknown-site.macbook.unknown-source.config".to_string());
     let domain = env_nonempty("CENTRAL_JS_DOMAIN").or_else(|| env_nonempty("CFG_JS_DOMAIN"));
 
     Ok(Some(CentralKvSyncConfig {
@@ -938,7 +938,8 @@ async fn main() -> Result<(), LJMError> {
     let sample_js = nats_config::jetstream_context(sample_nc);
 
     let bucket = std::env::var("CFG_BUCKET").unwrap_or_else(|_| "avenabox".into());
-    let key = std::env::var("CFG_KEY").unwrap_or_else(|_| "v1.macbook.unknown-source.config".into());
+    let key = std::env::var("CFG_KEY")
+        .unwrap_or_else(|_| "unknown-site.macbook.unknown-source.config".into());
 
     let store = ensure_kv_bucket(&sample_js, &bucket).await?;
     let central_sync_cfg = central_kv_sync_config_from_env()?;
