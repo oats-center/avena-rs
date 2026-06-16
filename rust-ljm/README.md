@@ -139,6 +139,8 @@ Important fields:
 - `LABJACK_IP`: required direct LabJack IP for `streamer`
 - `LABJACK_SERIAL`: optional but recommended post-connect serial verification
 - `LABJACK_NAME`: optional logical device name for logging
+- `STREAMER_MAX_LABJACK_FAILURES`: consecutive sampler failures before the streamer exits cleanly, default `5`
+- `STREAMER_LABJACK_RETRY_DELAY_SECS`: delay between sampler retries, default `5`
 
 If `CFG_NATS_SERVERS` or `CENTRAL_NATS_SERVERS` is set, `streamer` bootstraps
 the local KV from central KV and keeps watching the central key for updates.
@@ -157,6 +159,12 @@ On connect, `streamer`:
 - verifies the connected handle is a T7
 - verifies `LABJACK_SERIAL` if provided
 - runs a minimal read/write self-test using `STREAM_SETTLING_US`
+
+During runtime, `streamer` retries sampler failures up to
+`STREAMER_MAX_LABJACK_FAILURES` consecutive times. After that it exits with a
+successful status so a `Restart=on-failure` systemd unit does not keep hammering
+the LabJack. Fix the hardware/network/config issue, then restart the service
+manually.
 
 ## FlatBuffer Codegen
 

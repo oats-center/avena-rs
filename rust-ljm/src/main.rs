@@ -140,6 +140,22 @@ fn stream_max_bytes_from_env() -> Result<i64, LJMError> {
     Ok(parsed)
 }
 
+fn max_labjack_failures_from_env() -> usize {
+    std::env::var("STREAMER_MAX_LABJACK_FAILURES")
+        .ok()
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(5)
+}
+
+fn labjack_retry_delay_from_env() -> Duration {
+    let secs = std::env::var("STREAMER_LABJACK_RETRY_DELAY_SECS")
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .unwrap_or(5);
+    Duration::from_secs(secs)
+}
+
 async fn ensure_stream_exists(
     js: &jetstream::Context,
     stream_name: &str,
@@ -873,29 +889,33 @@ async fn run_sampler(
     mut config_rx: tokio::sync::watch::Receiver<SampleConfig>,
     mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     js: jetstream::Context,
-) {
+) -> bool {
     let mut run_id = 0;
+    let mut consecutive_failures = 0usize;
+    let max_failures = max_labjack_failures_from_env();
+    let retry_delay = labjack_retry_delay_from_env();
     loop {
         if *shutdown_rx.borrow() {
             println!("[run_sampler] Sampler shutting down...");
-            break;
+            return false;
         }
         run_id += 1;
         let cfg = config_rx.borrow().clone();
         if !cfg.labjack_on_off {
+            consecutive_failures = 0;
             println!("[run_sampler] LabJack stream disabled; waiting for config update.");
             tokio::select! {
                 changed = config_rx.changed() => {
                     if changed.is_err() {
                         eprintln!("[run_sampler] Config channel closed while disabled.");
-                        break;
+                        return false;
                     }
                     continue;
                 }
                 _ = shutdown_rx.changed() => {
                     if *shutdown_rx.borrow() {
                         println!("[run_sampler] Sampler shutting down while disabled...");
-                        break;
+                        return false;
                     }
                 }
             }
@@ -906,17 +926,50 @@ async fn run_sampler(
             cfg
         );
 
-        if let Err(e) = sample_with_config(run_id, cfg, &mut config_rx, &mut shutdown_rx, &js).await
-        {
-            eprintln!("[run_sampler] Sampler error: {:?}", e);
+        let mut had_error = false;
+        match sample_with_config(run_id, cfg, &mut config_rx, &mut shutdown_rx, &js).await {
+            Ok(()) => {
+                consecutive_failures = 0;
+            }
+            Err(e) => {
+                had_error = true;
+                consecutive_failures = consecutive_failures.saturating_add(1);
+                eprintln!(
+                    "[run_sampler] Sampler error {}/{}: {:?}",
+                    consecutive_failures, max_failures, e
+                );
+                if consecutive_failures >= max_failures {
+                    eprintln!(
+                        "[run_sampler] Reached {} consecutive LabJack sampler failures; exiting cleanly so systemd does not auto-restart the streamer.",
+                        max_failures
+                    );
+                    return true;
+                }
+            }
         }
 
         if *shutdown_rx.borrow() {
             println!("[run_sampler] Shutdown detected after sampler error/config change");
-            break;
+            return false;
         }
 
-        println!("[run_sampler] Restarting sampler after config change...");
+        if had_error {
+            println!(
+                "[run_sampler] Restarting sampler after error in {}s...",
+                retry_delay.as_secs()
+            );
+            tokio::select! {
+                _ = tokio::time::sleep(retry_delay) => {}
+                _ = shutdown_rx.changed() => {
+                    if *shutdown_rx.borrow() {
+                        println!("[run_sampler] Sampler shutting down during retry delay...");
+                        return false;
+                    }
+                }
+            }
+        } else {
+            println!("[run_sampler] Restarting sampler after config change...");
+        }
     }
 }
 
@@ -961,7 +1014,7 @@ async fn main() -> Result<(), LJMError> {
         ljm_mode::init_ljm()?;
     }
 
-    tokio::spawn(run_sampler(
+    let sampler_handle = tokio::spawn(run_sampler(
         config_rx.clone(),
         shutdown_rx.clone(),
         sample_js.clone(),
@@ -981,11 +1034,28 @@ async fn main() -> Result<(), LJMError> {
         ));
     }
 
-    tokio::signal::ctrl_c()
-        .await
-        .map_err(|e| LJMError::LibraryError(format!("Failed to listen for Ctrl+C: {}", e)))?;
+    let sampler_stopped_after_failures = tokio::select! {
+        result = sampler_handle => {
+            match result {
+                Ok(stopped_after_failures) => stopped_after_failures,
+                Err(err) => {
+                    return Err(LJMError::LibraryError(format!(
+                        "Sampler task failed to join: {err}"
+                    )));
+                }
+            }
+        }
+        signal = tokio::signal::ctrl_c() => {
+            signal.map_err(|e| LJMError::LibraryError(format!("Failed to listen for Ctrl+C: {}", e)))?;
+            false
+        }
+    };
 
-    println!("Shutting down...");
+    if sampler_stopped_after_failures {
+        eprintln!("Streamer stopped after repeated LabJack sampler failures.");
+    } else {
+        println!("Shutting down...");
+    }
     let _ = shutdown_tx.send(true);
     tokio::time::sleep(Duration::from_millis(300)).await;
     Ok(())

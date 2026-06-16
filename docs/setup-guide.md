@@ -317,6 +317,8 @@ Important env behavior:
 - `CFG_NATS_SERVERS=nats://nats1.oats:4222,nats://nats2.oats:4222`: mirror central KV
 - `CFG_KEY=<site_id>.<box_id>.<source_id>.config`: central and local KV key
 - `EXPORTER_MODE=worker`: exporter receives requests through NATS and sends CSV chunks back through NATS
+- `STREAMER_MAX_LABJACK_FAILURES=5`: after five consecutive sampler failures, `streamer` exits cleanly and systemd does not restart it
+- `STREAMER_LABJACK_RETRY_DELAY_SECS=5`: delay between LabJack sampler retry attempts
 
 ## 8. Start Rust Services
 
@@ -355,6 +357,7 @@ Expected runtime flow:
 
 - `streamer` mirrors central `avenabox:<site>.<box>.<source>.config` into local KV
 - `streamer` watches local KV and restarts sampling when the local mirrored config changes
+- `streamer` stops after five consecutive LabJack sampler failures; inspect logs and restart it manually after fixing the hardware/network issue
 - live channel samples publish to subjects such as `avenars.i69.i69-mu2.i69-lj2.live.ch11`
 - `archiver` consumes local JetStream and writes parquet under `rust-ljm/parquet`
 - `exporter` listens on `avenars.i69.i69-mu2.i69-lj2.export.request`
@@ -485,6 +488,19 @@ Stop Rust services:
 ```
 
 These Rust services are transient user systemd units created with `systemd-run --user`; they do not install persistent boot units by default.
+
+If `avena-streamer` is inactive after a LabJack fault, check why it stopped:
+
+```bash
+journalctl --user -u avena-streamer -n 120 --no-pager
+```
+
+Fix the LabJack power/network/config issue, then restart it manually:
+
+```bash
+cd /home/user/avena-rs/rust-ljm
+./avena-service.sh streamer restart
+```
 
 Restart containers:
 

@@ -173,6 +173,8 @@ def streamer_env(config: dict) -> dict:
         "LABJACK_USB_ID": labjack.get("usb_id", "ANY"),
         "LABJACK_OPEN_ORDER": labjack.get("open_order", "ethernet"),
         "EXPORTER_HTTP_URL": paths["exporter_http_url"],
+        "STREAMER_MAX_LABJACK_FAILURES": labjack.get("max_failures", 5),
+        "STREAMER_LABJACK_RETRY_DELAY_SECS": labjack.get("retry_delay_secs", 5),
     }
 
     stream_max_bytes = nats.get("stream_max_bytes")
