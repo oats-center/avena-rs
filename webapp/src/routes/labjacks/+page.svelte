@@ -2,6 +2,7 @@
     import { onMount } from "svelte";
     import { connect, getKeys, getKeyValue, updateConfig, deleteKey } from "$lib/nats.svelte";
     import { normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
+    import { labjackConfigKey } from "$lib/subjects";
     import LabJackConfigModal from "$lib/components/LabJackConfigModal.svelte";
     
     interface SensorSettings {
@@ -19,6 +20,10 @@
         labjack_name: string;
         asset_number: number;
         max_channels: number;
+        site_id?: string;
+        box_id?: string;
+        source_type?: string;
+        source_id?: string;
         nats_subject: string;
         nats_stream: string;
         rotate_secs: number;
@@ -69,6 +74,10 @@
             labjack_name: raw.labjack_name,
             asset_number: Number(raw.asset_number),
             max_channels: Number(raw.max_channels),
+            site_id: raw.site_id,
+            box_id: raw.box_id,
+            source_type: raw.source_type,
+            source_id: raw.source_id,
             nats_subject: raw.nats_subject,
             nats_stream: raw.nats_stream,
             rotate_secs: Number(raw.rotate_secs),
@@ -84,7 +93,11 @@
             labjack_name: raw.labjack_name ?? "unknown",
             asset_number: Number(raw.asset_number ?? 0),
             max_channels: Number(raw.max_channels ?? 8),
-            nats_subject: raw.nats_subject ?? "avenabox",
+            site_id: raw.site_id ?? "",
+            box_id: raw.box_id ?? "",
+            source_type: raw.source_type ?? "labjack",
+            source_id: raw.source_id ?? raw.labjack_name ?? "",
+            nats_subject: raw.nats_subject ?? "avenars",
             nats_stream: raw.nats_stream ?? "labjacks",
             rotate_secs: Number(raw.rotate_secs ?? 60),
             sensor_settings: sensor
@@ -129,7 +142,7 @@
             await loadCalibrations();
 
             // Get all LabJack config keys from avenabox bucket
-            const keys = await getKeys(natsService, "avenabox", "labjackd.config.*");
+            const keys = await getKeys(natsService, "avenabox", "*.*.*.config");
             console.log("Found keys:", keys);
             
             const newLabJacks = new Map<string, LabJackConfig>();
@@ -187,7 +200,11 @@
             labjack_name: "",
             asset_number: 0,
             max_channels: 8,
-            nats_subject: "avenabox",
+            site_id: "i69",
+            box_id: "",
+            source_type: "labjack",
+            source_id: "",
+            nats_subject: "avenars",
             nats_stream: "labjacks",
             rotate_secs: 60,
             sensor_settings: {
@@ -247,7 +264,7 @@
             }
             
             const sanitizedConfig = sanitizeLabJackConfig(config);
-            const key = isAddingNew ? `labjackd.config.${sanitizedConfig.labjack_name.toLowerCase()}` : editingKey;
+            const key = isAddingNew ? labjackConfigKey(sanitizedConfig) : editingKey;
             const success = await updateConfig(serverName, credentialsContent, "avenabox", key, sanitizedConfig);
             
             if (success) {
@@ -436,10 +453,13 @@
                                 <div>
                                     <h3 class="card-title text-xl text-base-content">{config.labjack_name}</h3>
                                     <p class="text-base-content/70 text-sm mt-1">Asset #{config.asset_number}</p>
+                                    {#if config.box_id}
+                                        <p class="text-base-content/70 text-sm mt-1">Box {config.box_id}</p>
+                                    {/if}
                                 </div>
                                 <div class="flex space-x-1">
                                     <button
-                                        onclick={() => window.location.href = `/labjacks/plots/${config.asset_number}`}
+                                        onclick={() => window.location.href = `/labjacks/plots/${config.asset_number}?key=${encodeURIComponent(key)}`}
                                         class="btn btn-sm btn-success btn-circle"
                                         title="View Real-time Plots"
                                         aria-label="View Real-time Plots"

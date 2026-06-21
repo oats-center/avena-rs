@@ -1,20 +1,30 @@
+/** Calibration definition stored in dashboard config and Parquet metadata. */
 export type CalibrationSpec =
+  /** Leaves raw values unchanged. */
   | {
       id?: string;
       type: "identity";
     }
+  /** Applies `a * raw + b`. */
   | {
       id?: string;
       type: "linear";
       a: number;
       b: number;
     }
+  /** Applies `coeffs[i] * raw ** i` and sums each term. */
   | {
       id?: string;
       type: "polynomial";
       coeffs: number[];
     };
 
+/**
+ * Converts a partial or unknown calibration object into a valid spec.
+ *
+ * Missing, malformed, or unsupported calibration data becomes identity
+ * calibration so UI previews and exports can proceed safely.
+ */
 export function normalizeCalibration(
   raw?: Partial<CalibrationSpec> | null
 ): CalibrationSpec {
@@ -45,6 +55,7 @@ export function normalizeCalibration(
   return { id: raw.id, type: "identity" };
 }
 
+/** Applies a calibration formula to one raw sample value. */
 export function applyCalibration(spec: CalibrationSpec, raw: number): number {
   if (!Number.isFinite(raw)) {
     return raw;

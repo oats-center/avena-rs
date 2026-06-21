@@ -1,23 +1,44 @@
+import { createInbox } from "@nats-io/nats-core";
+import type { NatsService } from "./nats.svelte";
+
+/** Request payload sent to the archive exporter worker. */
 export interface ExportRequestPayload {
+  /** Asset number whose archived channel data should be exported. */
   asset: number;
+  /** LabJack analog input channels to include in the CSV export. */
   channels: number[];
+  /** Inclusive RFC 3339 start timestamp for exported samples. */
   start: string;
+  /** Inclusive RFC 3339 end timestamp for exported samples. */
   end: string;
+  /** Export format. The frontend currently requests CSV only. */
   format?: "csv";
+  /** Optional filename suggested by the caller and used when metadata is absent. */
   download_name?: string;
+  /** Optional box identifier retained for compatibility with older request shapes. */
+  box_id?: string;
 }
 
+/** Completed export result assembled from streamed NATS response frames. */
 export interface ExportStreamResult {
+  /** CSV content as a browser Blob. */
   blob: Blob;
+  /** Filename advertised by the exporter or derived from the request. */
   fileName: string;
+  /** Number of bytes reported by the exporter, or counted locally. */
   size: number;
+  /** Requested channels that had no matching archived rows. */
   missingChannels: number[];
 }
 
+/** Optional callbacks and timeout controls for a streamed export. */
 export interface ExportStreamOptions {
+  /** Called after each chunk with total bytes received so far. */
   onProgress?: (received: number) => void;
+  /** Called when the exporter sends its missing-channel summary. */
   onSummary?: (missingChannels: number[]) => void;
-  websocketUrl?: string;
+  /** Idle timeout for the export response stream. */
+  idleTimeoutMs?: number;
 }
 
 type SummaryFrame = {
@@ -43,245 +64,147 @@ type CompleteFrame = {
 
 type Frame = SummaryFrame | MetaFrame | ErrorFrame | CompleteFrame | Record<string, unknown>;
 
-function stripTrailingSlash(url: string): string {
-  return url.endsWith("/") ? url.slice(0, -1) : url;
+const EXPORT_FRAME_HEADER = "Avena-Export-Frame";
+
+/** Returns true when a decoded JSON frame is export metadata. */
+function isMetaFrame(frame: Frame): frame is MetaFrame {
+  return (frame as { type?: unknown }).type === "meta";
 }
 
-function defaultWebsocketScheme(): "ws" | "wss" {
-  if (typeof window !== "undefined" && window.location.protocol === "https:") {
-    return "wss";
-  }
-  return "ws";
+/** Returns true when a decoded JSON frame is the final export summary. */
+function isSummaryFrame(frame: Frame): frame is SummaryFrame {
+  return (frame as { type?: unknown }).type === "summary";
 }
 
-function normalizeWebsocketUrl(url: string): string {
-  const trimmed = url.trim();
-  if (!trimmed) return "";
-
-  const withScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed)
-    ? trimmed
-    : `${defaultWebsocketScheme()}://${trimmed}`;
-
-  try {
-    const parsed = new URL(withScheme);
-    if (parsed.protocol === "http:") parsed.protocol = "ws:";
-    if (parsed.protocol === "https:") parsed.protocol = "wss:";
-    if (!parsed.pathname || parsed.pathname === "/") {
-      parsed.pathname = "/export";
-    }
-    return stripTrailingSlash(parsed.toString());
-  } catch {
-    return withScheme;
-  }
+/** Returns true when a decoded JSON frame reports an exporter error. */
+function isErrorFrame(frame: Frame): frame is ErrorFrame {
+  return (frame as { type?: unknown }).type === "error";
 }
 
-function buildDefaultExportCandidates(): string[] {
-  if (typeof window === "undefined") {
-    return ["ws://127.0.0.1:9001/export"];
-  }
-
-  const candidates = new Set<string>();
-  const scheme = defaultWebsocketScheme();
-  const { hostname, host, origin } = window.location;
-
-  candidates.add(`${scheme}://${hostname}:9001/export`);
-  candidates.add(`${scheme}://${host}/export`);
-
-  try {
-    const originUrl = new URL(origin);
-    originUrl.protocol = scheme === "wss" ? "wss:" : "ws:";
-    originUrl.pathname = "/export";
-    originUrl.search = "";
-    originUrl.hash = "";
-    candidates.add(stripTrailingSlash(originUrl.toString()));
-  } catch {
-    // Keep the simpler candidates if URL construction fails.
-  }
-
-  if (hostname === "localhost" || hostname === "127.0.0.1") {
-    candidates.add("ws://127.0.0.1:9001/export");
-  }
-
-  return Array.from(candidates);
-}
-
-function buildExportCandidates(override?: string): string[] {
-  const configured = override?.trim() || import.meta.env.VITE_EXPORT_WS_URL?.trim() || "";
-  if (configured) {
-    return [normalizeWebsocketUrl(configured)];
-  }
-  return buildDefaultExportCandidates();
-}
-
-function buildWebSocketHint(url: string): string {
-  if (typeof window === "undefined") {
-    return "";
-  }
-
-  if (window.location.protocol === "https:" && url.startsWith("ws://")) {
-    return " The app is loaded over HTTPS, so the browser will block insecure ws:// connections. Use a wss:// endpoint or proxy /export through HTTPS.";
-  }
-
-  try {
-    const parsed = new URL(url);
-    const isLoopback = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost";
-    const currentHost = window.location.hostname;
-    if (isLoopback && currentHost !== "127.0.0.1" && currentHost !== "localhost") {
-      return " The exporter URL points at localhost, which means the browser is trying to connect to its own machine rather than the remote host running Avena.";
-    }
-  } catch {
-    // Ignore malformed URLs and fall back to the base error message.
-  }
-
-  return "";
-}
-
-async function streamExportFromUrl(
-  url: string,
+/**
+ * Requests a CSV export from the NATS worker and assembles streamed chunks.
+ *
+ * The function publishes the request with an inbox reply subject, acknowledges
+ * chunk frames on a separate inbox, and returns after the exporter sends a
+ * complete frame.
+ */
+export async function downloadExportViaNats(
+  nats: NatsService,
+  requestSubject: string,
   payload: ExportRequestPayload,
-  options: ExportStreamOptions
+  options: ExportStreamOptions = {}
 ): Promise<ExportStreamResult> {
-  const ws = new WebSocket(url);
-  ws.binaryType = "arraybuffer";
-
+  const inbox = createInbox();
+  const ackSubject = createInbox();
+  const sub = nats.connection.subscribe(inbox);
   const chunks: ArrayBuffer[] = [];
   let meta: MetaFrame | null = null;
   let summary: SummaryFrame | null = null;
   let totalBytes = 0;
+  let timedOut = false;
+  const idleTimeoutMs = options.idleTimeoutMs ?? 10 * 60_000;
+  let timeout: ReturnType<typeof setTimeout>;
 
-  return new Promise<ExportStreamResult>((resolve, reject) => {
-    let settled = false;
-
-    const cleanup = () => {
-      ws.onerror = null;
-      ws.onclose = null;
-      ws.onmessage = null;
-      ws.onopen = null;
-    };
-
-    const fail = (message: string) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
+  const resetIdleTimeout = () => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => {
+      timedOut = true;
       try {
-        if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
-          ws.close();
-        }
+        sub.unsubscribe();
       } catch {
-        // Best-effort cleanup only.
+        // Subscription may already be closed.
       }
-      reject(new Error(message));
-    };
+    }, idleTimeoutMs);
+  };
 
-    const succeed = (result: ExportStreamResult) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      try {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.close(1000, "complete");
+  timeout = setTimeout(() => {
+    timedOut = true;
+    try {
+      sub.unsubscribe();
+    } catch {
+      // Subscription may already be closed.
+    }
+  }, idleTimeoutMs);
+
+  try {
+    nats.connection.publish(
+      requestSubject,
+      new TextEncoder().encode(
+        JSON.stringify({ ...payload, format: "csv" as const, ack_subject: ackSubject })
+      ),
+      { reply: inbox }
+    );
+    if (typeof nats.connection.flush === "function") {
+      await nats.connection.flush();
+    }
+
+    for await (const msg of sub) {
+      resetIdleTimeout();
+      const frame = msg.headers?.get(EXPORT_FRAME_HEADER) ?? "chunk";
+
+      if (frame === "chunk") {
+        const data = msg.data instanceof Uint8Array ? msg.data : new Uint8Array(msg.data);
+        const copy = new Uint8Array(data.byteLength);
+        copy.set(data);
+        chunks.push(copy.buffer as ArrayBuffer);
+        totalBytes += data.byteLength;
+        nats.connection.publish(ackSubject);
+        if (typeof nats.connection.flush === "function") {
+          await nats.connection.flush();
         }
-      } catch {
-        // Best-effort cleanup only.
-      }
-      resolve(result);
-    };
-
-    ws.onerror = () => {
-      fail(`WebSocket connection failed for ${url}.${buildWebSocketHint(url)}`);
-    };
-
-    ws.onclose = (event) => {
-      if (settled || event.code === 1000) {
-        return;
-      }
-      const suffix = event.reason ? `: ${event.reason}` : "";
-      fail(`WebSocket closed unexpectedly for ${url} (${event.code}${suffix}).${buildWebSocketHint(url)}`);
-    };
-
-    ws.onmessage = async (event) => {
-      if (typeof event.data === "string") {
-        try {
-          const frame = JSON.parse(event.data) as Frame;
-          if (frame.type === "meta") {
-            meta = frame;
-            return;
-          }
-
-          if (frame.type === "summary") {
-            summary = frame;
-            options.onSummary?.(frame.missingChannels ?? []);
-            return;
-          }
-
-          if (frame.type === "complete") {
-            const fileName = meta?.fileName ?? payload.download_name ?? "labjack_export.csv";
-            const mime = meta?.contentType ?? "text/csv";
-            const blob = new Blob(chunks, { type: mime });
-            succeed({
-              blob,
-              fileName,
-              size: summary?.bytesSent ?? totalBytes ?? blob.size,
-              missingChannels: summary?.missingChannels ?? [],
-            });
-            return;
-          }
-
-          if (frame.type === "error") {
-            fail(`Export server error from ${url}: ${frame.message}`);
-          }
-        } catch (err) {
-          fail(
-            err instanceof Error
-              ? `Failed to parse export frame from ${url}: ${err.message}`
-              : `Failed to parse export frame from ${url}`
-          );
-        }
-        return;
-      }
-
-      try {
-        const buffer =
-          event.data instanceof ArrayBuffer
-            ? event.data
-            : await (event.data as Blob).arrayBuffer();
-        chunks.push(buffer);
-        totalBytes += buffer.byteLength;
         options.onProgress?.(totalBytes);
+        continue;
+      }
+
+      let parsed: Frame;
+      try {
+        parsed = JSON.parse(new TextDecoder().decode(msg.data)) as Frame;
       } catch (err) {
-        fail(
+        throw new Error(
           err instanceof Error
-            ? `Failed to read export data from ${url}: ${err.message}`
-            : `Failed to read export data from ${url}`
+            ? `Failed to parse export ${frame} frame: ${err.message}`
+            : `Failed to parse export ${frame} frame`
         );
       }
-    };
 
-    ws.onopen = () => {
-      const requestPayload = {
-        ...payload,
-        format: "csv" as const,
-      };
-      ws.send(JSON.stringify(requestPayload));
-    };
-  });
-}
+      if (frame === "meta" && isMetaFrame(parsed)) {
+        meta = parsed;
+        continue;
+      }
 
-export async function downloadExportViaWebSocket(
-  payload: ExportRequestPayload,
-  options: ExportStreamOptions = {}
-): Promise<ExportStreamResult> {
-  const candidates = buildExportCandidates(options.websocketUrl);
-  let lastError: Error | null = null;
+      if (frame === "summary" && isSummaryFrame(parsed)) {
+        summary = parsed;
+        options.onSummary?.(parsed.missingChannels ?? []);
+        continue;
+      }
 
-  for (const url of candidates) {
+      if (frame === "error" && isErrorFrame(parsed)) {
+        throw new Error(`Export server error: ${parsed.message}`);
+      }
+
+      if (frame === "complete") {
+        const fileName = meta?.fileName ?? payload.download_name ?? "labjack_export.csv";
+        const mime = meta?.contentType ?? "text/csv";
+        const blob = new Blob(chunks, { type: mime });
+        return {
+          blob,
+          fileName,
+          size: summary?.bytesSent ?? totalBytes ?? blob.size,
+          missingChannels: summary?.missingChannels ?? [],
+        };
+      }
+    }
+
+    if (timedOut) {
+      throw new Error(`Timed out after ${Math.round(idleTimeoutMs / 1000)} seconds without NATS export data`);
+    }
+    throw new Error("NATS export response ended before completion");
+  } finally {
+    clearTimeout(timeout);
     try {
-      return await streamExportFromUrl(url, payload, options);
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      console.error(`Export attempt failed for ${url}`, lastError);
+      sub.unsubscribe();
+    } catch {
+      // Subscription may already be closed.
     }
   }
-
-  throw lastError ?? new Error("No export WebSocket endpoint is configured.");
 }

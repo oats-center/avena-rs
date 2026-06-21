@@ -1,0 +1,74 @@
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+prometheus.exporter.unix "local" {
+  procfs_path     = "/host/proc"
+  sysfs_path      = "/host/sys"
+  rootfs_path     = "/host/root"
+  udev_data_path  = "/run/udev/data"
+
+  filesystem {
+    mount_points_exclude = "^/(sys|proc|dev|run|var/lib/containers/storage|host|etc)($|/)"
+  }
+}
+
+discovery.relabel "local" {
+  targets = prometheus.exporter.unix.local.targets
+
+  rule {
+    target_label = "job"
+    replacement  = "avena-rs"
+  }
+
+  rule {
+    target_label = "instance"
+    replacement  = sys.env("NODE_NAME")
+  }
+
+  rule {
+    target_label = "server"
+    replacement  = sys.env("NODE_NAME")
+  }
+}
+
+prometheus.scrape "local" {
+  targets         = discovery.relabel.local.output
+  scrape_interval = "15s"
+  scrape_timeout  = "10s"
+
+  forward_to = [prometheus.relabel.fix_node_uname.receiver]
+}
+
+prometheus.scrape "nats_leaf" {
+  targets = [{
+    __address__ = "127.0.0.1:7777",
+    job         = "avena-rs",
+    instance    = sys.env("NODE_NAME"),
+    server      = sys.env("NODE_NAME"),
+    service     = "nats-leaf",
+  }]
+
+  scrape_interval = "15s"
+  scrape_timeout  = "10s"
+
+  forward_to = [prometheus.remote_write.oats.receiver]
+}
+
+prometheus.relabel "fix_node_uname" {
+  rule {
+    source_labels = ["__name__"]
+    regex         = "node_uname_info"
+    target_label  = "nodename"
+    replacement   = sys.env("NODE_NAME")
+  }
+
+  forward_to = [prometheus.remote_write.oats.receiver]
+}
+
+prometheus.remote_write "oats" {
+  endpoint {
+    url = "http://prometheus.oats:9090/api/v1/write"
+  }
+}

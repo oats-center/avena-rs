@@ -1,0 +1,248 @@
+:root {
+  color-scheme: light;
+  --ink: #17211f;
+  --muted: #61706b;
+  --paper: #f7f8f4;
+  --panel: #ffffff;
+  --line: #dce3db;
+  --accent: #0f766e;
+  --accent-2: #2563eb;
+  --code-bg: #edf3ef;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  line-height: 1.6;
+}
+
+a {
+  color: inherit;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 14px 28px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(247, 248, 244, 0.95);
+  backdrop-filter: blur(12px);
+}
+
+.brand {
+  font-weight: 800;
+  text-decoration: none;
+}
+
+nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+nav a {
+  text-decoration: none;
+}
+
+.home {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 64px 28px;
+}
+
+.hero {
+  max-width: 900px;
+  padding: 34px 0 42px;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: clamp(42px, 7vw, 78px);
+  line-height: 0.95;
+  letter-spacing: 0;
+}
+
+.hero p {
+  max-width: 760px;
+  color: var(--muted);
+  font-size: 18px;
+}
+
+.eyebrow,
+.card span {
+  margin: 0 0 10px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.button,
+.card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  text-decoration: none;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 10px 16px;
+  font-weight: 700;
+}
+
+.button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.card {
+  display: grid;
+  gap: 8px;
+  padding: 20px;
+}
+
+.card strong {
+  font-size: 20px;
+}
+
+.card small {
+  color: var(--muted);
+}
+
+.doc-shell {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 36px;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 36px 28px 72px;
+}
+
+.toc {
+  position: sticky;
+  top: 82px;
+  align-self: start;
+  max-height: calc(100vh - 100px);
+  overflow: auto;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.toc h2 {
+  margin: 24px 0 8px;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.toc ol {
+  padding-left: 18px;
+}
+
+.toc-level-1 {
+  font-weight: 800;
+}
+
+.toc-level-3 {
+  margin-left: 12px;
+}
+
+.doc-content {
+  min-width: 0;
+  padding: 26px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.doc-content h1 {
+  margin-top: 0;
+  font-size: clamp(34px, 5vw, 54px);
+  line-height: 1.02;
+}
+
+.doc-content h2 {
+  margin-top: 42px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+  font-size: 30px;
+  line-height: 1.1;
+}
+
+.doc-content h3 {
+  margin-top: 28px;
+  font-size: 22px;
+}
+
+p,
+li {
+  color: var(--muted);
+}
+
+code {
+  color: var(--ink);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.92em;
+}
+
+pre {
+  margin: 16px 0;
+  padding: 16px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--code-bg);
+  color: var(--ink);
+  line-height: 1.45;
+}
+
+pre code {
+  font-size: 13px;
+}
+
+@media (max-width: 860px) {
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .grid,
+  .doc-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .toc {
+    position: static;
+    max-height: none;
+  }
+}

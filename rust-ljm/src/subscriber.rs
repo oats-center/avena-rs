@@ -1,4 +1,10 @@
-use async_nats::{self, ConnectOptions, ServerAddr};
+//! Debug subscriber that writes live NATS LabJack samples to CSV files.
+//!
+//! This binary is useful for inspecting the live FlatBuffer stream without
+//! running the Parquet archiver. It subscribes to the configured live subject
+//! wildcard and appends one CSV file per channel.
+
+use async_nats::{self, ConnectOptions};
 use flatbuffers::root;
 use futures_util::stream::StreamExt;
 use std::collections::HashMap;
@@ -7,23 +13,22 @@ use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-// Import your generated FlatBuffers schema
 mod sample_data_generated {
     #![allow(dead_code, unused_imports)]
-    include!("data_generated.rs"); // path relative to examples/
+    include!("data_generated.rs");
 }
+mod nats_config;
+mod subjects;
 use sample_data_generated::sampler;
 
+/// Extracts the final subject token, which is expected to be the channel name.
 fn extract_channel_token(subject: &str) -> Option<String> {
     subject.split('.').last().map(|s| s.to_string())
 }
 
-fn pad_asset(n: u32) -> String {
-    format!("{n:03}")
-}
-
+/// Opens or creates the per-channel CSV file and writes its header if needed.
 fn open_csv_for_channel(out_dir: &Path, asset: u32, ch_token: &str) -> std::io::Result<File> {
-    let fname = format!("labjack_{}_{}.csv", pad_asset(asset), ch_token);
+    let fname = format!("labjack_{}_{}.csv", subjects::pad_asset(asset), ch_token);
     let path = out_dir.join(fname);
     let need_header = !path.exists();
 
@@ -34,11 +39,13 @@ fn open_csv_for_channel(out_dir: &Path, asset: u32, ch_token: &str) -> std::io::
     Ok(file)
 }
 
+/// Converts a Unix nanosecond timestamp into RFC 3339 text.
 fn timestamp_unix_ns_to_rfc3339(timestamp_unix_ns: i64) -> Option<String> {
     Some(chrono::DateTime::<chrono::Utc>::from_timestamp_nanos(timestamp_unix_ns).to_rfc3339())
 }
 
 #[tokio::main]
+/// Starts the live NATS subscriber and appends decoded samples to CSV.
 async fn main() -> Result<(), Box<dyn Error>> {
     // match JSON config keys
     let subject_prefix = std::env::var("NATS_SUBJECT").unwrap_or_else(|_| "avenabox".to_string());
@@ -46,6 +53,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(1);
+    let site_id = std::env::var("SITE_ID").ok();
+    let box_id = std::env::var("BOX_ID").ok();
+    let labjack_name = std::env::var("LABJACK_NAME").ok();
+    let source_type = std::env::var("SOURCE_TYPE").ok();
+    let source_id = std::env::var("SOURCE_ID").ok();
 
     let out_dir_str = std::env::var("OUTPUT_DIR").unwrap_or_else(|_| "outputs".to_string());
     let out_dir = PathBuf::from(&out_dir_str);
@@ -57,15 +69,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     // Subscribe to all per-channel subjects for this asset
-    let wildcard = format!("{}.{}.data.*", subject_prefix, pad_asset(asset_number));
+    let wildcard = subjects::live_labjack_stream_subject(
+        &subject_prefix,
+        site_id.as_deref(),
+        box_id.as_deref(),
+        labjack_name.as_deref(),
+        source_type.as_deref(),
+        source_id.as_deref(),
+    );
     println!("Subscribing to subject '{}'", wildcard);
 
-    // Build server list
-    let servers: Vec<ServerAddr> = vec![
-        "nats://nats1.oats:4222".parse()?,
-        "nats://nats2.oats:4222".parse()?,
-        "nats://nats3.oats:4222".parse()?,
-    ];
+    let servers = nats_config::servers_from_env()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
 
     // Connect using creds
     let creds_path = std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| "apt.creds".into());

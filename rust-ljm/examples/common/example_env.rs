@@ -1,7 +1,16 @@
+//! Environment-file loader shared by LabJack examples.
+//!
+//! Examples can read a JSON object, or an object with an `env` member, and copy
+//! those key/value pairs into process environment variables before opening LJM.
+
 use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 
+/// Loads example environment variables from the first available config file.
+///
+/// `CONFIG_FILE` takes precedence. When it is unset, common repository-relative
+/// `streamer.env.json` locations are tried.
 pub fn load_example_env() -> Result<Option<PathBuf>, String> {
     let Some(config_path) = find_config_path() else {
         return Ok(None);
@@ -15,7 +24,12 @@ pub fn load_example_env() -> Result<Option<PathBuf>, String> {
         .get("env")
         .unwrap_or(&json)
         .as_object()
-        .ok_or_else(|| format!("{} must contain an object or env object", config_path.display()))?;
+        .ok_or_else(|| {
+            format!(
+                "{} must contain an object or env object",
+                config_path.display()
+            )
+        })?;
 
     for (key, value) in env_obj {
         let value = match value {
@@ -31,6 +45,7 @@ pub fn load_example_env() -> Result<Option<PathBuf>, String> {
     Ok(Some(config_path))
 }
 
+/// Finds the JSON config file used by examples.
 fn find_config_path() -> Option<PathBuf> {
     if let Ok(path) = std::env::var("CONFIG_FILE") {
         let path = PathBuf::from(path);
@@ -52,6 +67,7 @@ fn find_config_path() -> Option<PathBuf> {
     None
 }
 
+/// Returns the setup hint printed when no example config file is found.
 pub fn config_hint() -> &'static str {
     "Set CONFIG_FILE=/path/to/streamer.env.json or export LABJACK_IP directly."
 }

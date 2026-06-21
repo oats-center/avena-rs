@@ -1,0 +1,21 @@
+[Unit]
+Description=Avena RS NATS Prometheus exporter
+Wants=nats-leaf.service
+After=nats-leaf.service
+
+[Container]
+ContainerName=avena-nats-exporter
+Image=docker.io/natsio/prometheus-nats-exporter:latest
+
+Network=host
+ReadOnly=true
+ReadOnlyTmpfs=true
+
+Exec=-varz -connz -leafz -healthz -jsz=all http://127.0.0.1:8222
+
+[Service]
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

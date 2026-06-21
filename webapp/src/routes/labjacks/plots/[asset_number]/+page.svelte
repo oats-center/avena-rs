@@ -2,8 +2,9 @@
     import { onMount, onDestroy } from "svelte";
     import { page } from "$app/stores";
     import { connect, getKeyValue, getKeys } from "$lib/nats.svelte";
-    import { downloadExportViaWebSocket, type ExportRequestPayload } from "$lib/exporter";
+    import { downloadExportViaNats, type ExportRequestPayload } from "$lib/exporter";
     import { applyCalibration, normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
+    import { archiveExportRequestSubject, liveLabJackChannelPattern, liveLabJackChannelSubject } from "$lib/subjects";
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
     import {
         FlatBufferParser
@@ -25,6 +26,10 @@
         labjack_name: string;
         asset_number: number;
         max_channels: number;
+        site_id?: string;
+        box_id?: string;
+        source_type?: string;
+        source_id?: string;
         nats_subject: string;
         nats_stream: string;
         rotate_secs: number;
@@ -78,7 +83,11 @@
             labjack_name: raw.labjack_name ?? "unknown",
             asset_number: Number(raw.asset_number ?? 0),
             max_channels: Number(raw.max_channels ?? 8),
-            nats_subject: raw.nats_subject ?? "avenabox",
+            site_id: raw.site_id ?? "",
+            box_id: raw.box_id ?? "",
+            source_type: raw.source_type ?? "labjack",
+            source_id: raw.source_id ?? raw.labjack_name ?? "",
+            nats_subject: raw.nats_subject ?? "avenars",
             nats_stream: raw.nats_stream ?? "labjacks",
             rotate_secs: Number(raw.rotate_secs ?? 60),
             sensor_settings: sensor
@@ -168,8 +177,11 @@
     
     // Get asset number from URL params
     $effect(() => {
-        assetNumber = parseInt($page.params.asset_number || '0');
-        if (assetNumber > 0) {
+        const nextAssetNumber = parseInt($page.params.asset_number || '0');
+        const nextConfigKey = $page.url.searchParams.get('key')?.trim() || "";
+        assetNumber = nextAssetNumber;
+        if (nextAssetNumber > 0) {
+            console.log("Loading plot config", { assetNumber: nextAssetNumber, key: nextConfigKey });
             loadLabJackConfig();
         }
     });
@@ -435,21 +447,35 @@
                 return;
             }
             
-            // Find the LabJack config by asset number
-            const keys = await getKeys(natsService, "avenabox", "labjackd.config.*");
+            const preferredKey = $page.url.searchParams.get('key')?.trim() || "";
+            const keys = await getKeys(natsService, "avenabox", "*.*.*.config");
             let foundConfig: LabJackConfig | null = null;
-            
-            for (const key of keys) {
+
+            if (preferredKey) {
                 try {
-                    const configStr = await getKeyValue(natsService, "avenabox", key);
+                    const configStr = await getKeyValue(natsService, "avenabox", preferredKey);
                     const config = normalizeLabJackConfig(JSON.parse(configStr));
-                    if (!config) continue;
-                    if (config.asset_number === assetNumber) {
+                    if (config && config.asset_number === assetNumber) {
                         foundConfig = config;
-                        break;
                     }
                 } catch (err) {
-                    console.error(`Failed to parse config for key ${key}:`, err);
+                    console.error(`Failed to load preferred config key ${preferredKey}:`, err);
+                }
+            }
+
+            if (!foundConfig) {
+                for (const key of keys) {
+                    try {
+                        const configStr = await getKeyValue(natsService, "avenabox", key);
+                        const config = normalizeLabJackConfig(JSON.parse(configStr));
+                        if (!config) continue;
+                        if (config.asset_number === assetNumber) {
+                            foundConfig = config;
+                            break;
+                        }
+                    } catch (err) {
+                        console.error(`Failed to parse config for key ${key}:`, err);
+                    }
                 }
             }
             
@@ -570,7 +596,7 @@
         
         try {
             for (const channel of labjackConfig.sensor_settings.channels_enabled) {
-                const subject = `${labjackConfig.nats_subject}.${labjackConfig.asset_number}.data.ch${channel.toString().padStart(2, '0')}`;
+                const subject = liveLabJackChannelSubject(labjackConfig, channel);
                 const subscription = natsService.connection.subscribe(subject);
                 subscriptions.push(subscription);
                 
@@ -995,12 +1021,13 @@
                 channels: Array.from(exportChannels).sort((a, b) => a - b),
                 start: startIso,
                 end: endIso,
+                box_id: labjackConfig.box_id || undefined,
                 download_name: labjackConfig.labjack_name
                     ? `${labjackConfig.labjack_name.replace(/\s+/g, "_")}.csv`
                     : undefined,
             };
 
-            const result = await downloadExportViaWebSocket(payload, {
+            const result = await downloadExportViaNats(natsService, archiveExportRequestSubject(labjackConfig), payload, {
                 onProgress: (received) => {
                     exportProgress = received;
                 },
@@ -1174,7 +1201,7 @@
                         </div>
                         <div class="flex justify-between">
                             <span>NATS Subject Pattern:</span>
-                            <span class="badge badge-accent badge-sm font-mono">{labjackConfig.nats_subject}.{labjackConfig.asset_number}.data.ch##</span>
+                            <span class="badge badge-accent badge-sm font-mono">{liveLabJackChannelPattern(labjackConfig)}</span>
                         </div>
                         <div class="flex justify-between">
                             <span>Channel Data Status:</span>

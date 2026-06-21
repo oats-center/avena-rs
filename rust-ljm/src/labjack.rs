@@ -1,9 +1,19 @@
+//! LabJack connection and handle-inspection helpers.
+//!
+//! The streamer only supports direct Ethernet opens by IP address. These helpers
+//! centralize environment parsing, device verification, stale stream cleanup,
+//! and conversion of LabJack handle metadata into friendlier values.
+
 use std::net::Ipv4Addr;
 use std::str::FromStr;
 
 use ljmrs::handle::{ConnectionType, DeviceHandleInfo, DeviceType};
 use ljmrs::{LJMError, LJMLibrary};
 
+/// LJM error code returned when a stream is already active on the handle.
+const STREAM_IS_ACTIVE_ERROR: i32 = 2605;
+
+/// Returns a trimmed environment variable value when set and non-empty.
 fn env_var(name: &str) -> Option<String> {
     std::env::var(name)
         .ok()
@@ -11,14 +21,20 @@ fn env_var(name: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+/// Returns an environment identifier unless it is empty or the wildcard `ANY`.
 fn env_identifier(name: &str) -> Option<String> {
     env_var(name).filter(|value| !value.eq_ignore_ascii_case("ANY"))
 }
 
+/// Parses an IPv4 string used by the direct Ethernet LabJack path.
 fn parse_ipv4(value: &str) -> Option<Ipv4Addr> {
     Ipv4Addr::from_str(value).ok()
 }
 
+/// Reads the required LabJack IP address from environment variables.
+///
+/// `LABJACK_IP` is preferred. `LABJACK_IDENTIFIER` is accepted only when it is
+/// an IPv4 address because this deployment path avoids broad discovery.
 fn required_labjack_ip_from_env() -> Result<String, LJMError> {
     env_identifier("LABJACK_IP")
         .or_else(|| {
@@ -32,14 +48,34 @@ fn required_labjack_ip_from_env() -> Result<String, LJMError> {
         })
 }
 
+/// Reads an optional expected LabJack serial number.
 fn requested_labjack_serial_from_env() -> Option<i32> {
     env_identifier("LABJACK_SERIAL").and_then(|value| value.parse::<i32>().ok())
 }
 
+/// Extracts the numeric LJM code from an `LJMError` when present.
+fn ljm_error_code(err: &LJMError) -> Option<i32> {
+    match err {
+        LJMError::ErrorCode(code, _) => Some(code.into()),
+        _ => None,
+    }
+}
+
+/// Returns true when an LJM error indicates a stale active stream.
+fn is_stream_active_error(err: &LJMError) -> bool {
+    ljm_error_code(err) == Some(STREAM_IS_ACTIVE_ERROR)
+}
+
+/// Opens the configured LabJack for the default streamer path.
 pub fn open_labjack_from_env() -> Result<i32, LJMError> {
     open_streamer_labjack_from_env()
 }
 
+/// Opens, verifies, and self-tests the LabJack configured by environment.
+///
+/// The function checks device type, IP, optional serial number, and performs a
+/// read/write self-test. If a stale active stream blocks the self-test, it sends
+/// `stream_stop` once and retries before returning the handle.
 pub fn open_streamer_labjack_from_env() -> Result<i32, LJMError> {
     let requested_ip = required_labjack_ip_from_env()?;
     let expected_serial = requested_labjack_serial_from_env();
@@ -50,14 +86,17 @@ pub fn open_streamer_labjack_from_env() -> Result<i32, LJMError> {
         println!("[labjack] requested logical device name '{name}'");
     }
 
-    let handle =
-        LJMLibrary::open_jack(DeviceType::T7, ConnectionType::ETHERNET, requested_ip.as_str())
-            .map_err(|err| {
-                LJMError::LibraryError(format!(
-                    "Could not open LabJack via LABJACK_IP='{}': {:?}",
-                    requested_ip, err
-                ))
-            })?;
+    let handle = LJMLibrary::open_jack(
+        DeviceType::T7,
+        ConnectionType::ETHERNET,
+        requested_ip.as_str(),
+    )
+    .map_err(|err| {
+        LJMError::LibraryError(format!(
+            "Could not open LabJack via LABJACK_IP='{}': {:?}",
+            requested_ip, err
+        ))
+    })?;
 
     let verification = (|| -> Result<DeviceHandleInfo, LJMError> {
         let info = handle_info(handle).map_err(|err| {
@@ -98,12 +137,35 @@ pub fn open_streamer_labjack_from_env() -> Result<i32, LJMError> {
             ))
         })?;
 
-        LJMLibrary::write_name(handle, "STREAM_SETTLING_US", settling_us).map_err(|err| {
-            LJMError::LibraryError(format!(
-                "LabJack self-test write failed for '{}': STREAM_SETTLING_US={}: {:?}",
-                requested_ip, settling_us, err
-            ))
-        })?;
+        match LJMLibrary::write_name(handle, "STREAM_SETTLING_US", settling_us) {
+            Ok(_) => {}
+            Err(err) if is_stream_active_error(&err) => {
+                eprintln!(
+                    "[labjack] stale active stream detected on '{}'; sending stream_stop and retrying self-test",
+                    requested_ip
+                );
+                LJMLibrary::stream_stop(handle).map_err(|stop_err| {
+                    LJMError::LibraryError(format!(
+                        "LabJack stream_stop failed for stale stream on '{}': {:?}",
+                        requested_ip, stop_err
+                    ))
+                })?;
+                LJMLibrary::write_name(handle, "STREAM_SETTLING_US", settling_us).map_err(
+                    |retry_err| {
+                        LJMError::LibraryError(format!(
+                            "LabJack self-test write failed after stream_stop for '{}': STREAM_SETTLING_US={}: {:?}",
+                            requested_ip, settling_us, retry_err
+                        ))
+                    },
+                )?;
+            }
+            Err(err) => {
+                return Err(LJMError::LibraryError(format!(
+                    "LabJack self-test write failed for '{}': STREAM_SETTLING_US={}: {:?}",
+                    requested_ip, settling_us, err
+                )));
+            }
+        }
 
         println!(
             "[labjack] connected via {:?}, serial {}, ip {}, self-test ok",
@@ -121,11 +183,13 @@ pub fn open_streamer_labjack_from_env() -> Result<i32, LJMError> {
     Ok(handle)
 }
 
+/// Reads LabJack metadata for an open handle.
 pub fn handle_info(handle: i32) -> Result<DeviceHandleInfo, LJMError> {
     LJMLibrary::get_handle_info(handle)
 }
 
 #[allow(dead_code)]
+/// Converts the signed IPv4 bits in LabJack handle info to dotted decimal text.
 pub fn handle_ip_address(info: &DeviceHandleInfo) -> Result<Option<String>, LJMError> {
     if info.ip_address == 0 {
         return Ok(None);

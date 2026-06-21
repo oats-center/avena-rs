@@ -1,0 +1,19 @@
+{
+	"compilerOptions": {
+		"allowArbitraryExtensions": true,
+		"allowJs": true,
+		"checkJs": true,
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
+		"resolveJsonModule": true,
+		"skipLibCheck": true,
+		"sourceMap": true,
+		"strict": true,
+		"target": "ESNext",
+		"types": ["svelte"]
+	},
+	"include": ["src/lib/**/*.ts"],
+	"exclude": ["src/lib/sampler/**"]
+}

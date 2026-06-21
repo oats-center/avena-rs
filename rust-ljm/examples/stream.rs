@@ -1,3 +1,9 @@
+//! Starts a direct LabJack stream and prints samples to stdout.
+//!
+//! This example bypasses NATS and FlatBuffers. It is useful for checking the
+//! LabJack stream API, scan list, and per-channel sample values before running
+//! the full streamer service.
+
 use ljmrs::handle::DeviceType;
 use ljmrs::{LJMError, LJMLibrary};
 use std::thread;
@@ -10,6 +16,7 @@ mod labjack;
 #[path = "../src/ljm_mode.rs"]
 mod ljm_mode;
 
+/// Runs the direct LabJack stream example.
 fn main() -> Result<(), LJMError> {
     match example_env::load_example_env() {
         Ok(Some(path)) => println!("Loaded example env from {}", path.display()),

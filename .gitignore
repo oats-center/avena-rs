@@ -3,6 +3,16 @@
 
 .vscode
 .claude
+__pycache__/
+*.py[cod]
+/target/
+
+# Local NATS/NSC credentials and signing material.
+*.creds
+*.nk
+*.jwt
+playwright-report/
+webapp/test-results/
 
 ljstreamM_data/**
 !ljstreamM_data/validate_signals.py
