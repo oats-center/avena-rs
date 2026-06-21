@@ -12,8 +12,8 @@
       ],
       "dottedSecondary": true,
       "legend": {
-        "x": 298,
-        "y": 302
+        "x": 801,
+        "y": 311
       },
       "margins": {
         "bottom": 45,
@@ -25,13 +25,13 @@
       "showGrid": true,
       "traces": [
         {
-          "color": "rgb(55, 126, 184)",
-          "signal": "V(/S1+)",
+          "color": "rgb(231, 138, 195)",
+          "signal": "V(/Vf)",
           "trace_type": 257
         },
         {
-          "color": "rgb(152, 78, 163)",
-          "signal": "V(/Sc1-)",
+          "color": "rgb(166, 86, 40)",
+          "signal": "V(/Vout)",
           "trace_type": 257
         }
       ]
@@ -47,8 +47,8 @@
       ],
       "dottedSecondary": true,
       "legend": {
-        "x": 76,
-        "y": 140
+        "x": 126,
+        "y": 143
       },
       "margins": {
         "bottom": 45,
@@ -60,46 +60,34 @@
       "showGrid": true,
       "traces": [
         {
-          "color": "rgb(228, 26, 28)",
-          "signal": "V(/Sc1-) (phase)",
+          "color": "rgb(255, 255, 51)",
+          "signal": "V(/Vf)/V(/Vout) (phase)",
           "trace_type": 517
         },
         {
-          "color": "rgb(228, 26, 28)",
-          "signal": "V(/Sc1-) (gain)",
+          "color": "rgb(255, 255, 51)",
+          "cursor1": {
+            "position": 0.5301630411562797,
+            "x_format": "3~Hz",
+            "y_format": "3~dB"
+          },
+          "cursorD": {
+            "x_format": "3~s",
+            "y_format": "3~V"
+          },
+          "signal": "V(/Vf)/V(/Vout) (gain)",
           "trace_type": 521
         }
       ]
     },
     {
-      "analysis": "NOISE",
+      "analysis": "OP",
       "commands": [
-        ".noise v(/Sc1-) V4 dec 50 10 100k 1",
+        ".op",
         ".kicad adjustpaths",
         ".save all",
         ".probe alli",
         ".probe allp"
-      ],
-      "dottedSecondary": true,
-      "margins": {
-        "bottom": 45,
-        "left": 70,
-        "right": 70,
-        "top": 30
-      },
-      "measurements": [],
-      "showGrid": true,
-      "traces": [
-        {
-          "color": "rgb(228, 26, 28)",
-          "signal": "inoise_spectrum",
-          "trace_type": 513
-        },
-        {
-          "color": "rgb(55, 126, 184)",
-          "signal": "onoise_spectrum",
-          "trace_type": 513
-        }
       ]
     }
   ],

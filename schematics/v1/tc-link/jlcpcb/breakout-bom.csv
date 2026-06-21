@@ -1,0 +1,8 @@
+Comment,Designator,Footprint,JLCPCB Part #?optional?
+Amphenol RJ45,J1,RJ45_Amphenol_54602-x08_Horizontal,C2847314
+Phoenix Contact 02x03,J2,PC-1818517,C3580576
+Phoenix Contact 02x03,J3,PC-1818517,C3580576
+Pin Header 02x04,J4,PinSocket_2x04_P2.54mm_Vertical,C124422
+Pin Header 02x15,J5,PinHeader_2x15_P2.54mm_Vertical,C169817
+Pin Header 02x02,J6,PinHeader_2x02_P2.54mm_Vertical,C124362
+,,,
