@@ -242,9 +242,9 @@
 		(members "25b1cb89-d351-41c8-b6ad-76c9ccb45faf")
 	)
 	(embedded_fonts no)
-	(model "${KIPRJMOD}/../libraries/models/1053866.stp"
+	(model "${KIPRJMOD}/../lib/models/PC-1053866.stp"
 		(offset
-			(xyz -5.25 -10.5 0.43)
+			(xyz -2.032 -10.4902 0.4299966)
 		)
 		(scale
 			(xyz 1 1 1)
