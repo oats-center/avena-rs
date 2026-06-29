@@ -7,7 +7,7 @@
 	(tags "test point SMD pad")
 	(property "Reference" "REF**"
 		(at 0 -1.648 0)
-		(layer "F.SilkS")
+		(layer "F.Fab")
 		(uuid "df8ad89a-4372-48a1-959d-41a6068fbd8e")
 		(effects
 			(font
@@ -18,7 +18,7 @@
 	)
 	(property "Value" "TestPoint_Pad_D1.5mm"
 		(at 0 1.75 0)
-		(layer "F.Fab")
+		(layer "F.SilkS")
 		(uuid "bd63ee48-4a53-41ce-9f1d-e4ce2bbaee53")
 		(effects
 			(font
