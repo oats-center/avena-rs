@@ -4436,7 +4436,7 @@
 		(descr "SMD pad as test Point, diameter 1.0mm")
 		(tags "test point SMD pad")
 		(property "Reference" "TP1"
-			(at 0 -1.448 0)
+			(at -0.635 -1.524 0)
 			(layer "F.SilkS")
 			(uuid "1b6879fa-da7e-485d-941f-9ba38bad201d")
 			(effects
@@ -5931,7 +5931,7 @@
 	(footprint "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical"
 		(layer "B.Cu")
 		(uuid "4ab8449f-8f4e-4d0b-9cda-8b2f47714be8")
-		(at 205.7654 49.4538 180)
+		(at 205.7654 49.403 180)
 		(descr "Through hole straight pin header, 1x06, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x06 2.54mm single row")
 		(property "Reference" "J1"
@@ -6628,7 +6628,7 @@
 		(uuid "f963ed5f-4a56-4274-9948-e67c7dc947ae")
 	)
 	(gr_text "Signals v1.0"
-		(at 197.866 45.593 0)
+		(at 198.247 45.466 0)
 		(layer "F.Mask")
 		(uuid "f6fe64bb-4344-4068-a5de-8fb8512c6728")
 		(effects
@@ -6637,6 +6637,44 @@
 				(thickness 0.1)
 			)
 			(justify left bottom)
+		)
+	)
+	(dimension
+		(type orthogonal)
+		(layer "Edge.Cuts")
+		(uuid "6915c326-1fb2-41c3-9d5d-bc14e3979180")
+		(pts
+			(xy 205.7654 49.403) (xy 205.7654 43.053)
+		)
+		(height 6.0706)
+		(orientation 1)
+		(format
+			(prefix "")
+			(suffix "")
+			(units 3)
+			(units_format 0)
+			(precision 4)
+			(suppress_zeroes yes)
+		)
+		(style
+			(thickness 0.05)
+			(arrow_length 1.27)
+			(text_position_mode 0)
+			(arrow_direction outward)
+			(extension_height 0.58642)
+			(extension_offset 0.5)
+			(keep_text_aligned yes)
+		)
+		(gr_text "0.25"
+			(at 210.686 46.228 90)
+			(layer "Edge.Cuts")
+			(uuid "6915c326-1fb2-41c3-9d5d-bc14e3979180")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
 		)
 	)
 	(dimension

@@ -515,7 +515,7 @@
       "plot": "",
       "pos_files": "",
       "specctra_dsn": "",
-      "step": "",
+      "step": "../lib/models/controller.step",
       "svg": "",
       "vrml": ""
     },
