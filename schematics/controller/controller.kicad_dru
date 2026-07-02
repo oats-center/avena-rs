@@ -195,20 +195,6 @@
 )
 
 
-# --- Legend ---
-
-(rule "JLCPCB: Minimum Line Width"
-	(layer "?.Silkscreen")
-	(condition "A.Type == 'Text' || A.Type == 'Text Box'")
-	(constraint text_thickness (min 0.15mm))
-)
-
-(rule "JLCPCB: Minimum Text Height"
-	(layer "?.Silkscreen")
-	(condition "A.Type == 'Text' || A.Type == 'Text Box'")
-	(constraint text_height (min 1mm))
-)
-
 
 # --- Board Outlines ---
 
