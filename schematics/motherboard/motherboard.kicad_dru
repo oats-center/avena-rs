@@ -1,0 +1,5 @@
+(version 1)
+(rule "skew matching ETH"
+	(constraint length (min 1.3254in) (max 1.3264in))
+	(condition "A.NetClass == 'ETH'")
+	(severity error))
