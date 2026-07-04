@@ -6291,6 +6291,16 @@
 		)
 		(uuid "0b01a613-b8ad-40e5-b09f-9b1a6fe543b5")
 	)
+	(text "To be used with STLINK-V3MINIE"
+		(exclude_from_sim no)
+		(at 157.226 22.098 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+		(uuid "0c80e4d8-a6e7-49d1-aaac-729c7f47248a")
+	)
 	(text "ADC"
 		(exclude_from_sim no)
 		(at 107.95 20.32 0)
