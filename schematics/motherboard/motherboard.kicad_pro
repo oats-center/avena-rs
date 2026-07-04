@@ -256,6 +256,10 @@
         {
           "diameter": 0.55,
           "drill": 0.3
+        },
+        {
+          "diameter": 0.75,
+          "drill": 0.375
         }
       ],
       "zones_allow_external_fillets": true
@@ -699,7 +703,7 @@
         "uuid": "dbeec2c8-0d49-4c19-8d5c-ea955f4dc4a6"
       }
     ],
-    "used_designators": "#FLG7-9,R8-11,#PWR14,#PWR27,#PWR32,#PWR34,#PWR36,#PWR45,#PWR48,#PWR50-51,D4-8,JP6",
+    "used_designators": "R8-11,#FLG7-9,D4-8,#PWR14,#PWR27,#PWR32,#PWR34,#PWR36,#PWR45,#PWR48,#PWR50-51,JP6",
     "variants": []
   },
   "sheets": [
