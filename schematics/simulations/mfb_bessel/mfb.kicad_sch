@@ -5,6 +5,252 @@
 	(uuid "404b3b71-7715-4477-a0c7-9ada934099a3")
 	(paper "A4")
 	(lib_symbols
+		(symbol "Amplifier_Instrumentation:AD8422ARMZ"
+			(pin_names
+				(offset 0.127)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "U"
+				(at 3.556 7.366 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "AD8422ARMZ"
+				(at 7.366 5.334 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at -5.08 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" "https://www.analog.com/media/en/technical-documentation/data-sheets/AD8422.pdf"
+				(at 8.89 -10.16 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "Low Power, Rail to Rail, Instumentation Amplifier, MSOP-8"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "ad8422 instumentation amplifier msop-8"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_fp_filters" "MSOP-8*"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "AD8422ARMZ_0_1"
+				(polyline
+					(pts
+						(xy -5.08 7.62) (xy -5.08 -7.62) (xy 10.16 0) (xy -5.08 7.62)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+			)
+			(symbol "AD8422ARMZ_1_1"
+				(pin input line
+					(at -7.62 5.08 0)
+					(length 2.54)
+					(name "-"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -7.62 2.54 0)
+					(length 2.54)
+					(name "Rg"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -7.62 -2.54 0)
+					(length 2.54)
+					(name "Rg"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at -7.62 -5.08 0)
+					(length 2.54)
+					(name "+"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "4"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin power_in line
+					(at 0 -7.62 90)
+					(length 2.54)
+					(name "Vs-"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "5"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 5.08 -7.62 90)
+					(length 5.08)
+					(name "Ref"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "6"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin output line
+					(at 12.7 0 180)
+					(length 2.54)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "7"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin power_in line
+					(at 0 7.62 270)
+					(length 2.54)
+					(name "Vs+"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "8"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 		(symbol "Amplifier_Operational:TLV172IDCK"
 			(pin_names
 				(offset 0.127)
@@ -497,252 +743,6 @@
 						)
 					)
 					(number "2"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-			)
-			(embedded_fonts no)
-		)
-		(symbol "Link-Components:INA849D"
-			(pin_names
-				(offset 0.127)
-			)
-			(exclude_from_sim no)
-			(in_bom yes)
-			(on_board yes)
-			(in_pos_files yes)
-			(duplicate_pin_numbers_are_jumpers no)
-			(property "Reference" "U1"
-				(at 8.382 7.366 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Value" "INA849D"
-				(at 8.382 4.826 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Footprint" ""
-				(at 0.254 -27.432 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Datasheet" "https://www.ti.com/lit/ds/symlink/ina849.pdf"
-				(at 0.508 -29.972 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Description" "Ultra-Low-Noise (1 nV/√Hz), 28 MHz Bandwidth, Instrumentation Amplifier, Supply Range 8V to 36V, SOIC-8"
-				(at 0 -24.892 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "ki_keywords" "high-common-mode-rejection low-offset-drift low-gain-drift"
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "ki_fp_filters" "SOIC*3.9x4.9mm*P1.27mm*"
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(symbol "INA849D_0_1"
-				(polyline
-					(pts
-						(xy -5.08 7.62) (xy -5.08 -7.62) (xy 10.16 0) (xy -5.08 7.62)
-					)
-					(stroke
-						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type background)
-					)
-				)
-			)
-			(symbol "INA849D_1_1"
-				(pin input line
-					(at -7.62 5.08 0)
-					(length 2.54)
-					(name "-"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "1"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at -7.62 2.54 0)
-					(length 2.54)
-					(name "Rg"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "2"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at -7.62 -2.54 0)
-					(length 2.54)
-					(name "Rg"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "3"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin input line
-					(at -7.62 -5.08 0)
-					(length 2.54)
-					(name "+"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "4"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin power_in line
-					(at 0 -7.62 90)
-					(length 2.54)
-					(name "Vs-"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "5"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at 5.08 -7.62 90)
-					(length 5.08)
-					(name "Ref"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "6"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin output line
-					(at 12.7 0 180)
-					(length 2.54)
-					(name ""
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "7"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin power_in line
-					(at 0 7.62 270)
-					(length 2.54)
-					(name "Vs+"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "8"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -1960,16 +1960,16 @@
 		(uuid "6da2444a-ba5a-4f1f-8067-ebbbc8e66f71")
 	)
 	(junction
+		(at 111.76 58.42)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "9b4a905b-0e34-4929-96e0-150588aff303")
+	)
+	(junction
 		(at 82.55 109.22)
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "f3c757c1-7448-46cf-b69e-aced72391afb")
-	)
-	(junction
-		(at 111.76 58.42)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "fdc643d3-919c-4fb8-b3b1-1860f312f5c6")
 	)
 	(no_connect
 		(at 128.27 66.04)
@@ -2466,8 +2466,8 @@
 				)
 			)
 		)
-		(property "Sim.Params" "dc=-1 ampl=1 f=500 ac=1"
-			(at 81.534 63.5 0)
+		(property "Sim.Params" "dc=0 ampl=1 f=500 ac=1"
+			(at 79.756 63.5 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2670,83 +2670,6 @@
 			(project "mfb"
 				(path "/404b3b71-7715-4477-a0c7-9ada934099a3"
 					(reference "R2")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "power:GND")
-		(at 111.76 58.42 180)
-		(unit 1)
-		(body_style 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "2960acdd-2a20-4434-a3c2-282be2c8aa95")
-		(property "Reference" "#PWR019"
-			(at 111.76 52.07 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "GND"
-			(at 111.76 54.356 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" ""
-			(at 111.76 58.42 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" ""
-			(at 111.76 58.42 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
-			(at 111.76 58.42 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(pin "1"
-			(uuid "fd52a4ae-c38c-4d82-9f0d-739961fe7d4f")
-		)
-		(instances
-			(project "mfb"
-				(path "/404b3b71-7715-4477-a0c7-9ada934099a3"
-					(reference "#PWR019")
 					(unit 1)
 				)
 			)
@@ -3125,7 +3048,7 @@
 			)
 		)
 		(property "Value" "18k"
-			(at 154.94 60.706 90)
+			(at 154.686 60.452 90)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -3611,7 +3534,7 @@
 		)
 	)
 	(symbol
-		(lib_id "Link-Components:INA849D")
+		(lib_id "Amplifier_Instrumentation:AD8422ARMZ")
 		(at 135.89 63.5 0)
 		(unit 1)
 		(body_style 1)
@@ -3620,9 +3543,9 @@
 		(on_board yes)
 		(in_pos_files yes)
 		(dnp no)
-		(uuid "7d13b0b8-06bc-457d-9249-84152def6f58")
+		(uuid "789b387f-970b-4ec0-92ca-09bfaa30d3ea")
 		(property "Reference" "U2"
-			(at 141.732 55.626 0)
+			(at 143.764 54.61 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -3631,8 +3554,8 @@
 				)
 			)
 		)
-		(property "Value" "INA849D"
-			(at 141.732 58.166 0)
+		(property "Value" "AD8422ARMZ"
+			(at 143.764 57.15 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -3642,7 +3565,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 136.144 90.932 0)
+			(at 130.81 63.5 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -3652,8 +3575,8 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://www.ti.com/lit/ds/symlink/ina849.pdf"
-			(at 136.398 93.472 0)
+		(property "Datasheet" "https://www.analog.com/media/en/technical-documentation/data-sheets/AD8422.pdf"
+			(at 144.78 73.66 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -3663,18 +3586,7 @@
 				)
 			)
 		)
-		(property "Description" "Ultra-Low-Noise (1 nV/√Hz), 28 MHz Bandwidth, Instrumentation Amplifier, Supply Range 8V to 36V, SOIC-8"
-			(at 135.89 88.392 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Sim.Library" "C:\\Users\\smbea\\OneDrive\\personal-files\\oats\\avena-rs\\schematics\\lib\\spice\\INA849.LIB"
+		(property "Description" "Low Power, Rail to Rail, Instumentation Amplifier, MSOP-8"
 			(at 135.89 63.5 0)
 			(hide yes)
 			(show_name no)
@@ -3685,7 +3597,18 @@
 				)
 			)
 		)
-		(property "Sim.Name" "INA849"
+		(property "Sim.Library" "C:\\Users\\smbea\\OneDrive\\personal-files\\oats\\avena-rs\\schematics\\lib\\spice\\AD8422.cir"
+			(at 135.89 63.5 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sim.Name" "AD8422"
 			(at 135.89 63.5 0)
 			(hide yes)
 			(show_name no)
@@ -3707,7 +3630,7 @@
 				)
 			)
 		)
-		(property "Sim.Pins" "1=IN- 2=RG+ 3=RG- 4=IN+ 5=VEE 6=REF 7=OUT 8=VCC"
+		(property "Sim.Pins" "1=IN- 2=RG- 3=RG+ 4=IN+ 5=-Vs 6=REF 7=VOUT 8=+Vs"
 			(at 135.89 63.5 0)
 			(hide yes)
 			(show_name no)
@@ -3718,34 +3641,112 @@
 				)
 			)
 		)
-		(pin "5"
-			(uuid "67a16c7a-02a9-4eac-8df8-02a9f71b01ae")
+		(pin "4"
+			(uuid "d08a3d6f-addc-4b4f-8d63-b44b261b6ba1")
 		)
 		(pin "1"
-			(uuid "3c3c897c-3989-4997-9f8d-c507834f76f4")
-		)
-		(pin "3"
-			(uuid "b6046044-b350-4247-b8c0-486b8d76171d")
-		)
-		(pin "8"
-			(uuid "d615fcdb-e974-402b-a4a6-69a74b756026")
-		)
-		(pin "7"
-			(uuid "6a4e1e87-c7ff-41d0-91e4-2ba3be6fc38f")
-		)
-		(pin "4"
-			(uuid "c57fc650-e78e-4e7b-afe7-4eeeb1f3ddf8")
-		)
-		(pin "6"
-			(uuid "8a1ca440-8177-4fd7-96bf-9417c8241243")
+			(uuid "3257cf9e-24ff-4250-b356-6a40f7ec49e6")
 		)
 		(pin "2"
-			(uuid "220010a7-0414-499b-b7a7-20cdb7eede5c")
+			(uuid "4cfdcaf6-804a-464f-b3a8-ae13cc94df5f")
+		)
+		(pin "3"
+			(uuid "8928f493-a7a6-42b3-b16f-7adfb9680054")
+		)
+		(pin "5"
+			(uuid "f39d4591-f30f-4c22-8268-dcf9b17a311e")
+		)
+		(pin "6"
+			(uuid "dd2c3541-9816-41e5-9e6f-a1709d7425aa")
+		)
+		(pin "7"
+			(uuid "0312bd26-83a4-40bf-aafc-1db58a482eca")
+		)
+		(pin "8"
+			(uuid "f8ea0a20-4810-4cd3-9a99-9c458306677d")
 		)
 		(instances
 			(project "mfb"
 				(path "/404b3b71-7715-4477-a0c7-9ada934099a3"
 					(reference "U2")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 111.76 58.42 180)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "7a0e4e6e-0b66-4b57-9699-6dafefffeb41")
+		(property "Reference" "#PWR01"
+			(at 111.76 52.07 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 111.76 53.34 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 111.76 58.42 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 111.76 58.42 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 111.76 58.42 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "1eace348-aa21-4476-8d56-9e37262fcdeb")
+		)
+		(instances
+			(project "mfb"
+				(path "/404b3b71-7715-4477-a0c7-9ada934099a3"
+					(reference "#PWR01")
 					(unit 1)
 				)
 			)
