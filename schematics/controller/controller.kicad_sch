@@ -4,6 +4,11 @@
 	(generator_version "10.0")
 	(uuid "35d4bd7d-310e-467e-a880-dc98c3189518")
 	(paper "A3")
+	(title_block
+		(title "AvenaRS Controller Module")
+		(date "2026-07-06")
+		(rev "1.1")
+	)
 	(lib_symbols
 		(symbol "Connector:Conn_01x02_Pin"
 			(pin_names
@@ -6410,12 +6415,6 @@
 		(uuid "1345c2dc-1a7d-40a2-9022-45466ee06717")
 	)
 	(junction
-		(at 236.22 172.72)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "195a98be-e1c9-42be-80c0-c2ce937b17b3")
-	)
-	(junction
 		(at 148.59 193.04)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -6492,12 +6491,6 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "52cb8b10-c436-4156-8540-e3fb80dcc626")
-	)
-	(junction
-		(at 172.72 185.42)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "52dc00af-f314-4c4c-8daf-ce3303c7b7f5")
 	)
 	(junction
 		(at 325.12 76.2)
@@ -6614,16 +6607,16 @@
 		(uuid "e9248788-31e5-4698-add0-cbb84a92433e")
 	)
 	(junction
+		(at 182.88 185.42)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "eb61d24b-085f-4bb8-ad7f-2c6e41e1eb22")
+	)
+	(junction
 		(at 251.46 81.28)
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "f4bc974e-6b30-41e9-9fc5-20ee00677431")
-	)
-	(junction
-		(at 261.62 186.69)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "f8e182e2-c3bc-4228-99fa-7a865bc267de")
 	)
 	(junction
 		(at 358.14 27.94)
@@ -6751,16 +6744,6 @@
 	)
 	(wire
 		(pts
-			(xy 236.22 186.69) (xy 246.38 186.69)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "057d6e60-b553-4bb7-a39c-7aabcb8628b2")
-	)
-	(wire
-		(pts
 			(xy 320.04 27.94) (xy 332.74 27.94)
 		)
 		(stroke
@@ -6851,6 +6834,16 @@
 	)
 	(wire
 		(pts
+			(xy 182.88 185.42) (xy 182.88 186.69)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "0e6f02bb-508d-40de-96fe-d3e6fde06098")
+	)
+	(wire
+		(pts
 			(xy 156.21 67.31) (xy 156.21 68.58)
 		)
 		(stroke
@@ -6861,7 +6854,7 @@
 	)
 	(wire
 		(pts
-			(xy 170.18 185.42) (xy 172.72 185.42)
+			(xy 170.18 185.42) (xy 182.88 185.42)
 		)
 		(stroke
 			(width 0)
@@ -7101,7 +7094,7 @@
 	)
 	(wire
 		(pts
-			(xy 172.72 170.18) (xy 172.72 185.42)
+			(xy 172.72 170.18) (xy 172.72 186.69)
 		)
 		(stroke
 			(width 0)
@@ -8051,16 +8044,6 @@
 	)
 	(wire
 		(pts
-			(xy 172.72 185.42) (xy 172.72 186.69)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "8ada4b29-24b4-4a18-aa33-d9299bb59904")
-	)
-	(wire
-		(pts
 			(xy 250.19 45.72) (xy 261.62 45.72)
 		)
 		(stroke
@@ -8068,16 +8051,6 @@
 			(type default)
 		)
 		(uuid "8ba1dbad-21cb-4d00-908e-95cadc27485d")
-	)
-	(wire
-		(pts
-			(xy 236.22 172.72) (xy 236.22 186.69)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "8be03127-e458-42ac-9413-9dfc479542f2")
 	)
 	(wire
 		(pts
@@ -8721,7 +8694,7 @@
 	)
 	(wire
 		(pts
-			(xy 261.62 189.23) (xy 261.62 186.69)
+			(xy 182.88 181.61) (xy 182.88 185.42)
 		)
 		(stroke
 			(width 0)
@@ -8948,16 +8921,6 @@
 			(type default)
 		)
 		(uuid "e2519333-9d09-48f3-993c-a29200d74a98")
-	)
-	(wire
-		(pts
-			(xy 251.46 186.69) (xy 261.62 186.69)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "e4378c9e-2474-42c2-84df-940fa448c5d4")
 	)
 	(wire
 		(pts
@@ -9188,16 +9151,6 @@
 			(type default)
 		)
 		(uuid "f6284ea3-857e-439e-9fac-c05f0de8c666")
-	)
-	(wire
-		(pts
-			(xy 261.62 186.69) (xy 261.62 184.15)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "f6938c89-2cce-404b-9f96-5202c1fb6192")
 	)
 	(wire
 		(pts
@@ -12986,86 +12939,6 @@
 		)
 	)
 	(symbol
-		(lib_id "Device:FerriteBead_Small")
-		(at 248.92 186.69 90)
-		(unit 1)
-		(body_style 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(fields_autoplaced yes)
-		(uuid "468156ce-8385-405d-8c3d-bbb2a6c37f15")
-		(property "Reference" "FB2"
-			(at 248.8819 180.34 90)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "FerriteBead_Small"
-			(at 248.8819 182.88 90)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
-			(at 248.92 188.468 90)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" ""
-			(at 248.92 186.69 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" "Ferrite bead, small symbol"
-			(at 248.92 186.69 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(pin "1"
-			(uuid "1a42453c-d102-4b6d-90db-37e7e1c51fd0")
-		)
-		(pin "2"
-			(uuid "bf46cbeb-2cb5-4ebe-8613-2bb32144b25a")
-		)
-		(instances
-			(project "controller"
-				(path "/35d4bd7d-310e-467e-a880-dc98c3189518"
-					(reference "FB2")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
 		(lib_id "Device:C_Small")
 		(at 289.56 30.48 0)
 		(unit 1)
@@ -15210,7 +15083,6 @@
 		(on_board yes)
 		(in_pos_files yes)
 		(dnp no)
-		(fields_autoplaced yes)
 		(uuid "7789bb99-8e10-49ac-a066-faa5586d1a7c")
 		(property "Reference" "#PWR041"
 			(at 261.62 175.26 0)
@@ -15223,14 +15095,15 @@
 				)
 			)
 		)
-		(property "Value" "+3V3A1"
-			(at 261.62 166.37 0)
+		(property "Value" "+3V3A"
+			(at 258.064 166.624 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(justify left)
 			)
 		)
 		(property "Footprint" ""
@@ -17085,7 +16958,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "a6027604-cdb3-4bf0-9026-d17a960dd13b")
-		(property "Reference" "FB1"
+		(property "Reference" "FB2"
 			(at 248.8819 166.37 90)
 			(show_name no)
 			(do_not_autoplace no)
@@ -17147,7 +17020,7 @@
 		(instances
 			(project "controller"
 				(path "/35d4bd7d-310e-467e-a880-dc98c3189518"
-					(reference "FB1")
+					(reference "FB2")
 					(unit 1)
 				)
 			)
@@ -17235,7 +17108,7 @@
 	)
 	(symbol
 		(lib_id "power:+3V3")
-		(at 261.62 184.15 0)
+		(at 182.88 181.61 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -17245,7 +17118,7 @@
 		(dnp no)
 		(uuid "a6ce4e29-085e-4d49-a4d6-a1e354f04136")
 		(property "Reference" "#PWR063"
-			(at 261.62 187.96 0)
+			(at 182.88 185.42 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -17255,8 +17128,8 @@
 				)
 			)
 		)
-		(property "Value" "+3V3A"
-			(at 261.62 179.578 0)
+		(property "Value" "+3V3A1"
+			(at 182.88 177.038 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17266,7 +17139,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 261.62 184.15 0)
+			(at 182.88 181.61 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -17277,7 +17150,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 261.62 184.15 0)
+			(at 182.88 181.61 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -17288,7 +17161,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"+3V3\""
-			(at 261.62 184.15 0)
+			(at 182.88 181.61 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -18756,7 +18629,7 @@
 	)
 	(symbol
 		(lib_id "power:PWR_FLAG")
-		(at 261.62 189.23 180)
+		(at 182.88 186.69 180)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -18767,7 +18640,7 @@
 		(fields_autoplaced yes)
 		(uuid "c5302805-9c3c-47d7-9101-2ecd6666b157")
 		(property "Reference" "#FLG05"
-			(at 261.62 191.135 0)
+			(at 182.88 188.595 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -18778,7 +18651,7 @@
 			)
 		)
 		(property "Value" "PWR_FLAG"
-			(at 261.6199 193.04 90)
+			(at 182.8799 190.5 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -18790,7 +18663,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 261.62 189.23 0)
+			(at 182.88 186.69 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -18801,7 +18674,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 261.62 189.23 0)
+			(at 182.88 186.69 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -18812,7 +18685,7 @@
 			)
 		)
 		(property "Description" "Special symbol for telling ERC where power comes from"
-			(at 261.62 189.23 0)
+			(at 182.88 186.69 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)

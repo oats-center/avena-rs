@@ -1966,9 +1966,8 @@
 			)
 			(embedded_fonts no)
 		)
-		(symbol "Diode:BAV199DW"
+		(symbol "Diode:BAV99"
 			(pin_names
-				(offset 0.0254)
 				(hide yes)
 			)
 			(exclude_from_sim no)
@@ -1977,16 +1976,6 @@
 			(in_pos_files yes)
 			(duplicate_pin_numbers_are_jumpers no)
 			(property "Reference" "D"
-				(at 0 2.54 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Value" "BAV199DW"
 				(at 0 5.08 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -1996,7 +1985,17 @@
 					)
 				)
 			)
-			(property "Footprint" "Package_TO_SOT_SMD:SOT-363_SC-70-6"
+			(property "Value" "BAV99"
+				(at 0 2.54 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" "Package_TO_SOT_SMD:SOT-23"
 				(at 0 -12.7 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -2007,7 +2006,7 @@
 					)
 				)
 			)
-			(property "Datasheet" "https://www.diodes.com/assets/Datasheets/ds30417.pdf"
+			(property "Datasheet" "https://assets.nexperia.com/documents/data-sheet/BAV99_SER.pdf"
 				(at 0 0 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -2018,7 +2017,7 @@
 					)
 				)
 			)
-			(property "Description" "Quad Surface Mount Low Leakage Diode, SOT-363"
+			(property "Description" "BAV99 High-speed switching diodes, SOT-23"
 				(at 0 0 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -2029,17 +2028,7 @@
 					)
 				)
 			)
-			(property "ki_locked" ""
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "ki_keywords" "Quad diode"
+			(property "ki_keywords" "diode"
 				(at 0 0 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -2050,7 +2039,7 @@
 					)
 				)
 			)
-			(property "ki_fp_filters" "SOT?363*"
+			(property "ki_fp_filters" "SOT?23*"
 				(at 0 0 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -2061,7 +2050,7 @@
 					)
 				)
 			)
-			(symbol "BAV199DW_0_1"
+			(symbol "BAV99_0_1"
 				(polyline
 					(pts
 						(xy -5.08 0) (xy 5.08 0)
@@ -2074,12 +2063,14 @@
 						(type none)
 					)
 				)
+			)
+			(symbol "BAV99_1_1"
 				(polyline
 					(pts
 						(xy -3.81 1.27) (xy -1.27 0) (xy -3.81 -1.27) (xy -3.81 1.27) (xy -3.81 1.27) (xy -3.81 1.27)
 					)
 					(stroke
-						(width 0.254)
+						(width 0.2032)
 						(type default)
 					)
 					(fill
@@ -2091,7 +2082,7 @@
 						(xy -1.27 -1.27) (xy -1.27 1.27) (xy -1.27 1.27)
 					)
 					(stroke
-						(width 0.254)
+						(width 0.2032)
 						(type default)
 					)
 					(fill
@@ -2126,7 +2117,7 @@
 						(xy 1.27 1.27) (xy 3.81 0) (xy 1.27 -1.27) (xy 1.27 1.27) (xy 1.27 1.27) (xy 1.27 1.27)
 					)
 					(stroke
-						(width 0.254)
+						(width 0.2032)
 						(type default)
 					)
 					(fill
@@ -2138,21 +2129,7 @@
 						(xy 3.81 1.27) (xy 3.81 -1.27) (xy 3.81 -1.27)
 					)
 					(stroke
-						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-			)
-			(symbol "BAV199DW_1_1"
-				(polyline
-					(pts
-						(xy 6.35 0) (xy 7.62 0)
-					)
-					(stroke
-						(width 0)
+						(width 0.2032)
 						(type default)
 					)
 					(fill
@@ -2162,7 +2139,7 @@
 				(pin passive line
 					(at -7.62 0 0)
 					(length 2.54)
-					(name "A1"
+					(name "K"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -2180,7 +2157,7 @@
 				(pin passive line
 					(at 7.62 0 180)
 					(length 2.54)
-					(name "K2"
+					(name "A"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -2198,39 +2175,7 @@
 				(pin passive line
 					(at 0 -5.08 90)
 					(length 2.54)
-					(name "K3A4"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "6"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-			)
-			(symbol "BAV199DW_2_1"
-				(polyline
-					(pts
-						(xy 6.35 0) (xy 7.62 0)
-					)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(pin passive line
-					(at 0 -5.08 90)
-					(length 2.54)
-					(name "K1A2"
+					(name "K"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -2238,42 +2183,6 @@
 						)
 					)
 					(number "3"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at -7.62 0 0)
-					(length 2.54)
-					(name "A3"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "4"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at 7.62 0 180)
-					(length 2.54)
-					(name "K4"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "5"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -7229,7 +7138,7 @@
 		)
 		(uuid "f0205c65-27fb-4a9c-b3eb-3228a557ce33")
 	)
-	(text "note: C6 and C7 25V low ESR electrolytic\n"
+	(text "note: C6 25V low ESR electrolytic\nC7 25V X7R"
 		(exclude_from_sim no)
 		(at 188.976 38.354 0)
 		(effects
@@ -7284,12 +7193,6 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "2346ce1e-74a6-41d4-aede-0e187e76619d")
-	)
-	(junction
-		(at 160.02 46.99)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "2418f52e-27c8-4016-b965-97b4374e23db")
 	)
 	(junction
 		(at 182.88 58.42)
@@ -7356,12 +7259,6 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "5e28263c-216f-42f1-a5ca-775fbd986d1f")
-	)
-	(junction
-		(at 36.83 74.93)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "60987552-9719-4a59-93ab-3032ccd19565")
 	)
 	(junction
 		(at 173.99 156.21)
@@ -7634,6 +7531,16 @@
 			(type default)
 		)
 		(uuid "07fff70c-b96d-46bc-926d-a554d25db912")
+	)
+	(wire
+		(pts
+			(xy 147.32 187.96) (xy 149.86 187.96)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "0ab57fc4-bef5-4c3b-906c-54eba30aef2a")
 	)
 	(wire
 		(pts
@@ -8367,7 +8274,7 @@
 	)
 	(wire
 		(pts
-			(xy 160.02 46.99) (xy 168.91 46.99)
+			(xy 158.75 46.99) (xy 168.91 46.99)
 		)
 		(stroke
 			(width 0)
@@ -8777,16 +8684,6 @@
 	)
 	(wire
 		(pts
-			(xy 158.75 46.99) (xy 160.02 46.99)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "742d12c8-1add-4e9f-8ed5-bc7237a8705b")
-	)
-	(wire
-		(pts
 			(xy 124.46 156.21) (xy 124.46 157.48)
 		)
 		(stroke
@@ -8817,7 +8714,7 @@
 	)
 	(wire
 		(pts
-			(xy 35.56 74.93) (xy 36.83 74.93)
+			(xy 35.56 74.93) (xy 49.53 74.93)
 		)
 		(stroke
 			(width 0)
@@ -9107,6 +9004,16 @@
 	)
 	(wire
 		(pts
+			(xy 49.53 74.93) (xy 49.53 72.39)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "95ade00d-13cf-42dd-ac50-6e3fe40eac75")
+	)
+	(wire
+		(pts
 			(xy 266.7 134.62) (xy 266.7 138.43)
 		)
 		(stroke
@@ -9197,16 +9104,6 @@
 	)
 	(wire
 		(pts
-			(xy 147.32 187.96) (xy 149.86 187.96)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "a1237ccf-23d8-4252-90d1-a496041b4102")
-	)
-	(wire
-		(pts
 			(xy 80.01 39.37) (xy 80.01 41.91)
 		)
 		(stroke
@@ -9284,16 +9181,6 @@
 			(type default)
 		)
 		(uuid "a921ebe8-f5d9-4307-b8a2-37d1c443a0ee")
-	)
-	(wire
-		(pts
-			(xy 140.97 193.04) (xy 139.7 193.04)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "a9246229-0c26-45b3-9463-f042f4c5cb8a")
 	)
 	(wire
 		(pts
@@ -9417,7 +9304,7 @@
 	)
 	(wire
 		(pts
-			(xy 36.83 74.93) (xy 36.83 78.74)
+			(xy 36.83 59.69) (xy 36.83 78.74)
 		)
 		(stroke
 			(width 0)
@@ -9494,16 +9381,6 @@
 			(type default)
 		)
 		(uuid "b8ed06b1-f3ec-4fb9-b960-d91a02c18578")
-	)
-	(wire
-		(pts
-			(xy 36.83 59.69) (xy 36.83 74.93)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "b8fc7aca-8df2-4fcc-912c-3170301a88c9")
 	)
 	(wire
 		(pts
@@ -9594,6 +9471,16 @@
 			(type default)
 		)
 		(uuid "c23dccef-b191-4d2e-a88a-de78b9b0adbd")
+	)
+	(wire
+		(pts
+			(xy 140.97 193.04) (xy 139.7 193.04)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "c3e22502-2d6d-45e1-a333-18b949436933")
 	)
 	(wire
 		(pts
@@ -10827,7 +10714,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
 			(at 266.7 132.08 0)
 			(hide yes)
 			(show_name no)
@@ -10871,188 +10758,6 @@
 				(path "/dbeec2c8-0d49-4c19-8d5c-ea955f4dc4a6"
 					(reference "C18")
 					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Diode:BAV199DW")
-		(at 139.7 173.99 0)
-		(unit 1)
-		(body_style 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "05fc4982-d324-46f6-9430-16b874d97bf2")
-		(property "Reference" "D10"
-			(at 139.7 168.91 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "BAV199DW"
-			(at 139.7 170.942 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" "Package_TO_SOT_SMD:SOT-363_SC-70-6"
-			(at 139.7 186.69 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" "https://www.diodes.com/assets/Datasheets/ds30417.pdf"
-			(at 139.7 173.99 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" "Quad Surface Mount Low Leakage Diode, SOT-363"
-			(at 139.7 173.99 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(pin "6"
-			(uuid "b15aa7c1-d72e-4dcf-9bf5-14edbbcd4c84")
-		)
-		(pin "4"
-			(uuid "837a933b-bb4e-474d-bb18-875d5be66573")
-		)
-		(pin "5"
-			(uuid "e632ef5a-3e3e-46ca-a729-5fa946efca92")
-		)
-		(pin "1"
-			(uuid "049a2489-0cab-4ec8-a8c2-bdfbefa33885")
-		)
-		(pin "3"
-			(uuid "a4b5d403-e155-44de-9245-670e512a336f")
-		)
-		(pin "2"
-			(uuid "0398e009-017a-46d7-92aa-e2beb0ed1a9b")
-		)
-		(instances
-			(project "motherboard"
-				(path "/dbeec2c8-0d49-4c19-8d5c-ea955f4dc4a6"
-					(reference "D10")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Diode:BAV199DW")
-		(at 139.7 187.96 0)
-		(unit 2)
-		(body_style 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "07be8bd4-201c-4689-a86b-1969942114aa")
-		(property "Reference" "D10"
-			(at 139.7 182.88 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "BAV199DW"
-			(at 139.7 184.912 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" "Package_TO_SOT_SMD:SOT-363_SC-70-6"
-			(at 139.7 200.66 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" "https://www.diodes.com/assets/Datasheets/ds30417.pdf"
-			(at 139.7 187.96 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" "Quad Surface Mount Low Leakage Diode, SOT-363"
-			(at 139.7 187.96 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(pin "6"
-			(uuid "b02364e1-ae32-4b64-b46e-99dc557c5c9d")
-		)
-		(pin "4"
-			(uuid "837a933b-bb4e-474d-bb18-875d5be66573")
-		)
-		(pin "5"
-			(uuid "e632ef5a-3e3e-46ca-a729-5fa946efca92")
-		)
-		(pin "1"
-			(uuid "8be84726-f0b6-4cf2-970a-d0e1329e1370")
-		)
-		(pin "3"
-			(uuid "a4b5d403-e155-44de-9245-670e512a336f")
-		)
-		(pin "2"
-			(uuid "a2cf0638-a89d-4ecd-97bd-ee0b7bfe0178")
-		)
-		(instances
-			(project "motherboard"
-				(path "/dbeec2c8-0d49-4c19-8d5c-ea955f4dc4a6"
-					(reference "D10")
-					(unit 2)
 				)
 			)
 		)
@@ -11791,7 +11496,6 @@
 		(on_board yes)
 		(in_pos_files yes)
 		(dnp no)
-		(fields_autoplaced yes)
 		(uuid "1ca2d22c-a300-40fd-8345-04a7c1aecbc9")
 		(property "Reference" "C7"
 			(at 198.12 54.6162 0)
@@ -11804,8 +11508,8 @@
 				(justify left)
 			)
 		)
-		(property "Value" "10uF"
-			(at 198.12 57.1562 0)
+		(property "Value" "25V 10uF"
+			(at 191.262 60.706 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11815,7 +11519,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+		(property "Footprint" "Capacitor_SMD:C_1206_3216Metric"
 			(at 195.58 55.88 0)
 			(hide yes)
 			(show_name no)
@@ -14107,7 +13811,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
 			(at 97.79 113.03 0)
 			(hide yes)
 			(show_name no)
@@ -14267,7 +13971,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
 			(at 200.66 143.51 0)
 			(hide yes)
 			(show_name no)
@@ -14601,7 +14305,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 97.79 96.52 0)
 			(hide yes)
 			(show_name no)
@@ -14908,6 +14612,89 @@
 		)
 	)
 	(symbol
+		(lib_id "Diode:BAV99")
+		(at 139.7 146.05 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "6867c24f-c974-4f14-b5d8-c441140705a1")
+		(property "Reference" "D12"
+			(at 139.7 139.7 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "BAV199"
+			(at 139.7 142.24 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Package_TO_SOT_SMD:SOT-23"
+			(at 139.7 158.75 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "https://assets.nexperia.com/documents/data-sheet/BAV99_SER.pdf"
+			(at 139.7 146.05 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "BAV99 High-speed switching diodes, SOT-23"
+			(at 139.7 146.05 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "2"
+			(uuid "3870cfdb-27af-47b6-a820-d7942ed39dbc")
+		)
+		(pin "1"
+			(uuid "b5eb89d8-f736-4c60-949e-804be8ab4e64")
+		)
+		(pin "3"
+			(uuid "ee30ca4e-e8f7-47d3-9fac-5719ef262e34")
+		)
+		(instances
+			(project "motherboard"
+				(path "/dbeec2c8-0d49-4c19-8d5c-ea955f4dc4a6"
+					(reference "D12")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "Jumper:Jumper_3_Bridged12")
 		(at 34.29 172.72 0)
 		(unit 1)
@@ -15089,6 +14876,89 @@
 			(project "motherboard"
 				(path "/dbeec2c8-0d49-4c19-8d5c-ea955f4dc4a6"
 					(reference "D8")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Diode:BAV99")
+		(at 139.7 160.02 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "6b5a1cce-e558-4de8-91a8-fa83c0ff97c0")
+		(property "Reference" "D13"
+			(at 139.7 153.67 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "BAV199"
+			(at 139.7 156.21 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Package_TO_SOT_SMD:SOT-23"
+			(at 139.7 172.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "https://assets.nexperia.com/documents/data-sheet/BAV99_SER.pdf"
+			(at 139.7 160.02 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "BAV99 High-speed switching diodes, SOT-23"
+			(at 139.7 160.02 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "2"
+			(uuid "f7a83791-27e1-4a6c-b4ac-4322a6c603ec")
+		)
+		(pin "1"
+			(uuid "5d3f6dc2-c764-4555-96be-b750419fd2ff")
+		)
+		(pin "3"
+			(uuid "71bad137-fc0b-4a66-aca8-c9e84948f915")
+		)
+		(instances
+			(project "motherboard"
+				(path "/dbeec2c8-0d49-4c19-8d5c-ea955f4dc4a6"
+					(reference "D13")
 					(unit 1)
 				)
 			)
@@ -15290,7 +15160,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
 			(at 229.87 151.13 0)
 			(hide yes)
 			(show_name no)
@@ -15584,97 +15454,6 @@
 		)
 	)
 	(symbol
-		(lib_id "Diode:BAV199DW")
-		(at 139.7 146.05 0)
-		(unit 1)
-		(body_style 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "74037431-0290-4a96-8364-c7f1988b3bbc")
-		(property "Reference" "D9"
-			(at 139.7 140.97 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "BAV199DW"
-			(at 139.7 143.002 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" "Package_TO_SOT_SMD:SOT-363_SC-70-6"
-			(at 139.7 158.75 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" "https://www.diodes.com/assets/Datasheets/ds30417.pdf"
-			(at 139.7 146.05 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" "Quad Surface Mount Low Leakage Diode, SOT-363"
-			(at 139.7 146.05 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(pin "6"
-			(uuid "0d11d1f5-758d-4e3a-b538-93366a093dc5")
-		)
-		(pin "4"
-			(uuid "837a933b-bb4e-474d-bb18-875d5be66573")
-		)
-		(pin "5"
-			(uuid "e632ef5a-3e3e-46ca-a729-5fa946efca92")
-		)
-		(pin "1"
-			(uuid "ed45d417-ee3d-4d37-a723-1d0190ec78a3")
-		)
-		(pin "3"
-			(uuid "a4b5d403-e155-44de-9245-670e512a336f")
-		)
-		(pin "2"
-			(uuid "d5287807-8689-4416-b774-8cd8be5f4921")
-		)
-		(instances
-			(project "motherboard"
-				(path "/dbeec2c8-0d49-4c19-8d5c-ea955f4dc4a6"
-					(reference "D9")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
 		(lib_id "Device:C_Small")
 		(at 182.88 55.88 0)
 		(unit 1)
@@ -15684,7 +15463,6 @@
 		(on_board yes)
 		(in_pos_files yes)
 		(dnp no)
-		(fields_autoplaced yes)
 		(uuid "74c40fef-ae96-4943-9420-b807290f763e")
 		(property "Reference" "C6"
 			(at 185.42 54.6162 0)
@@ -15697,8 +15475,8 @@
 				(justify left)
 			)
 		)
-		(property "Value" "100uF"
-			(at 185.42 57.1562 0)
+		(property "Value" "25V 100uF"
+			(at 181.102 51.562 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -15708,7 +15486,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+		(property "Footprint" "Capacitor_THT:CP_Radial_D6.3mm_P2.50mm"
 			(at 182.88 55.88 0)
 			(hide yes)
 			(show_name no)
@@ -15828,6 +15606,89 @@
 			(project "motherboard"
 				(path "/dbeec2c8-0d49-4c19-8d5c-ea955f4dc4a6"
 					(reference "#PWR01")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Diode:BAV99")
+		(at 139.7 187.96 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "770d8b57-71f1-447d-8df4-d1a9870c8f65")
+		(property "Reference" "D15"
+			(at 139.7 181.61 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "BAV199"
+			(at 139.7 184.15 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Package_TO_SOT_SMD:SOT-23"
+			(at 139.7 200.66 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "https://assets.nexperia.com/documents/data-sheet/BAV99_SER.pdf"
+			(at 139.7 187.96 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "BAV99 High-speed switching diodes, SOT-23"
+			(at 139.7 187.96 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "2"
+			(uuid "82b1d339-3325-4ac7-8ef9-06a19c9de564")
+		)
+		(pin "1"
+			(uuid "bd95d4dd-3d17-416b-be69-966526bf0828")
+		)
+		(pin "3"
+			(uuid "83f8e1f0-6f5e-45ba-9aa4-7e01d42b4efe")
+		)
+		(instances
+			(project "motherboard"
+				(path "/dbeec2c8-0d49-4c19-8d5c-ea955f4dc4a6"
+					(reference "D15")
 					(unit 1)
 				)
 			)
@@ -16915,97 +16776,6 @@
 				(path "/dbeec2c8-0d49-4c19-8d5c-ea955f4dc4a6"
 					(reference "#PWR045")
 					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Diode:BAV199DW")
-		(at 139.7 160.02 0)
-		(unit 2)
-		(body_style 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "8a7f904a-a918-40b1-b40a-eb6bdae2fe10")
-		(property "Reference" "D9"
-			(at 139.7 154.94 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "BAV199DW"
-			(at 139.7 156.972 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" "Package_TO_SOT_SMD:SOT-363_SC-70-6"
-			(at 139.7 172.72 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" "https://www.diodes.com/assets/Datasheets/ds30417.pdf"
-			(at 139.7 160.02 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" "Quad Surface Mount Low Leakage Diode, SOT-363"
-			(at 139.7 160.02 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(pin "6"
-			(uuid "4dd54464-9ac3-4ab7-a3f5-87b6a70603e1")
-		)
-		(pin "4"
-			(uuid "837a933b-bb4e-474d-bb18-875d5be66573")
-		)
-		(pin "5"
-			(uuid "e632ef5a-3e3e-46ca-a729-5fa946efca92")
-		)
-		(pin "1"
-			(uuid "565e452e-2c7c-4baa-a14d-79184b632555")
-		)
-		(pin "3"
-			(uuid "a4b5d403-e155-44de-9245-670e512a336f")
-		)
-		(pin "2"
-			(uuid "9f5a0f6a-e12c-46de-8955-3661e0028837")
-		)
-		(instances
-			(project "motherboard"
-				(path "/dbeec2c8-0d49-4c19-8d5c-ea955f4dc4a6"
-					(reference "D9")
-					(unit 2)
 				)
 			)
 		)
@@ -18657,7 +18427,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
 			(at 85.09 113.03 0)
 			(hide yes)
 			(show_name no)
@@ -18872,6 +18642,89 @@
 			(project "motherboard"
 				(path "/dbeec2c8-0d49-4c19-8d5c-ea955f4dc4a6"
 					(reference "#PWR034")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Diode:BAV99")
+		(at 139.7 173.99 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "bf2c1897-2684-4dae-a07c-32fd38ea7103")
+		(property "Reference" "D14"
+			(at 139.7 167.64 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "BAV199"
+			(at 139.7 170.18 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Package_TO_SOT_SMD:SOT-23"
+			(at 139.7 186.69 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "https://assets.nexperia.com/documents/data-sheet/BAV99_SER.pdf"
+			(at 139.7 173.99 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "BAV99 High-speed switching diodes, SOT-23"
+			(at 139.7 173.99 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "2"
+			(uuid "b182f4d5-88dd-427d-bdef-b0effb8f0782")
+		)
+		(pin "1"
+			(uuid "9355387c-2abd-4d88-96e0-3ec459dbbe1e")
+		)
+		(pin "3"
+			(uuid "1afd58ab-166b-4c27-890b-ffde84df8994")
+		)
+		(instances
+			(project "motherboard"
+				(path "/dbeec2c8-0d49-4c19-8d5c-ea955f4dc4a6"
+					(reference "D14")
 					(unit 1)
 				)
 			)
@@ -20069,85 +19922,6 @@
 		)
 	)
 	(symbol
-		(lib_id "Connector:TestPoint")
-		(at 160.02 46.99 180)
-		(unit 1)
-		(body_style 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(fields_autoplaced yes)
-		(uuid "daa8a96a-5ae9-491f-841b-f28bd48830a6")
-		(property "Reference" "TP13"
-			(at 162.56 49.0219 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify right)
-			)
-		)
-		(property "Value" "Vout-"
-			(at 162.56 51.5619 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify right)
-			)
-		)
-		(property "Footprint" "Link_Footprints:TestPoint_Pad_D1.5mm"
-			(at 154.94 46.99 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" ""
-			(at 154.94 46.99 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" "test point"
-			(at 160.02 46.99 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(pin "1"
-			(uuid "21342cbc-1320-4c8e-a5fb-7182f6bfa4ff")
-		)
-		(instances
-			(project "motherboard"
-				(path "/dbeec2c8-0d49-4c19-8d5c-ea955f4dc4a6"
-					(reference "TP13")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
 		(lib_id "power:GND")
 		(at 91.44 118.11 0)
 		(mirror y)
@@ -20351,7 +20125,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
 			(at 185.42 129.54 0)
 			(hide yes)
 			(show_name no)
@@ -20673,7 +20447,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
 			(at 270.51 152.4 0)
 			(hide yes)
 			(show_name no)
@@ -21343,6 +21117,83 @@
 			(project "motherboard"
 				(path "/dbeec2c8-0d49-4c19-8d5c-ea955f4dc4a6"
 					(reference "#PWR05")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:+3V3")
+		(at 49.53 72.39 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "fa592d72-aab5-450b-9d88-b0fc93355242")
+		(property "Reference" "#PWR055"
+			(at 49.53 76.2 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "+3V3A"
+			(at 49.022 68.58 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 49.53 72.39 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 49.53 72.39 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"+3V3\""
+			(at 49.53 72.39 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "a930cd57-95a8-423e-9d89-fb2292a61deb")
+		)
+		(instances
+			(project "motherboard"
+				(path "/dbeec2c8-0d49-4c19-8d5c-ea955f4dc4a6"
+					(reference "#PWR055")
 					(unit 1)
 				)
 			)
