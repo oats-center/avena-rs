@@ -1,4 +1,5 @@
 {
+  "custom_cursors": 2,
   "last_sch_text_sim_command": "",
   "tabs": [
     {
@@ -101,5 +102,5 @@
   "user_defined_signals": [
     "V(/Vf)/V(/Vout)"
   ],
-  "version": 6
+  "version": 7
 }

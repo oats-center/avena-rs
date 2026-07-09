@@ -8,6 +8,7 @@
 *-bak.kicad_prl
 *.tmp
 *.lck
+*.history
 
 # Generated files (e.g., netlists, BOMs, etc.)
 *.xml
