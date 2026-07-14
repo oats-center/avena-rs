@@ -6318,9 +6318,9 @@
 		)
 		(uuid "11d32736-4493-4097-a812-352e08df8864")
 	)
-	(text "Note: KC2520Z25.0000C1SY00; 25MHz CMOS"
+	(text "Note: 25MHz CMOS"
 		(exclude_from_sim no)
-		(at 302.514 117.348 0)
+		(at 294.64 74.93 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -6340,9 +6340,9 @@
 		)
 		(uuid "5f9c2c28-c6b5-41cd-8941-cae7474230c7")
 	)
-	(text "Note: ECS-2520MVLC-081.92-BN-TR, 8.192 MHz CMOS"
+	(text "Note: 8.192 MHz CMOS"
 		(exclude_from_sim no)
-		(at 86.868 126.238 0)
+		(at 96.012 98.044 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -19889,10 +19889,9 @@
 		(on_board yes)
 		(in_pos_files yes)
 		(dnp no)
-		(fields_autoplaced yes)
 		(uuid "d6decda4-14f1-4e98-99a2-f96bda5d6ed1")
 		(property "Reference" "Y1"
-			(at 82.55 105.3398 0)
+			(at 68.58 124.968 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -19901,8 +19900,8 @@
 				)
 			)
 		)
-		(property "Value" "8.192MHz"
-			(at 82.55 107.8798 0)
+		(property "Value" "ECS-2520MVLC-081.92-BN-TR"
+			(at 68.58 127.508 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -21170,7 +21169,7 @@
 		(dnp no)
 		(uuid "ff88e32b-a52b-42eb-9712-dab6e6710732")
 		(property "Reference" "Y2"
-			(at 286.766 90.932 0)
+			(at 299.72 115.316 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -21179,8 +21178,8 @@
 				)
 			)
 		)
-		(property "Value" "25MHz"
-			(at 286.766 93.472 0)
+		(property "Value" "KC2520Z25.0000C1SY00;"
+			(at 299.72 117.856 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects

@@ -64,7 +64,7 @@
           "min_island_area": 9.9999993548,
           "min_thickness": 0.16,
           "pad_connection": 1,
-          "remove_islands": 1,
+          "remove_islands": 0,
           "thermal_relief_gap": 0.5,
           "thermal_relief_spoke_width": 0.5
         }
