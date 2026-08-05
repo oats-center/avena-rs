@@ -2,10 +2,13 @@ Static project guide: https://oats-center.github.io/avena-rs/
 
 For the LabJack pipeline:
 
-- Configure the MU / edge host in [rust-ljm/streamer.env.json](rust-ljm/streamer.env.json)
-- Start or restart the edge Rust services with `rust-ljm/avena-service.sh`
-- Run `streamer`, `archiver`, and `exporter` on the MU / edge host for the
-  leaf-node workflow
+- Select the immutable MU profile under
+  [`shared/edge-boxes`](shared/edge-boxes), then render/install it with
+  `scripts/install-edge-services.sh`
+- Run the persistent system units `avena-streamer`, `avena-archiver`, and
+  `avena-exporter` on the MU / edge host
+- Run local NATS, its metrics exporter, and Alloy as Podman Quadlet systemd
+  services
 - For central-webapp exports backed by edge-local parquet, use the browser's
   central NATS connection with `rust-ljm/exporter` in `worker` mode on the
   edge host
@@ -15,10 +18,15 @@ For the LabJack pipeline:
   should be opened with the config key query parameter, for example
   `/labjacks/plots/1001?key=i69.i69-mu1.i69-lj2.config`
 
-See `rust-ljm/README.md` for binary details and config format.
+See [rust-ljm/README.md](rust-ljm/README.md) for binary details and config
+format.
 
 For edge boxes with a local NATS leaf node, JetStream, and Prometheus/Alloy
 monitoring, see [docs/setup-guide.md](docs/setup-guide.md).
+
+For the complete list of systemd units, Podman child processes, ports,
+dependencies, expected states, and operator-only commands, see
+[docs/runtime-services.md](docs/runtime-services.md).
 
 ## Documentation Site
 

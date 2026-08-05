@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import html
+import os
 import re
 import shutil
 from pathlib import Path
@@ -8,6 +9,11 @@ from pathlib import Path
 
 DOCS = [
     ("Setup Guide", "docs/setup-guide.md", "docs/setup-guide/index.html"),
+    (
+        "Runtime Services",
+        "docs/runtime-services.md",
+        "docs/runtime-services/index.html",
+    ),
     ("Schematics", "schematics/README.md", "docs/schematics/index.html"),
 ]
 
@@ -117,6 +123,7 @@ def layout(title: str, body: str, root_prefix: str = "") -> str:
       <a class="brand" href="{root_prefix}index.html">Avena Docs</a>
       <nav>
         <a href="{root_prefix}docs/setup-guide/">Setup</a>
+        <a href="{root_prefix}docs/runtime-services/">Runtime</a>
         <a href="{root_prefix}docs/schematics/">Schematics</a>
         <a href="{root_prefix}api/rust/">Rust API</a>
         <a href="{root_prefix}api/frontend/">Frontend API</a>
@@ -131,6 +138,17 @@ def layout(title: str, body: str, root_prefix: str = "") -> str:
 def write_doc(root: Path, site: Path, title: str, src: str, dest: str) -> None:
     source = root / src
     body, headings = render_markdown(source.read_text())
+    source_dir = Path(src).parent
+    output_dir = Path(dest).parent
+    for _, other_src, other_dest in DOCS:
+        source_link = Path(os.path.relpath(other_src, source_dir)).as_posix()
+        output_link = Path(
+            os.path.relpath(Path(other_dest).parent, output_dir)
+        ).as_posix()
+        body = body.replace(
+            f'href="{html.escape(source_link, quote=True)}"',
+            f'href="{html.escape(output_link, quote=True)}/"',
+        )
     toc = "\n".join(
         f'<li class="toc-level-{level}"><a href="#{slug}">{html.escape(text)}</a></li>'
         for level, text, slug in headings
@@ -175,6 +193,7 @@ def write_index(site: Path) -> None:
         </p>
         <div class="actions">
           <a class="button primary" href="docs/setup-guide/">Setup guide</a>
+          <a class="button" href="docs/runtime-services/">Runtime services</a>
           <a class="button" href="docs/schematics/">Schematics</a>
           <a class="button" href="api/rust/">Rust API</a>
           <a class="button" href="api/frontend/">Frontend API</a>

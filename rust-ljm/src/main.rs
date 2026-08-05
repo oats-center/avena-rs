@@ -196,17 +196,23 @@ fn labjack_retry_delay_from_env() -> Duration {
 /// Creates or reconciles the JetStream stream used for live LabJack samples.
 ///
 /// The stream is configured with file storage, limit retention, old-message
-/// discard, and the exact subject wildcard needed for the current source.
+/// discard, and the subject wildcard needed for the current source. Existing
+/// subjects are retained during namespace migrations so historical consumers
+/// remain valid until they are deliberately retired.
 async fn ensure_stream_exists(
     js: &jetstream::Context,
     stream_name: &str,
     subject: &str,
 ) -> Result<(), LJMError> {
     let max_bytes = stream_max_bytes_from_env()?;
-    let desired_subjects = vec![subject.to_string()];
+    let mut desired_subjects = vec![subject.to_string()];
 
     if let Ok(stream) = js.get_stream(stream_name).await {
         let info = stream.cached_info();
+        desired_subjects = info.config.subjects.clone();
+        if !desired_subjects.iter().any(|existing| existing == subject) {
+            desired_subjects.push(subject.to_string());
+        }
         let already_configured = info.config.subjects == desired_subjects
             && info.config.storage == jetstream::stream::StorageType::File
             && info.config.retention == jetstream::stream::RetentionPolicy::Limits

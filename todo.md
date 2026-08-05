@@ -3,9 +3,11 @@
 Use this as the source of truth for the advisor update and deployment decision.
 Only check an item after saving the requested evidence.
 
+Remote MU1 evidence: [2026-08-05 MU1 remote validation](docs/evidence/2026-08-05-mu1-remote-validation.md).
+
 ## Already Verified
 
-- [x] Rust test suite passes (`cargo test`: 17 tests passed).
+- [x] Rust test suite passes (`cargo test --all-targets`: 25 tests passed).
 - [x] Rust formatting check passes (`cargo fmt --all -- --check`).
 - [x] Webapp production build succeeds (`pnpm run build`).
 - [x] Project documentation site builds (`./scripts/build-docs-site.sh`).
@@ -18,16 +20,20 @@ Only check an item after saving the requested evidence.
 
 ## 1. Fix MU1 Configuration and Identity
 
-- [ ] Create a permanent configuration profile for `i69-mu1` instead of reusing the mutable MU2 configuration.
+- [x] Create a permanent configuration profile for `i69-mu1` instead of reusing the mutable MU2 configuration.
   - Required evidence: a saved MU1 config containing `box_id=i69-mu1`, its correct JetStream domain, KV key, LabJack IP, and LabJack serial `470036312`.
-- [ ] Create a separate permanent configuration profile for `i69-mu2`.
+- [x] Create a separate permanent configuration profile for `i69-mu2`.
   - Required evidence: a saved MU2 config containing `box_id=i69-mu2` and LabJack serial `470036330`.
 - [ ] Render the generated NATS and Rust configuration independently on each MU.
   - Required evidence: saved output of the rendered `BOX_ID`, `JS_DOMAIN`, `CFG_KEY`, `LABJACK_IP`, and `LABJACK_SERIAL` on each MU.
+  - Remote status: both profiles render independently on MU1; installation on offline MU2 remains.
 - [ ] Change the operating-system hostname on each LattePanda from a generic name such as `localhost.localdomain` to its assigned MU name.
   - Required evidence: `hostname` and `tailscale status --self` identify the same box.
-- [ ] Replace the old MU1 `v1` KV key and live subjects with the current namespace.
+  - [x] MU1 hostname and Tailscale name are both `i69-mu1`.
+  - [ ] MU2 remains offline.
+- [x] Replace the old MU1 `v1` KV key and live subjects with the current namespace.
   - Required evidence: MU1 uses `i69.i69-mu1.i69-lj2.config` and publishes `avenars.i69.i69-mu1.i69-lj2.live.*`.
+  - Migration note: the old stream subject is retained intentionally for historical messages and consumers; current acquisition uses the unversioned namespace.
 - [ ] Remove or archive obsolete `labjackd.config.*` and `v1.*` KV entries after migration.
   - Required evidence: central and local KV key listings contain only intentionally supported keys.
 - [ ] Verify that every config has a unique and correct combination of site, box, source ID, asset number, LabJack name, and serial number.
@@ -37,26 +43,30 @@ Only check an item after saving the requested evidence.
 
 - [ ] Install persistent systemd units for `streamer`, `archiver`, and `exporter`; do not rely only on transient `systemd-run` units.
   - Required evidence: all three units report `enabled` and `active` after a reboot.
+  - Remote status: persistent MU1 units are installed, enabled, and active; the after-reboot check is deliberately pending while its PiKVM is offline.
 - [ ] Configure the services to wait for network, local NATS, storage, and the LabJack where appropriate.
   - Required evidence: a cold boot starts the services in the correct order without manual commands.
 - [ ] Confirm the exporter runs in NATS `worker` mode on each edge box.
   - Required evidence: logs show the exact `avenars.i69.<box>.<source>.export.request` subscription.
+  - [x] MU1 subscribes to `avenars.i69.i69-mu1.i69-lj2.export.request`.
+  - [ ] MU2 remains offline.
 - [ ] Add a deployment command or script that installs the correct box profile, binaries, and systemd units reproducibly.
   - Required evidence: a clean or reset test host can be configured by following one documented procedure.
+  - Remote status: `scripts/install-edge-services.sh` was created and used on MU1; clean-host validation remains.
 - [ ] Reboot each LattePanda three times and confirm acquisition resumes every time.
   - Required evidence: boot timestamps, service status, and first post-boot sample timestamp for all three trials.
 
 ## 3. Prevent and Measure Data Loss
 
-- [ ] Make the archiver gracefully flush and close every active Parquet writer during service shutdown.
+- [x] Make the archiver gracefully flush and close every active Parquet writer during service shutdown.
   - Required evidence: stopping `avena-archiver` leaves no unreadable current part files.
-- [ ] Stop aborting channel-writer tasks before their Parquet files are closed during config changes.
+- [x] Stop aborting channel-writer tasks before their Parquet files are closed during config changes.
   - Required evidence: add/remove-channel tests produce only readable Parquet files.
-- [ ] Write active data to a temporary filename and rename it to `.parquet` only after a successful close.
+- [x] Write active data to a temporary filename and rename it to `.parquet` only after a successful close.
   - Required evidence: the exporter never treats an unfinished file as a completed Parquet file.
-- [ ] Decide how startup handles incomplete files: recover, quarantine, or delete them with an audit log.
+- [x] Decide how startup handles incomplete files: recover, quarantine, or delete them with an audit log.
   - Required evidence: documented behavior and an automated test using a deliberately truncated file.
-- [ ] Report corrupt/skipped files to monitoring instead of only printing an exporter warning.
+- [x] Report corrupt/skipped files to monitoring instead of only printing an exporter warning.
   - Required evidence: a deliberately corrupt file produces a visible metric or alert.
 - [ ] Add an end-to-end test for stream to NATS to Parquet to CSV.
   - Required evidence: the test verifies timestamps, channel, raw value, calibrated value, calibration ID, and row count.
@@ -67,19 +77,19 @@ Only check an item after saving the requested evidence.
 
 ## 4. Validate Live Acquisition and Central Export
 
-- [ ] Start `streamer`, `archiver`, and `exporter` on MU1 with the corrected MU1 profile.
+- [x] Start `streamer`, `archiver`, and `exporter` on MU1 with the corrected MU1 profile.
   - Required evidence: all three services are active and their logs contain no repeating errors.
-- [ ] Verify the streamer connects to LabJack serial `470036312` and completes its read/write self-test.
+- [x] Verify the streamer connects to LabJack serial `470036312` and completes its read/write self-test.
   - Required evidence: saved streamer log excerpt.
-- [ ] Receive at least five live batches for every enabled channel from central NATS.
+- [x] Receive at least five live batches for every enabled channel from central NATS.
   - Required evidence: saved `nats sub` output containing the current unversioned subjects.
-- [ ] Change the enabled channel list in central KV and verify the local KV mirrors it.
+- [x] Change the enabled channel list in central KV and verify the local KV mirrors it.
   - Required evidence: matching central/local KV JSON and streamer restart log.
-- [ ] Confirm all enabled channels publish at the expected cadence and sample rate.
+- [x] Confirm all enabled channels publish at the expected cadence and sample rate.
   - Required evidence: a script or report comparing batch counts, sequence numbers, and timestamps by channel.
 - [ ] Record continuously for at least 24 hours on MU1.
   - Required evidence: no unexplained service restarts, sequence gaps, corrupt completed files, or disk errors.
-- [ ] Export a known 10-minute range through the central NATS worker path without using the webapp.
+- [x] Export a known 10-minute range through the central NATS worker path without using the webapp.
   - Required evidence: CSV file, exporter logs, byte count, row count, and missing-channel summary.
 - [ ] Repeat the same validation on MU2.
   - Required evidence: equivalent MU2 logs, samples, archive, and CSV export.
@@ -88,11 +98,15 @@ Only check an item after saving the requested evidence.
 
 - [ ] Fix or disable the Alloy XFS collector that currently logs an error every 15 seconds.
   - Required evidence: Alloy runs for one hour without the repeating XFS error.
+  - Remote status: the XFS collector is disabled and the repeating error stopped; the one-hour observation remains.
 - [ ] Confirm Prometheus receives host and NATS metrics labeled with the correct MU name.
   - Required evidence: saved query results for both MU1 and MU2.
+  - [x] Central Prometheus receives MU1 metrics labeled `i69-mu1`.
+  - [ ] MU2 remains offline.
 - [ ] Export a metric for the last successfully published LabJack sample time.
   - Required evidence: the metric updates while streaming and becomes stale when the sensor is disconnected.
-- [ ] Export metrics for streamer, archiver, and exporter service state.
+  - Remote status: the live-update path is visible in central Prometheus; physical sensor-disconnect proof remains.
+- [x] Export metrics for streamer, archiver, and exporter service state.
   - Required evidence: each service can be distinguished as running, failed, or stopped.
 - [ ] Add an alert for a LabJack that stops producing samples.
   - Required evidence: unplugging the LabJack produces an alert within the agreed timeout.

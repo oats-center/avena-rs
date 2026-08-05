@@ -60,26 +60,38 @@ the local JetStream domain and leaf connection.
 
 ## Service Control
 
-Build the binaries:
+Use the repository installer for a deployed edge box. It builds release
+binaries, renders the selected profile, installs runtime files under
+`/etc/avena-rs` and `/usr/local/libexec/avena-rs`, and installs persistent
+system units:
 
 ```bash
-cd /home/user/avena-rs/rust-ljm
-cargo build --release
+cd /home/user/avena-rs
+./scripts/install-edge-services.sh \
+  --profile shared/edge-boxes/i69-mu1.json \
+  --start
 ```
 
-Control the user systemd services:
+Control the deployed system services:
 
 ```bash
-./avena-service.sh streamer start
-./avena-service.sh archiver start
-./avena-service.sh exporter start
-./avena-service.sh streamer status
-./avena-service.sh streamer logs
-./avena-service.sh streamer restart
-./avena-service.sh streamer stop
+sudo systemctl start avena-streamer avena-archiver avena-exporter
+systemctl status avena-streamer avena-archiver avena-exporter
+journalctl -u avena-streamer -f
+sudo systemctl restart avena-streamer
+sudo systemctl stop avena-streamer
 ```
+
+`avena-service.sh` remains a development helper for transient user units. It
+is not the production boot configuration.
 
 `archiver` subscribes to NATS and writes parquet files locally under `PARQUET_DIR`.
+
+During acquisition, files end in `.parquet.inprogress`. On rotation or graceful
+shutdown, the archiver flushes rows, closes the writer, and atomically renames
+the part to `.parquet`. On startup, unfinished or unreadable historical parts
+are preserved with a `.quarantined-...` suffix so the exporter cannot mistake
+them for completed data.
 
 Set `EXPORTER_ADDR` to an address reachable from the laptop, for example:
 
@@ -246,3 +258,6 @@ names match the actual LabJack stream semantics.
 
 For the reproducible NATS leaf, Alloy, Rust service, webapp, validation, and
 shutdown workflow, use [../docs/setup-guide.md](../docs/setup-guide.md).
+
+For the complete edge process inventory and expected systemd states, use
+[../docs/runtime-services.md](../docs/runtime-services.md).

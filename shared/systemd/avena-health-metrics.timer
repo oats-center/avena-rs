@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh Avena edge health metrics every 15 seconds
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=15
+AccuracySec=1
+Unit=avena-health-metrics.service
+
+[Install]
+WantedBy=timers.target

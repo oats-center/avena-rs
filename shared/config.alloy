@@ -8,6 +8,11 @@ prometheus.exporter.unix "local" {
   sysfs_path      = "/host/sys"
   rootfs_path     = "/host/root"
   udev_data_path  = "/run/udev/data"
+  disable_collectors = ["xfs"]
+
+  textfile {
+    directory = "/var/lib/node_exporter/textfile_collector"
+  }
 
   filesystem {
     mount_points_exclude = "^/(sys|proc|dev|run|var/lib/containers/storage|host|etc)($|/)"

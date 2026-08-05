@@ -16,16 +16,20 @@ use chrono::{DateTime, NaiveDate, Utc};
 use futures_util::StreamExt;
 use parquet::{
     column::writer::ColumnWriter,
-    file::{metadata::KeyValue, properties::WriterProperties, writer::SerializedFileWriter},
+    file::{
+        metadata::KeyValue, properties::WriterProperties, reader::SerializedFileReader,
+        writer::SerializedFileWriter,
+    },
     schema::parser::parse_message_type,
 };
 use std::{
     collections::HashMap,
-    fs,
+    fs, io,
     path::{Path, PathBuf},
     sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
 };
-use tokio::sync::watch;
+use tokio::sync::{oneshot, watch};
 use tokio::time::Duration;
 
 mod calibration;
@@ -375,6 +379,8 @@ async fn run_central_kv_sync(
 /// date, channel, and monotonically increasing part index.
 struct ParquetLogger {
     writer: SerializedFileWriter<fs::File>,
+    inprogress_path: PathBuf,
+    final_path: PathBuf,
     buffer: Vec<(i64, f64)>,
     max_rows: usize,
     date: NaiveDate,
@@ -390,6 +396,7 @@ struct ParquetLogger {
 /// changes.
 struct ChannelLogger {
     handle: tokio::task::JoinHandle<()>,
+    stop_tx: Option<oneshot::Sender<()>>,
     calibration_tx: watch::Sender<CalibrationSpec>,
     calibration: CalibrationSpec,
     subject: String,
@@ -397,6 +404,18 @@ struct ChannelLogger {
     consumer_name: String,
     asset: u32,
     rotate_secs: u64,
+}
+
+impl ChannelLogger {
+    /// Requests an orderly writer shutdown and waits for the Parquet footer.
+    async fn stop(mut self) {
+        if let Some(stop_tx) = self.stop_tx.take() {
+            let _ = stop_tx.send(());
+        }
+        if let Err(err) = self.handle.await {
+            eprintln!("[logger] Channel writer task failed to join: {err}");
+        }
+    }
 }
 
 impl ParquetLogger {
@@ -418,7 +437,8 @@ impl ParquetLogger {
             .join(format!("ch{:02}", channel));
 
         fs::create_dir_all(&dir).unwrap();
-        let file_path = dir.join(format!("part-{:04}.parquet", file_index));
+        let final_path = dir.join(format!("part-{:04}.parquet", file_index));
+        let inprogress_path = dir.join(format!("part-{:04}.parquet.inprogress", file_index));
 
         let message_type = "
             message schema {
@@ -437,11 +457,13 @@ impl ParquetLogger {
                 )]))
                 .build(),
         );
-        let file = fs::File::create(file_path).unwrap();
+        let file = fs::File::create(&inprogress_path).unwrap();
         let writer = SerializedFileWriter::new(file, schema, props).unwrap();
 
         Self {
             writer,
+            inprogress_path,
+            final_path,
             buffer: Vec::with_capacity(1000),
             max_rows: 1000,
             date,
@@ -493,12 +515,69 @@ impl ParquetLogger {
     }
 
     /// Flushes buffered rows and closes the Parquet writer.
-    fn close(mut self) {
+    fn close(mut self) -> Result<PathBuf, DynError> {
         self.flush();
-        if let Err(e) = self.writer.close() {
-            eprintln!("Failed to close parquet file: {e}");
-        }
+        self.writer.close()?;
+        fs::rename(&self.inprogress_path, &self.final_path)?;
+        Ok(self.final_path)
     }
+}
+
+/// Moves unfinished writer files out of the exporter's `.parquet` namespace.
+///
+/// A power loss can leave a file without a Parquet footer. The original bytes
+/// are preserved for diagnosis, while a new part index is used for subsequent
+/// acquisition.
+fn quarantine_incomplete_files(root: &Path) -> io::Result<Vec<PathBuf>> {
+    fn visit(dir: &Path, quarantined: &mut Vec<PathBuf>, stamp: u128) -> io::Result<()> {
+        if !dir.exists() {
+            return Ok(());
+        }
+
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if entry.file_type()?.is_dir() {
+                visit(&path, quarantined, stamp)?;
+                continue;
+            }
+
+            let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+                continue;
+            };
+            let unfinished = name.ends_with(".parquet.inprogress");
+            let unreadable_parquet = name.ends_with(".parquet")
+                && match fs::File::open(&path) {
+                    Ok(file) => SerializedFileReader::new(file).is_err(),
+                    Err(err) => {
+                        eprintln!(
+                            "[logger] Could not inspect existing Parquet file {}: {err}",
+                            path.display()
+                        );
+                        false
+                    }
+                };
+            if !unfinished && !unreadable_parquet {
+                continue;
+            }
+
+            let reason = if unfinished { "unfinished" } else { "corrupt" };
+            let quarantine_name =
+                format!("{name}.{reason}.quarantined-{stamp}-{}", quarantined.len());
+            let quarantine_path = path.with_file_name(quarantine_name);
+            fs::rename(&path, &quarantine_path)?;
+            quarantined.push(quarantine_path);
+        }
+        Ok(())
+    }
+
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let mut quarantined = Vec::new();
+    visit(root, &mut quarantined, stamp)?;
+    Ok(quarantined)
 }
 
 /// Scans a channel/day directory to find the next available Parquet file index.
@@ -510,17 +589,15 @@ fn next_file_index(parquet_root: &Path, asset: u32, channel: u8, date: NaiveDate
 
     std::fs::create_dir_all(&dir).unwrap();
     let mut max_idx = 0;
-    for entry in std::fs::read_dir(&dir).unwrap() {
-        if let Ok(e) = entry {
-            if let Some(name) = e.file_name().to_str() {
-                if let Some(num) = name
-                    .strip_prefix("part-")
-                    .and_then(|s| s.strip_suffix(".parquet"))
-                    .and_then(|s| s.parse::<usize>().ok())
-                {
-                    max_idx = max_idx.max(num);
-                }
-            }
+    for entry in std::fs::read_dir(&dir).unwrap().flatten() {
+        if let Some(num) = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| name.strip_prefix("part-"))
+            .and_then(|name| name.split('.').next())
+            .and_then(|value| value.parse::<usize>().ok())
+        {
+            max_idx = max_idx.max(num);
         }
     }
     max_idx + 1
@@ -548,7 +625,7 @@ fn sanitize_consumer_token(raw: &str) -> String {
 /// Builds the durable JetStream consumer name for one archived channel.
 fn archiver_consumer_name(cfg: &SampleConfig, channel: u8) -> String {
     format!(
-        "archiver-{}-{}-{}-{}",
+        "archiver-{}-{}-{}-{}-current",
         sanitize_consumer_token(cfg.box_id.as_deref().unwrap_or("unknown-box")),
         sanitize_consumer_token(cfg.source_type.as_deref().unwrap_or("labjack")),
         sanitize_consumer_token(
@@ -623,8 +700,13 @@ fn process_scan_payload(
                     .unwrap_or(true)
                 {
                     if let Some(l) = logger.take() {
-                        l.close();
-                        println!("[logger] Closed file {}", *file_index);
+                        match l.close() {
+                            Ok(path) => println!("[logger] Closed {}", path.display()),
+                            Err(err) => eprintln!(
+                                "[logger] Failed to finalize channel {channel:02} part {}: {err}",
+                                *file_index
+                            ),
+                        }
                     }
                     *file_index = next_file_index(parquet_root, asset, channel, sample_date);
                     *logger = Some(ParquetLogger::new(
@@ -650,7 +732,7 @@ fn process_scan_payload(
 /// Starts the durable pull consumer and writer task for one channel.
 ///
 /// The returned [`ChannelLogger`] lets the config watcher update calibration
-/// metadata or abort and respawn the task when channel identity changes.
+/// metadata or gracefully stop and respawn the task when identity changes.
 async fn spawn_channel_logger(
     js: jetstream::Context,
     stream_name: String,
@@ -679,6 +761,7 @@ async fn spawn_channel_logger(
     let logger_subject = subject.clone();
     let logger_consumer_name = consumer_name.clone();
     let (calibration_tx, mut calibration_rx) = watch::channel(calibration.clone());
+    let (stop_tx, mut stop_rx) = oneshot::channel();
     let calibration_for_task = calibration.clone();
     let handle = tokio::spawn(async move {
         let mut messages = match consumer.messages().await {
@@ -697,6 +780,9 @@ async fn spawn_channel_logger(
         );
 
         let mut ticker = tokio::time::interval(Duration::from_secs(rotate_secs));
+        // `interval` ticks immediately; consume that tick so the first part is
+        // created only by data or after a full rotation interval.
+        ticker.tick().await;
         let mut logger: Option<ParquetLogger> = None;
         let mut file_index =
             next_file_index(&parquet_root, asset, channel, Utc::now().date_naive());
@@ -744,10 +830,14 @@ async fn spawn_channel_logger(
                 _ = ticker.tick() => {
                     let today = Utc::now().date_naive();
                     if let Some(l) = logger.take() {
-                        l.close();
-                        println!("[logger] Closed file {}", file_index);
+                        match l.close() {
+                            Ok(path) => println!("[logger] Closed {}", path.display()),
+                            Err(err) => eprintln!(
+                                "[logger] Failed to finalize channel {channel:02} part {file_index}: {err}"
+                            ),
+                        }
                     }
-                    file_index += 1;
+                    file_index = next_file_index(&parquet_root, asset, channel, today);
                     logger = Some(ParquetLogger::new(
                         asset,
                         channel,
@@ -765,12 +855,14 @@ async fn spawn_channel_logger(
                     if updated != active_calibration {
                         let today = Utc::now().date_naive();
                         if let Some(l) = logger.take() {
-                            l.close();
-                            println!("[logger] Closed file {}", file_index);
-                            file_index += 1;
-                        } else {
-                            file_index = next_file_index(&parquet_root, asset, channel, today);
+                            match l.close() {
+                                Ok(path) => println!("[logger] Closed {}", path.display()),
+                                Err(err) => eprintln!(
+                                    "[logger] Failed to finalize channel {channel:02} part {file_index}: {err}"
+                                ),
+                            }
                         }
+                        file_index = next_file_index(&parquet_root, asset, channel, today);
                         println!(
                             "[logger] Calibration updated for channel {channel:02}; rotating file."
                         );
@@ -785,12 +877,26 @@ async fn spawn_channel_logger(
                         active_calibration = updated;
                     }
                 }
+                _ = &mut stop_rx => {
+                    println!("[logger] Graceful stop requested for channel {channel:02}");
+                    break;
+                }
+            }
+        }
+
+        if let Some(logger) = logger.take() {
+            match logger.close() {
+                Ok(path) => println!("[logger] Closed {}", path.display()),
+                Err(err) => eprintln!(
+                    "[logger] Failed to finalize channel {channel:02} during shutdown: {err}"
+                ),
             }
         }
     });
 
     Ok(ChannelLogger {
         handle,
+        stop_tx: Some(stop_tx),
         calibration_tx,
         calibration,
         subject,
@@ -825,6 +931,12 @@ async fn main() -> Result<(), DynError> {
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
     let parquet_root =
         PathBuf::from(std::env::var("PARQUET_DIR").unwrap_or_else(|_| "parquet".into()));
+    for path in quarantine_incomplete_files(&parquet_root)? {
+        eprintln!(
+            "[logger] Quarantined unfinished Parquet writer file: {}",
+            path.display()
+        );
+    }
 
     let creds_path = std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| "apt.creds".into());
     let sample_opts = ConnectOptions::with_credentials_file(creds_path.clone())
@@ -856,7 +968,8 @@ async fn main() -> Result<(), DynError> {
 
     println!("[logger] Loaded config: {:?}", cfg);
 
-    // Step 4: spawn dynamic watcher for KV config changes
+    // Step 4: create channel loggers and watch KV changes in the main task so
+    // shutdown can wait for every active Parquet writer to close.
     let mut watch = store.watch(key.as_str()).await?;
     let mut active: HashMap<u8, ChannelLogger> = HashMap::new();
     if let Some(sync_cfg) = central_sync_cfg {
@@ -892,128 +1005,175 @@ async fn main() -> Result<(), DynError> {
         active.insert(*ch, h);
     }
 
-    tokio::spawn({
-        let js = js.clone();
-        async move {
-            println!("[logger] Watching KV for config changes...");
-            while let Some(ev) = watch.next().await {
-                if let Ok(entry) = ev {
-                    if entry.operation == Operation::Put {
-                        if let Ok(new_cfg) = serde_json::from_slice::<NestedConfig>(&entry.value)
-                            .map(sample_config_from_nested)
-                        {
-                            println!("[logger] KV config update detected: {:?}", new_cfg);
+    println!("[logger] Watching KV for config changes...");
+    let shutdown = tokio::signal::ctrl_c();
+    tokio::pin!(shutdown);
 
-                            // remove old channels
-                            active.retain(|ch, entry| {
-                                if new_cfg.channels.contains(ch) {
-                                    true
-                                } else {
-                                    println!("[logger] Removing channel {ch}");
-                                    entry.handle.abort();
-                                    false
-                                }
-                            });
-
-                            // add new channels
-                            for ch in &new_cfg.channels {
-                                let subject = subjects::live_labjack_channel_subject(
-                                    &new_cfg.nats_subject,
-                                    new_cfg.asset_number,
-                                    *ch,
-                                    new_cfg.site_id.as_deref(),
-                                    new_cfg.box_id.as_deref(),
-                                    Some(&new_cfg.labjack_name),
-                                    new_cfg.source_type.as_deref(),
-                                    new_cfg.source_id.as_deref(),
-                                );
-                                let consumer_name = archiver_consumer_name(&new_cfg, *ch);
-                                let calibration =
-                                    new_cfg.calibrations.get(ch).cloned().unwrap_or_default();
-
-                                if !active.contains_key(ch) {
-                                    println!("[logger] Adding channel {ch}");
-                                    match spawn_channel_logger(
-                                        js.clone(),
-                                        new_cfg.nats_stream.clone(),
-                                        consumer_name,
-                                        subject,
-                                        new_cfg.asset_number,
-                                        *ch,
-                                        new_cfg.rotate_secs,
-                                        calibration,
-                                        parquet_root.clone(),
-                                    )
-                                    .await
-                                    {
-                                        Ok(h) => {
-                                            active.insert(*ch, h);
-                                        }
-                                        Err(err) => {
-                                            eprintln!("[logger] Failed to add channel {ch}: {err}");
-                                        }
-                                    }
-                                } else {
-                                    let mut needs_respawn = false;
-                                    if let Some(entry) = active.get_mut(ch) {
-                                        needs_respawn = entry.subject != subject
-                                            || entry.stream_name != new_cfg.nats_stream
-                                            || entry.consumer_name != consumer_name
-                                            || entry.asset != new_cfg.asset_number
-                                            || entry.rotate_secs != new_cfg.rotate_secs;
-                                        if entry.calibration != calibration {
-                                            if needs_respawn {
-                                                entry.calibration = calibration.clone();
-                                            } else {
-                                                if entry
-                                                    .calibration_tx
-                                                    .send(calibration.clone())
-                                                    .is_ok()
-                                                {
-                                                    entry.calibration = calibration.clone();
-                                                } else {
-                                                    needs_respawn = true;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    if needs_respawn {
-                                        if let Some(entry) = active.remove(ch) {
-                                            entry.handle.abort();
-                                        }
-                                        match spawn_channel_logger(
-                                            js.clone(),
-                                            new_cfg.nats_stream.clone(),
-                                            consumer_name,
-                                            subject,
-                                            new_cfg.asset_number,
-                                            *ch,
-                                            new_cfg.rotate_secs,
-                                            calibration,
-                                            parquet_root.clone(),
-                                        )
-                                        .await
-                                        {
-                                            Ok(h) => {
-                                                active.insert(*ch, h);
-                                            }
-                                            Err(err) => {
-                                                eprintln!(
-                                                    "[logger] Failed to respawn channel {ch}: {err}"
-                                                );
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+    loop {
+        let entry = tokio::select! {
+            signal = &mut shutdown => {
+                signal?;
+                println!("[logger] Shutdown signal received.");
+                break;
+            }
+            event = watch.next() => {
+                match event {
+                    Some(Ok(entry)) => entry,
+                    Some(Err(err)) => {
+                        eprintln!("[logger] KV watch error: {err}");
+                        continue;
+                    }
+                    None => {
+                        eprintln!("[logger] KV watch ended; shutting down writers.");
+                        break;
                     }
                 }
             }
-        }
-    });
+        };
 
-    tokio::signal::ctrl_c().await?;
-    println!("Shutting down logger...");
+        if entry.operation != Operation::Put {
+            continue;
+        }
+        let new_cfg = match serde_json::from_slice::<NestedConfig>(&entry.value)
+            .map(sample_config_from_nested)
+        {
+            Ok(config) => config,
+            Err(err) => {
+                eprintln!("[logger] Ignoring invalid KV config update: {err}");
+                continue;
+            }
+        };
+        println!("[logger] KV config update detected: {:?}", new_cfg);
+
+        let removed_channels: Vec<u8> = active
+            .keys()
+            .copied()
+            .filter(|channel| !new_cfg.channels.contains(channel))
+            .collect();
+        for channel in removed_channels {
+            if let Some(logger) = active.remove(&channel) {
+                println!("[logger] Gracefully removing channel {channel}");
+                logger.stop().await;
+            }
+        }
+
+        for channel in &new_cfg.channels {
+            let subject = subjects::live_labjack_channel_subject(
+                &new_cfg.nats_subject,
+                new_cfg.asset_number,
+                *channel,
+                new_cfg.site_id.as_deref(),
+                new_cfg.box_id.as_deref(),
+                Some(&new_cfg.labjack_name),
+                new_cfg.source_type.as_deref(),
+                new_cfg.source_id.as_deref(),
+            );
+            let consumer_name = archiver_consumer_name(&new_cfg, *channel);
+            let calibration = new_cfg
+                .calibrations
+                .get(channel)
+                .cloned()
+                .unwrap_or_default();
+
+            let mut needs_respawn = !active.contains_key(channel);
+            if let Some(logger) = active.get_mut(channel) {
+                needs_respawn = logger.subject != subject
+                    || logger.stream_name != new_cfg.nats_stream
+                    || logger.consumer_name != consumer_name
+                    || logger.asset != new_cfg.asset_number
+                    || logger.rotate_secs != new_cfg.rotate_secs;
+                if logger.calibration != calibration && !needs_respawn {
+                    if logger.calibration_tx.send(calibration.clone()).is_ok() {
+                        logger.calibration = calibration.clone();
+                    } else {
+                        needs_respawn = true;
+                    }
+                }
+            }
+
+            if !needs_respawn {
+                continue;
+            }
+            if let Some(logger) = active.remove(channel) {
+                println!("[logger] Gracefully restarting channel {channel}");
+                logger.stop().await;
+            } else {
+                println!("[logger] Adding channel {channel}");
+            }
+
+            match spawn_channel_logger(
+                js.clone(),
+                new_cfg.nats_stream.clone(),
+                consumer_name,
+                subject,
+                new_cfg.asset_number,
+                *channel,
+                new_cfg.rotate_secs,
+                calibration,
+                parquet_root.clone(),
+            )
+            .await
+            {
+                Ok(logger) => {
+                    active.insert(*channel, logger);
+                }
+                Err(err) => {
+                    eprintln!("[logger] Failed to start channel {channel}: {err}");
+                }
+            }
+        }
+    }
+
+    println!("[logger] Closing {} channel writer(s)...", active.len());
+    for (_, logger) in active {
+        logger.stop().await;
+    }
+    println!("[logger] Shutdown complete.");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use parquet::file::reader::FileReader;
+    use uuid::Uuid;
+
+    fn temporary_parquet_root(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("rust-ljm-{name}-{}", Uuid::new_v4()))
+    }
+
+    #[test]
+    fn completed_writer_is_atomically_published_and_readable() {
+        let root = temporary_parquet_root("finalize");
+        let date = NaiveDate::from_ymd_opt(2026, 8, 5).expect("valid date");
+        let mut logger = ParquetLogger::new(1001, 11, 1, date, CalibrationSpec::default(), &root);
+        logger.write_row(1_754_395_200_000_000_000, 1.25);
+
+        let final_path = logger.close().expect("writer should finalize");
+        assert!(final_path.exists());
+        assert!(!final_path.with_extension("parquet.inprogress").exists());
+
+        let file = fs::File::open(&final_path).expect("final file should open");
+        let reader = SerializedFileReader::new(file).expect("final file should be readable");
+        assert_eq!(reader.metadata().file_metadata().num_rows(), 1);
+        fs::remove_dir_all(root).expect("temporary directory should be removable");
+    }
+
+    #[test]
+    fn startup_quarantines_unfinished_and_corrupt_files() {
+        let root = temporary_parquet_root("quarantine");
+        let channel_dir = root.join("asset1001/2026-08-05/ch11");
+        fs::create_dir_all(&channel_dir).expect("channel directory should be created");
+        fs::write(channel_dir.join("part-0001.parquet.inprogress"), b"partial")
+            .expect("unfinished file should be written");
+        fs::write(channel_dir.join("part-0002.parquet"), b"not parquet")
+            .expect("corrupt file should be written");
+
+        let quarantined = quarantine_incomplete_files(&root).expect("quarantine should succeed");
+        assert_eq!(quarantined.len(), 2);
+        assert!(quarantined.iter().all(|path| path.exists()));
+        assert!(!channel_dir.join("part-0001.parquet.inprogress").exists());
+        assert!(!channel_dir.join("part-0002.parquet").exists());
+        fs::remove_dir_all(root).expect("temporary directory should be removable");
+    }
 }
