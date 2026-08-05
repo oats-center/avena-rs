@@ -166,24 +166,7 @@ Only check an item after saving the requested evidence.
 - [ ] Ask INDOT to validate that the data format and contents are usable.
   - Required evidence: written acceptance or a documented correction list.
 
-## 9. Complete Firmware and Remote Programming
-
-- [ ] Obtain Spencer’s current SDI-12 firmware and record its source revision.
-  - Required evidence: firmware source and build instructions are stored in a controlled repository.
-- [ ] Add the required thermocouple firmware support.
-  - Required evidence: bench test with known temperatures and recorded error limits.
-- [ ] Document the board programming connector, programmer, voltage, cable orientation, and recovery procedure.
-  - Required evidence: illustrated programming instructions.
-- [ ] Restore Tailscale connectivity to both PiKVMs and MU2.
-  - Required evidence: all four assigned I-69 peers appear online and accept their intended remote connection.
-- [ ] Connect the required programmer or remote flashing interface to each deployed board.
-  - Required evidence: remote operator can identify the target board before programming.
-- [ ] Program one board remotely and verify the new firmware version afterward.
-  - Required evidence: session log, firmware hash/version, and successful functional test.
-- [ ] Test rollback or recovery from an interrupted firmware update.
-  - Required evidence: documented recovery test completed without physical access.
-
-## 10. Security and Remote Access
+## 9. Security and Remote Access
 
 - [ ] Replace the shared device password with unique credentials or SSH keys for every device.
   - Required evidence: device access inventory showing the authentication method and authorized users.
@@ -196,30 +179,7 @@ Only check an item after saving the requested evidence.
 - [ ] Document credential rotation and lost-device response procedures.
   - Required evidence: reviewed security runbook.
 
-## 11. Solar and Installation Dry Run
-
-- [ ] Obtain INDOT approval for the mount design.
-  - Required evidence: written signoff and final drawing revision.
-- [ ] Inventory all mounting hardware and record quantities.
-  - Required evidence: checked bill of materials with labeled storage locations.
-- [ ] Inventory outdoor wire, ferrules, crimps, connectors, fuses, Ethernet cables, and weatherproofing supplies.
-  - Required evidence: checked consumables list with required spares.
-- [ ] Identify every installation tool and confirm the team knows how to use it.
-  - Required evidence: tool checklist and assigned operator.
-- [ ] Prepare a field-spares kit for likely failures.
-  - Required evidence: packed and labeled kit containing cables, wires, ferrules, fuses, connectors, and replacement hardware.
-- [ ] Perform a complete mock installation at ACRE or another approved outdoor site.
-  - Required evidence: installation photos, elapsed time, issue list, and revised procedure.
-- [ ] Verify the solar charge cycle under actual sunlight and expected load.
-  - Required evidence: at least one full-day plot of panel, battery, and load voltage/current.
-- [ ] Verify weather sealing, cable strain relief, grounding, and enclosure temperature.
-  - Required evidence: inspection checklist and temperature measurements.
-- [ ] Perform the vehicle-data, monitoring-alert, power-cycle, and remote-access tests during the dry run.
-  - Required evidence: one combined dry-run report containing results and failures.
-- [ ] Close every issue found during the dry run or document an accepted mitigation.
-  - Required evidence: issue list with owner, resolution, verification, and signoff.
-
-## 12. Final Deployment Gate
+## 10. Final Deployment Gate
 
 - [ ] Run the complete deployment procedure on MU1 from a clean boot.
 - [ ] Run the complete deployment procedure on MU2 from a clean boot.
@@ -234,17 +194,3 @@ Only check an item after saving the requested evidence.
 - [ ] Confirm INDOT has accepted the mount and sample data package.
 - [ ] Confirm the ACRE dry-run issue list is closed.
 - [ ] Back up deployed configs, firmware versions, credentials inventory, and test results.
-- [ ] Obtain advisor approval to deploy on I-69.
-
-## Advisor Demonstration Without Repeating the Webapp
-
-- [ ] Show both edge boxes and PiKVMs online in Tailscale.
-- [ ] Show the LabJack identity/self-test in the streamer logs.
-- [ ] Show live samples arriving through central NATS from the command line.
-- [ ] Show Parquet files being created and closed on the edge box.
-- [ ] Export a time range to CSV through NATS from the command line.
-- [ ] Open the CSV and explain timestamps, raw values, calibrated values, and calibration IDs.
-- [ ] Disconnect a LabJack and show the offline alert.
-- [ ] Restore the LabJack and show automatic acquisition recovery.
-- [ ] Perform a controlled power interruption and show restart plus the measured data gap.
-- [ ] Present the ADC plots, power-cycle results, dry-run report, and remaining red/yellow/green deployment items.
