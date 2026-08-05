@@ -1,0 +1,29 @@
+I went back over the prior lists I could find, and I think this is a union of the things that we decided needed to do before it goes. Maybe some or all of this is already done, and I am just out of the loop.
+
+Wattdog should trigger the relays on and off before the MPTT does. The MPTT should only power the KVM now.
+Fine tune the threshold voltage and test rigorously that the device tuns off when it should, on when it should, and that the software is able to recover, connect, and not have data loss in the process.
+Simulate battery discharge and charge.
+Install Thronwave on the solar side so we can tell power usage from solar charge rate (this requires a second Wattdog per KVM).
+Verify the ADC inputs. I believe some of this was done, but I don't know that we have final results.
+We need to make plots of measurements such as:
+Frequency response
+DC bias (short both inputs to ground)
+DC voltage error, absolute and %FS
+Effective number of bits
+Noise measurements (short the two inputs)
+LabJack is a decent reference of the types of measurements done to spec an ADC device: https://support.labjack.com/docs/a-3-2-t7-analog-input-t-series-datasheet
+Solar
+Validate the mount design with INDOT (Boonam: This is probably me now. Spencer made the design and parts, just need a signoff on the plan)
+Outdoor supply wire, crimps, etc. I believe we have all of this, but we need to locate and learn how to use it. 
+Gather supplies / dry run. We should try to "install" this on solar somewhere here (Prof. K suggested ACRE). It will help identify bugs and needs:
+Do we have all the mounting hardware we need?
+What tools do we need?
+Verify that the solar charge cycle under actual sun. 
+What "extras" should we bring in case something breaks during install. Ethernet cables, wires, ferrules, crimpers, etc. etc.
+Data collection
+During dry run, drive actual car past the camera (or setup near US-52). 
+How do we download the data for each car? Is there a UI for that? Have we validated the data formats are usable by INDOT?
+How do we know / monitor the box. Can we tell if a sensor goes offline? 
+Firmware
+Spencer has the SDI-12 firmware from the APT version of the board. We need to add the thermocouple firmware. 
+How can we program the boards from remote?
