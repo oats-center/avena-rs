@@ -207,6 +207,19 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "C11429 "
+			(at 0 0 270)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "99d751ba-843c-4ada-aa66-2ca1f78cd665")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 270)
 			(unlocked yes)
@@ -220,29 +233,10 @@
 				)
 			)
 		)
-		(property "LCSC" "C11429 "
-			(at 0 0 270)
-			(unlocked yes)
-			(layer "F.Fab")
-			(hide yes)
-			(uuid "99d751ba-843c-4ada-aa66-2ca1f78cd665")
-			(effects
-				(font
-					(size 1 1)
-					(thickness 0.15)
-				)
-			)
-		)
 		(property ki_fp_filters "R_*")
 		(path "/90506cd7-6a35-4594-8d9e-9d505e6facc1")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -417,12 +411,6 @@
 		(path "/373759d1-159f-4a88-b71e-2686b5fc218b")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1")
-			)
-		)
 		(attr exclude_from_bom)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_circle
@@ -546,12 +534,6 @@
 		(path "/340ace32-96c8-47f0-889f-80b0fd25bff7")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1")
-			)
-		)
 		(attr exclude_from_bom)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_circle
@@ -641,7 +623,7 @@
 				)
 			)
 		)
-		(property "Sim.Pins" "1=K 2=A"
+		(property "KiLib_Generator" "1=K 2=A"
 			(at 0 0 90)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -684,12 +666,6 @@
 		(path "/4d1a6efe-c06b-468b-a60b-9a9e4e907114")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -915,12 +891,6 @@
 		(path "/0f6a3d5e-9c00-4ab9-9386-87b1e56ff814")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1")
-			)
-		)
 		(attr exclude_from_bom)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_circle
@@ -1106,12 +1076,6 @@
 		(path "/ee1436a8-0778-43e1-ab8b-539aadc5ff09")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2" "3")
-			)
-		)
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -1324,7 +1288,7 @@
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/../lib/models/R-78CK50-05_RCP.step"
 			(offset
-				(xyz 0 1.905 0)
+				(xyz 0 2 0.27)
 			)
 			(scale
 				(xyz 1 1 1)
@@ -1421,12 +1385,6 @@
 		(path "/c5902d5f-dabc-48cd-ab4a-6b788f17a198")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1")
-			)
-		)
 		(attr exclude_from_bom)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_circle
@@ -1513,6 +1471,19 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "C2987139 "
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "14e0bfbb-1fe7-46ab-886f-92fa9cfd464f")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 0)
 			(unlocked yes)
@@ -1526,29 +1497,10 @@
 				)
 			)
 		)
-		(property "LCSC" "C2987139 "
-			(at 0 0 0)
-			(unlocked yes)
-			(layer "F.Fab")
-			(hide yes)
-			(uuid "14e0bfbb-1fe7-46ab-886f-92fa9cfd464f")
-			(effects
-				(font
-					(size 1 1)
-					(thickness 0.15)
-				)
-			)
-		)
 		(property ki_fp_filters "D?SOD?523*")
 		(path "/9c218fe4-e389-4f2a-bfc2-c8c341ca2f2a")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_circle
@@ -1837,12 +1789,6 @@
 		(path "/2eafc298-865d-486d-9e76-334e2a45b144")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "3" "2" "4")
-			)
-		)
 		(attr through_hole exclude_from_bom)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -2023,7 +1969,7 @@
 			(uuid "d1047c29-2d01-4eb6-a296-708d908fac9a")
 		)
 		(embedded_fonts no)
-		(model "${KIPRJMOD}/../lib/models/PC-1053864.stp"
+		(model "${KIPRJMOD}/../lib/models/PC-1053864.step"
 			(offset
 				(xyz -12.00999996 -12.59999984 0.6499999664)
 			)
@@ -2090,6 +2036,18 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "connector/pin_header_socket"
+			(at 0 0 270)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "da447088-e03c-4821-91cd-c22d259a3d5c")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 270)
 			(unlocked yes)
@@ -2120,12 +2078,6 @@
 		(path "/6e602664-23a5-45bd-827e-57e65d62d163")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2" "3")
-			)
-		)
 		(attr through_hole exclude_from_bom)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -2188,45 +2140,16 @@
 			(layer "F.SilkS")
 			(uuid "a8dfcaba-4a5b-40f1-8f4f-5e02ab302b8e")
 		)
-		(fp_line
-			(start -1.77 6.85)
+		(fp_rect
+			(start -1.77 -1.77)
 			(end 1.77 6.85)
 			(stroke
 				(width 0.05)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.CrtYd")
-			(uuid "9907c7c7-9ef6-4b51-a93b-6ccc10530b81")
-		)
-		(fp_line
-			(start 1.77 6.85)
-			(end 1.77 -1.77)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "1ac1e6a1-e05d-4914-a847-504377e7c6b9")
-		)
-		(fp_line
-			(start -1.77 -1.77)
-			(end -1.77 6.85)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "fa474d3a-e2f0-4413-a554-c50cfba0e038")
-		)
-		(fp_line
-			(start 1.77 -1.77)
-			(end -1.77 -1.77)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "5999dedc-af6a-4a28-ab72-855655b5d0ee")
+			(uuid "93bf1eef-125e-4aa8-a9ab-e933000ee448")
 		)
 		(fp_line
 			(start -1.27 6.35)
@@ -2391,6 +2314,18 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "connector/pin_header_socket"
+			(at 0 0 270)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "87d982e3-3527-4b7a-9df1-cccbd43a0278")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 270)
 			(unlocked yes)
@@ -2421,12 +2356,6 @@
 		(path "/9d32eac3-4a2b-4f6d-af39-5b6721d714b5")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2" "3")
-			)
-		)
 		(attr through_hole exclude_from_bom)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -2489,45 +2418,16 @@
 			(layer "F.SilkS")
 			(uuid "0d7551db-45e4-42fc-92c7-4d53be6a7a5f")
 		)
-		(fp_line
-			(start -1.77 6.85)
+		(fp_rect
+			(start -1.77 -1.77)
 			(end 1.77 6.85)
 			(stroke
 				(width 0.05)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.CrtYd")
-			(uuid "22414be0-b56a-4e06-adcb-e56958efdafd")
-		)
-		(fp_line
-			(start 1.77 6.85)
-			(end 1.77 -1.77)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "aba6c053-8897-4284-a0dd-5f3f639f001e")
-		)
-		(fp_line
-			(start -1.77 -1.77)
-			(end -1.77 6.85)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "9770f0d6-710d-4590-852c-c0b6109ad82b")
-		)
-		(fp_line
-			(start 1.77 -1.77)
-			(end -1.77 -1.77)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "bd7931e4-da5a-4a44-8b03-9e9bdb3003fc")
+			(uuid "fef14210-0b06-4ede-8c0b-11d6aac17324")
 		)
 		(fp_line
 			(start -1.27 6.35)
@@ -2724,12 +2624,6 @@
 		(path "/fcb31165-03fa-4635-95ab-e46658da6382")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1")
-			)
-		)
 		(attr exclude_from_bom)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_circle
@@ -2770,7 +2664,7 @@
 		(layer "F.Cu")
 		(uuid "35143288-990d-4aad-86cd-be7a98f44253")
 		(at 174.1424 117.9068 90)
-		(descr "Resistor SMD 0402 (1005 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
+		(descr "Resistor SMD 0402 (1005 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf)")
 		(tags "resistor")
 		(property "Reference" "R7"
 			(at 0 1.120949 90)
@@ -2820,6 +2714,18 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "SMD_2terminal_chip_molded"
+			(at 0 0 90)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "be4c1e83-536f-453b-9bdf-181b90fd4aa3")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 90)
 			(unlocked yes)
@@ -2850,12 +2756,6 @@
 		(path "/39d9a722-f480-4c62-af13-f836751ba66a")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -2878,85 +2778,27 @@
 			(layer "F.SilkS")
 			(uuid "df34ab75-0098-4084-b6a3-abbf2d79bd9f")
 		)
-		(fp_line
-			(start 0.93 -0.47)
+		(fp_rect
+			(start -0.93 -0.47)
 			(end 0.93 0.47)
 			(stroke
 				(width 0.05)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.CrtYd")
-			(uuid "489613f8-237d-4398-a078-9c6e45d280e6")
+			(uuid "3d26e283-bdd5-4e1d-9dd3-dfbd450eae63")
 		)
-		(fp_line
-			(start -0.93 -0.47)
-			(end 0.93 -0.47)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "2470a871-ac22-4cf8-ac89-bcf36e86f83b")
-		)
-		(fp_line
-			(start 0.93 0.47)
-			(end -0.93 0.47)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "76300283-b6e0-4fca-bc4b-947dec507269")
-		)
-		(fp_line
-			(start -0.93 0.47)
-			(end -0.93 -0.47)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "d6592100-f3cb-4463-854b-9f4d13122176")
-		)
-		(fp_line
-			(start 0.525 -0.27)
+		(fp_rect
+			(start -0.525 -0.27)
 			(end 0.525 0.27)
 			(stroke
 				(width 0.1)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.Fab")
-			(uuid "3c7f061b-8a56-4874-9e49-ee6458df8c43")
-		)
-		(fp_line
-			(start -0.525 -0.27)
-			(end 0.525 -0.27)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "f205798e-c853-4276-85d6-18005e319b4d")
-		)
-		(fp_line
-			(start 0.525 0.27)
-			(end -0.525 0.27)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "6eed4ce9-8cd8-433b-a444-886bb010d2ef")
-		)
-		(fp_line
-			(start -0.525 0.27)
-			(end -0.525 -0.27)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "ca9d64b2-87da-4628-a229-a6bedadb0a91")
+			(uuid "05fc2c2e-86b0-4702-9720-4b0a70c6b9cd")
 		)
 		(fp_text user "${REFERENCE}"
 			(at 0 0 90)
@@ -3052,6 +2894,19 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "C326595 "
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "3a0169d7-3d67-43bb-a0d9-5834e37d93a4")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 0)
 			(unlocked yes)
@@ -3065,29 +2920,10 @@
 				)
 			)
 		)
-		(property "LCSC" "C326595 "
-			(at 0 0 0)
-			(unlocked yes)
-			(layer "F.Fab")
-			(hide yes)
-			(uuid "3a0169d7-3d67-43bb-a0d9-5834e37d93a4")
-			(effects
-				(font
-					(size 1 1)
-					(thickness 0.15)
-				)
-			)
-		)
 		(property ki_fp_filters "C_*")
 		(path "/5456858d-1d28-4c07-ac6c-87e9dd77e61b")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -3261,12 +3097,6 @@
 		(path "/95c367fa-7aac-4199-a541-4ac449a43f04")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1")
-			)
-		)
 		(attr exclude_from_bom)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_circle
@@ -3386,14 +3216,6 @@
 		(path "/8577e9fa-ea55-4db6-ad08-a0ea21a48217")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "10" "9" "8" "5" "4" "3" "2" "7" "1" "6" "16" "15" "13" "14" "11"
-					"12"
-				)
-			)
-		)
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -3768,7 +3590,7 @@
 			(uuid "ee942b39-d9c4-4424-89f8-22ddd6474465")
 		)
 		(embedded_fonts no)
-		(model "${KIPRJMOD}/../lib/models/ARJM11C7-114-BA-EW2.STEP"
+		(model "${KIPRJMOD}/../lib/models/ARJM11C7-114-BA-EW2.step"
 			(offset
 				(xyz 5.715 6.35 0)
 			)
@@ -3780,7 +3602,7 @@
 			)
 		)
 	)
-	(footprint "Link_Footprints:PinSocket_1x07_P2.54mm_Vertical"
+	(footprint "Link_Footprints:ControllerModel"
 		(layer "F.Cu")
 		(uuid "40322cd6-4ae2-4050-acb0-88f1c9c26d45")
 		(at 139.7 79.5274 180)
@@ -3788,19 +3610,17 @@
 		(tags "Through hole socket strip THT 1x07 2.54mm single row")
 		(property "Reference" "J12"
 			(at 0 -2.77 180)
-			(unlocked yes)
 			(layer "F.SilkS")
 			(uuid "1f750414-ee6c-4da1-8df4-9980a7e7b842")
 			(effects
 				(font
 					(size 1 1)
-					(thickness 0.1)
+					(thickness 0.15)
 				)
 			)
 		)
 		(property "Value" "ControllerSense"
 			(at 0 18.01 180)
-			(unlocked yes)
 			(layer "F.Fab")
 			(uuid "53a4f028-f87c-4ba9-970c-98e77961fb19")
 			(effects
@@ -3822,7 +3642,7 @@
 				)
 			)
 		)
-		(property "Description" "Generic connector, single row, 01x07, script generated"
+		(property "Description" ""
 			(at 0 0 180)
 			(layer "F.Fab")
 			(hide yes)
@@ -3864,12 +3684,6 @@
 		(path "/624daf3f-e996-4868-b49b-a86094c389ab")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2" "3" "4" "5" "6" "7")
-			)
-		)
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -4024,7 +3838,6 @@
 		)
 		(fp_text user "${REFERENCE}"
 			(at 0 7.62 270)
-			(unlocked yes)
 			(layer "F.Fab")
 			(uuid "65313684-a1ae-4891-8c11-2c59bbd74ff6")
 			(effects
@@ -4112,7 +3925,7 @@
 			(uuid "d079c0d6-5a0a-4aa3-b77e-16afb7d5d695")
 		)
 		(embedded_fonts no)
-		(model "${KICAD10_3DMODEL_DIR}/Connector_PinSocket_2.54mm.3dshapes/PinSocket_1x07_P2.54mm_Vertical.step"
+		(model "${KICAD9_3DMODEL_DIR}/Connector_PinSocket_2.54mm.3dshapes/PinSocket_1x07_P2.54mm_Vertical.wrl"
 			(offset
 				(xyz 0 0 0)
 			)
@@ -4123,7 +3936,7 @@
 				(xyz 0 0 0)
 			)
 		)
-		(model "C:/Users/smbea/OneDrive/personal-files/oats/avena-rs/schematics/lib/models/controller.step"
+		(model "${KIPRJMOD}/../lib/models/controller.step"
 			(offset
 				(xyz 250.825 -52.324 11.43)
 			)
@@ -4221,12 +4034,6 @@
 		(path "/7319dff1-a02e-47ad-8c5a-20ff79c20ad9")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -4494,6 +4301,18 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "capacitor/THT/other"
+			(at 0 0 270)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "f9cfd4f5-68f8-4032-b289-8b3e46627c17")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 270)
 			(unlocked yes)
@@ -4524,12 +4343,6 @@
 		(path "/74c40fef-ae96-4943-9420-b807290f763e")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -6041,6 +5854,19 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "C49326649 "
+			(at 0 0 180)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "8b1cdee2-9b82-461c-b31c-3a92ef6ea414")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 180)
 			(unlocked yes)
@@ -6054,29 +5880,10 @@
 				)
 			)
 		)
-		(property "LCSC" "C49326649 "
-			(at 0 0 180)
-			(unlocked yes)
-			(layer "F.Fab")
-			(hide yes)
-			(uuid "8b1cdee2-9b82-461c-b31c-3a92ef6ea414")
-			(effects
-				(font
-					(size 1 1)
-					(thickness 0.15)
-				)
-			)
-		)
 		(property ki_fp_filters "C_*")
 		(path "/023e1329-3585-4a67-9eaf-7c86caa8c275")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -6213,6 +6020,18 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "SMD_2terminal_chip_molded"
+			(at 0 0 90)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "ad3b6239-b557-4daa-937d-7f33fabcbd73")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 90)
 			(unlocked yes)
@@ -6243,12 +6062,6 @@
 		(path "/1ca2d22c-a300-40fd-8345-04a7c1aecbc9")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -6389,6 +6202,18 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "connector/pin_header_socket"
+			(at 0 0 0)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "7c576fc3-311e-4f2a-9c3f-909dc7a02124")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" "90"
 			(at 0 0 0)
 			(unlocked yes)
@@ -6419,12 +6244,6 @@
 		(path "/2688688e-8840-4505-a62a-f82a5d27472f")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2" "3" "4" "5" "6")
-			)
-		)
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -6488,8 +6307,18 @@
 			(uuid "00836f1b-05d8-4782-b385-e23d691addb3")
 		)
 		(fp_line
-			(start -1.8 -1.8)
-			(end 1.75 -1.8)
+			(start -1.77 -1.77)
+			(end 1.77 -1.77)
+			(stroke
+				(width 0.05)
+				(type solid)
+			)
+			(layer "F.CrtYd")
+			(uuid "2e301a48-7afa-40ef-b322-d4b3908b432e")
+		)
+		(fp_line
+			(start -1.77 14.47)
+			(end -1.77 -1.77)
 			(stroke
 				(width 0.05)
 				(type solid)
@@ -6498,8 +6327,8 @@
 			(uuid "f7b3ebb3-3387-4343-8149-9db6cf622862")
 		)
 		(fp_line
-			(start -1.8 14.45)
-			(end -1.8 -1.8)
+			(start 1.77 -1.77)
+			(end 1.77 14.47)
 			(stroke
 				(width 0.05)
 				(type solid)
@@ -6508,24 +6337,14 @@
 			(uuid "c4e0a95d-c9f2-4fc6-8f97-84874f926011")
 		)
 		(fp_line
-			(start 1.75 -1.8)
-			(end 1.75 14.45)
+			(start 1.77 14.47)
+			(end -1.77 14.47)
 			(stroke
 				(width 0.05)
 				(type solid)
 			)
 			(layer "F.CrtYd")
 			(uuid "25797e87-50d1-43c6-81bf-86578d9aa9c9")
-		)
-		(fp_line
-			(start 1.75 14.45)
-			(end -1.8 14.45)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "2e301a48-7afa-40ef-b322-d4b3908b432e")
 		)
 		(fp_line
 			(start -1.27 -1.27)
@@ -6721,7 +6540,7 @@
 				)
 			)
 		)
-		(property "Sim.Pins" "1=K 2=A"
+		(property "KiLib_Generator" "1=K 2=A"
 			(at 0 0 90)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -6764,12 +6583,6 @@
 		(path "/5c364eea-eee6-4600-91fb-9e0ff7d0158c")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -6912,7 +6725,7 @@
 		(layer "F.Cu")
 		(uuid "5500393a-79c1-4328-8320-47813fcf7f62")
 		(at 168.297051 134.49 180)
-		(descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
+		(descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf)")
 		(tags "capacitor")
 		(property "Reference" "C4"
 			(at 0 -1.43 0)
@@ -6963,6 +6776,19 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "C326595 "
+			(at 0 0 180)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "2e547f9a-dcb0-44b5-876d-7509feee60de")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 180)
 			(unlocked yes)
@@ -6976,29 +6802,10 @@
 				)
 			)
 		)
-		(property "LCSC" "C326595 "
-			(at 0 0 180)
-			(unlocked yes)
-			(layer "F.Fab")
-			(hide yes)
-			(uuid "2e547f9a-dcb0-44b5-876d-7509feee60de")
-			(effects
-				(font
-					(size 1 1)
-					(thickness 0.15)
-				)
-			)
-		)
 		(property ki_fp_filters "C_*")
 		(path "/77aa73d0-cfd8-4531-b69b-de5dd531c099")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -7021,85 +6828,27 @@
 			(layer "F.SilkS")
 			(uuid "fe0d3b9a-8e25-417a-afda-46f21459a4a4")
 		)
-		(fp_line
-			(start 1.48 0.73)
-			(end -1.48 0.73)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "7e248e47-8e09-403a-b5d2-ce2568f9a5ba")
-		)
-		(fp_line
-			(start 1.48 -0.73)
+		(fp_rect
+			(start -1.48 -0.73)
 			(end 1.48 0.73)
 			(stroke
 				(width 0.05)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.CrtYd")
-			(uuid "ba217a50-9850-4e44-997c-f8dca7922cd4")
+			(uuid "f4d3a304-a8be-4ff0-ba04-04ae98f51396")
 		)
-		(fp_line
-			(start -1.48 0.73)
-			(end -1.48 -0.73)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "4992a349-dafb-4340-acd1-40bc09d5f97d")
-		)
-		(fp_line
-			(start -1.48 -0.73)
-			(end 1.48 -0.73)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "47286a5f-5ccd-44bb-89bf-b54a518f6ba4")
-		)
-		(fp_line
-			(start 0.8 0.4)
-			(end -0.8 0.4)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "7f5d00ec-420d-4682-a324-3c3170113331")
-		)
-		(fp_line
-			(start 0.8 -0.4)
+		(fp_rect
+			(start -0.8 -0.4)
 			(end 0.8 0.4)
 			(stroke
 				(width 0.1)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.Fab")
-			(uuid "50d40cd4-ee3b-412a-b4d0-98239f38ec4b")
-		)
-		(fp_line
-			(start -0.8 0.4)
-			(end -0.8 -0.4)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "a8dcf991-87ce-409c-b133-4098a1eecac5")
-		)
-		(fp_line
-			(start -0.8 -0.4)
-			(end 0.8 -0.4)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "c61cad1b-336b-479a-915c-6667fe626491")
+			(uuid "7f2a5885-d8af-4a87-a5c9-14cdfd487f9f")
 		)
 		(fp_text user "${REFERENCE}"
 			(at 0 0 0)
@@ -7319,12 +7068,6 @@
 		(path "/ffabd680-17a3-4f7a-baee-4fea3a652b1b")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "4" "5" "6" "1" "2" "3")
-			)
-		)
 		(attr through_hole exclude_from_bom)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -7535,7 +7278,7 @@
 			(members "6eeaba36-7d18-4112-84d6-09da59df81f5")
 		)
 		(embedded_fonts no)
-		(model "${KIPRJMOD}/../lib/models/PC-1053866.stp"
+		(model "${KIPRJMOD}/../lib/models/PC-1053866.step"
 			(offset
 				(xyz -2.032 -10.4902 0.4299966)
 			)
@@ -7597,6 +7340,18 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "package/gullwing"
+			(at 0 0 270)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "3a1f1dd9-7667-42c8-a2cf-49a1200c894c")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 270)
 			(unlocked yes)
@@ -7627,12 +7382,6 @@
 		(path "/6b5a1cce-e558-4de8-91a8-fa83c0ff97c0")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "3" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -7994,6 +7743,19 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "C49326649 "
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "82b10fa2-f614-4e65-b00d-1f4de54ec4a1")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 90)
 			(unlocked yes)
@@ -8007,29 +7769,10 @@
 				)
 			)
 		)
-		(property "LCSC" "C49326649 "
-			(at 0 0 90)
-			(unlocked yes)
-			(layer "F.Fab")
-			(hide yes)
-			(uuid "82b10fa2-f614-4e65-b00d-1f4de54ec4a1")
-			(effects
-				(font
-					(size 1 1)
-					(thickness 0.15)
-				)
-			)
-		)
 		(property ki_fp_filters "C_*")
 		(path "/e766478e-a4ec-48fc-b4e7-0d2f3db8d218")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -8169,6 +7912,18 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "SMD_2terminal_chip_molded"
+			(at 0 0 270)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "8fc85ef8-90d6-4279-802f-be0eed0d7a7c")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 270)
 			(unlocked yes)
@@ -8199,12 +7954,6 @@
 		(path "/588b84da-488a-4af7-b150-919557b4e329")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -8346,6 +8095,18 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "connector/pin_header_socket"
+			(at 0 0 180)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "10f224c8-96e8-4332-b3eb-4cfdfeada64f")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" "90"
 			(at 0 0 180)
 			(unlocked yes)
@@ -8376,12 +8137,6 @@
 		(path "/7f083050-03f2-410d-a4a5-8ae428c99a3d")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2" "3")
-			)
-		)
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -8445,28 +8200,18 @@
 			(uuid "05bd346d-ac2f-4a20-bc06-fc71a788d53f")
 		)
 		(fp_line
-			(start 1.75 6.85)
-			(end -1.8 6.85)
+			(start 1.77 6.85)
+			(end -1.77 6.85)
 			(stroke
 				(width 0.05)
 				(type solid)
 			)
 			(layer "F.CrtYd")
-			(uuid "e0f3555e-dc13-4d0b-b87b-66ab10d60653")
+			(uuid "e5c8498c-f20e-4bb4-8878-3a64a75be7ce")
 		)
 		(fp_line
-			(start 1.75 -1.8)
-			(end 1.75 6.85)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "1a0ab5ca-52be-4fee-bb90-3d7577f2d804")
-		)
-		(fp_line
-			(start -1.8 6.85)
-			(end -1.8 -1.8)
+			(start 1.77 -1.77)
+			(end 1.77 6.85)
 			(stroke
 				(width 0.05)
 				(type solid)
@@ -8475,14 +8220,24 @@
 			(uuid "b751fd1e-a169-48f4-b039-da6aec91931e")
 		)
 		(fp_line
-			(start -1.8 -1.8)
-			(end 1.75 -1.8)
+			(start -1.77 6.85)
+			(end -1.77 -1.77)
 			(stroke
 				(width 0.05)
 				(type solid)
 			)
 			(layer "F.CrtYd")
-			(uuid "e5c8498c-f20e-4bb4-8878-3a64a75be7ce")
+			(uuid "1a0ab5ca-52be-4fee-bb90-3d7577f2d804")
+		)
+		(fp_line
+			(start -1.77 -1.77)
+			(end 1.77 -1.77)
+			(stroke
+				(width 0.05)
+				(type solid)
+			)
+			(layer "F.CrtYd")
+			(uuid "e0f3555e-dc13-4d0b-b87b-66ab10d60653")
 		)
 		(fp_line
 			(start 1.27 6.35)
@@ -8678,12 +8433,6 @@
 		(path "/4f045984-19f0-431c-b8f7-036f0ededbc8")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "3" "1" "8" "12" "10" "9" "4" "13" "11" "2" "7" "6" "5")
-			)
-		)
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -9004,7 +8753,7 @@
 			(uuid "b6e9d51f-072d-4e93-a127-8dda133c0e77")
 		)
 		(embedded_fonts no)
-		(model "${KICAD9_3DMODEL_DIR}/Package_SON.3dshapes/WSON-12-1EP_3x2mm_P0.5mm_EP1x2.65.wrl"
+		(model "${KICAD10_3DMODEL_DIR}/Package_SON.3dshapes/WSON-12-1EP_3x2mm_P0.5mm_EP1x2.65.step"
 			(offset
 				(xyz 0 0 0)
 			)
@@ -9103,12 +8852,6 @@
 		(path "/ea21b908-6ecd-4422-8f5c-74096915f3a3")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1")
-			)
-		)
 		(attr exclude_from_bom)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_circle
@@ -9149,7 +8892,7 @@
 		(layer "F.Cu")
 		(uuid "6fa7dac7-747b-4b35-9cce-e3bbce073d75")
 		(at 150.961551 111.3663)
-		(descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
+		(descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf)")
 		(tags "capacitor")
 		(property "Reference" "C20"
 			(at 0 -1.43 0)
@@ -9200,6 +8943,19 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "C326595 "
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "c32ed683-1411-472e-a241-fcf3f4517fcb")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 0)
 			(unlocked yes)
@@ -9213,29 +8969,10 @@
 				)
 			)
 		)
-		(property "LCSC" "C326595 "
-			(at 0 0 0)
-			(unlocked yes)
-			(layer "F.Fab")
-			(hide yes)
-			(uuid "c32ed683-1411-472e-a241-fcf3f4517fcb")
-			(effects
-				(font
-					(size 1 1)
-					(thickness 0.15)
-				)
-			)
-		)
 		(property ki_fp_filters "C_*")
 		(path "/641fc054-f5d1-400d-bda0-2443cc345063")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -9258,85 +8995,27 @@
 			(layer "F.SilkS")
 			(uuid "fcefc7fa-bac0-49f9-a4ba-965785c302dd")
 		)
-		(fp_line
+		(fp_rect
 			(start -1.48 -0.73)
-			(end 1.48 -0.73)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "b77001d2-c919-41f5-9042-01db2e0916da")
-		)
-		(fp_line
-			(start -1.48 0.73)
-			(end -1.48 -0.73)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "62450565-8ef9-425a-9a8b-403900b255d7")
-		)
-		(fp_line
-			(start 1.48 -0.73)
 			(end 1.48 0.73)
 			(stroke
 				(width 0.05)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.CrtYd")
-			(uuid "2a8c1e4c-c0f7-484c-a454-32a337c10e35")
+			(uuid "8d65f807-5d46-46bd-b0ca-200b0e10e055")
 		)
-		(fp_line
-			(start 1.48 0.73)
-			(end -1.48 0.73)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "b1fb2d4b-1082-4c95-9a78-b70f35b63ef7")
-		)
-		(fp_line
+		(fp_rect
 			(start -0.8 -0.4)
-			(end 0.8 -0.4)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "7ff2c6f9-56a8-4d87-a7bb-6eb7f201dbda")
-		)
-		(fp_line
-			(start -0.8 0.4)
-			(end -0.8 -0.4)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "dbd98244-2c9f-4378-9c87-399568be611f")
-		)
-		(fp_line
-			(start 0.8 -0.4)
 			(end 0.8 0.4)
 			(stroke
 				(width 0.1)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.Fab")
-			(uuid "aec017aa-08a9-429d-9ee2-c1289863ab2e")
-		)
-		(fp_line
-			(start 0.8 0.4)
-			(end -0.8 0.4)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "2d737c7a-b97d-4690-b1c6-64c126d9e718")
+			(uuid "de1b1dd9-3281-4ec6-bed4-6dfc91aae811")
 		)
 		(fp_text user "${REFERENCE}"
 			(at 0 0 0)
@@ -9434,6 +9113,19 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "C11429 "
+			(at 0 0 270)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "06e80e9a-8e62-4850-8a36-99be38a56dd0")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 270)
 			(unlocked yes)
@@ -9447,29 +9139,10 @@
 				)
 			)
 		)
-		(property "LCSC" "C11429 "
-			(at 0 0 270)
-			(unlocked yes)
-			(layer "F.Fab")
-			(hide yes)
-			(uuid "06e80e9a-8e62-4850-8a36-99be38a56dd0")
-			(effects
-				(font
-					(size 1 1)
-					(thickness 0.15)
-				)
-			)
-		)
 		(property ki_fp_filters "R_*")
 		(path "/46cd646a-646f-4161-b125-f888159db07f")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -9612,6 +9285,18 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "connector/pin_header_socket"
+			(at 0 0 270)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "7abc318a-6df7-4257-8ae5-0ea171886ce4")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 270)
 			(unlocked yes)
@@ -9642,12 +9327,6 @@
 		(path "/6a582887-d81d-4fa3-a9e7-dad6882889e4")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2" "3")
-			)
-		)
 		(attr through_hole exclude_from_bom)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -9710,45 +9389,16 @@
 			(layer "F.SilkS")
 			(uuid "2aca92aa-760d-4356-b26f-8e5129ac66bb")
 		)
-		(fp_line
-			(start -1.77 6.85)
+		(fp_rect
+			(start -1.77 -1.77)
 			(end 1.77 6.85)
 			(stroke
 				(width 0.05)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.CrtYd")
-			(uuid "256aa5e9-1f75-4863-a5ed-67ca13eab3db")
-		)
-		(fp_line
-			(start 1.77 6.85)
-			(end 1.77 -1.77)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "8037ed07-6a22-4134-bb86-5e2ac4f0def9")
-		)
-		(fp_line
-			(start -1.77 -1.77)
-			(end -1.77 6.85)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "d4762ab4-ba2b-4002-bd91-863ba6409acd")
-		)
-		(fp_line
-			(start 1.77 -1.77)
-			(end -1.77 -1.77)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "6ba1b0b5-3b6d-4088-84cb-ee36c48e5ded")
+			(uuid "da97d2bb-fd2d-4974-ad13-874c637cf8b2")
 		)
 		(fp_line
 			(start -1.27 6.35)
@@ -9911,7 +9561,7 @@
 				)
 			)
 		)
-		(property "Sim.Pins" "1=K 2=A"
+		(property "KiLib_Generator" "1=K 2=A"
 			(at 0 0 90)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -9954,12 +9604,6 @@
 		(path "/0fbc39c3-d1ae-4c01-9c6e-eb11ea14d836")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -10102,7 +9746,7 @@
 		(layer "F.Cu")
 		(uuid "74a7b48a-9dda-4947-b51d-482d75b6804b")
 		(at 174.5996 116.332)
-		(descr "Resistor SMD 0402 (1005 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
+		(descr "Resistor SMD 0402 (1005 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf)")
 		(tags "resistor")
 		(property "Reference" "R5"
 			(at 2.0828 0.254 0)
@@ -10152,6 +9796,19 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "C25741 "
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "ecc7c85a-23a7-45ce-85f1-a46b89b01e68")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 0)
 			(unlocked yes)
@@ -10165,29 +9822,10 @@
 				)
 			)
 		)
-		(property "LCSC" "C25741 "
-			(at 0 0 0)
-			(unlocked yes)
-			(layer "F.Fab")
-			(hide yes)
-			(uuid "ecc7c85a-23a7-45ce-85f1-a46b89b01e68")
-			(effects
-				(font
-					(size 1 1)
-					(thickness 0.15)
-				)
-			)
-		)
 		(property ki_fp_filters "R_*")
 		(path "/26e8c4b8-ae9d-408e-9e1b-cda83c9e728b")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -10210,85 +9848,27 @@
 			(layer "F.SilkS")
 			(uuid "d3864f92-efff-4d71-b1b5-a84ec576a915")
 		)
-		(fp_line
+		(fp_rect
 			(start -0.93 -0.47)
-			(end 0.93 -0.47)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "e93ee846-416b-4d84-aa32-5f296896c087")
-		)
-		(fp_line
-			(start -0.93 0.47)
-			(end -0.93 -0.47)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "003115ba-09b7-45b8-bc4f-a758f26d13aa")
-		)
-		(fp_line
-			(start 0.93 -0.47)
 			(end 0.93 0.47)
 			(stroke
 				(width 0.05)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.CrtYd")
-			(uuid "9d8f9647-15f2-41be-999e-7e3fd26dc770")
+			(uuid "69813567-b294-44d5-ae53-bcca61fa2caa")
 		)
-		(fp_line
-			(start 0.93 0.47)
-			(end -0.93 0.47)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "caea0fcc-e46b-4af0-b2eb-8942646a224f")
-		)
-		(fp_line
+		(fp_rect
 			(start -0.525 -0.27)
-			(end 0.525 -0.27)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "89e4082c-903a-4b4e-a10c-1a63530715a7")
-		)
-		(fp_line
-			(start -0.525 0.27)
-			(end -0.525 -0.27)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "d6a6397d-56d7-4bab-b5d5-9f997fa1b337")
-		)
-		(fp_line
-			(start 0.525 -0.27)
 			(end 0.525 0.27)
 			(stroke
 				(width 0.1)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.Fab")
-			(uuid "615b8eaa-3789-4437-be32-9e16ad48f947")
-		)
-		(fp_line
-			(start 0.525 0.27)
-			(end -0.525 0.27)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "56baca32-bdd5-42d0-8624-ca2f68c5813f")
+			(uuid "13bbeedc-452a-46f9-a78d-cf0250c3c6d8")
 		)
 		(fp_text user "${REFERENCE}"
 			(at 0 0 0)
@@ -10337,7 +9917,7 @@
 		(layer "F.Cu")
 		(uuid "75ab849c-93c4-4ae4-9034-9f47f7c2f9b4")
 		(at 168.8592 114.6556 180)
-		(descr "Resistor SMD 0402 (1005 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
+		(descr "Resistor SMD 0402 (1005 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf)")
 		(tags "resistor")
 		(property "Reference" "R4"
 			(at -1.8796 0.4572 0)
@@ -10387,6 +9967,19 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "C25741 "
+			(at 0 0 180)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "78a9cff7-f0ff-42ad-bef1-fca64a8370ca")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 180)
 			(unlocked yes)
@@ -10400,29 +9993,10 @@
 				)
 			)
 		)
-		(property "LCSC" "C25741 "
-			(at 0 0 180)
-			(unlocked yes)
-			(layer "F.Fab")
-			(hide yes)
-			(uuid "78a9cff7-f0ff-42ad-bef1-fca64a8370ca")
-			(effects
-				(font
-					(size 1 1)
-					(thickness 0.15)
-				)
-			)
-		)
 		(property ki_fp_filters "R_*")
 		(path "/aed7e896-1a82-4643-ae9c-b62db64cd997")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -10445,85 +10019,27 @@
 			(layer "F.SilkS")
 			(uuid "7d2b38ca-fcc5-49a7-8e27-e01c7f3a4fc8")
 		)
-		(fp_line
-			(start 0.93 0.47)
-			(end -0.93 0.47)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "deb07464-a02c-4f0a-ba91-df90e0e54fab")
-		)
-		(fp_line
-			(start 0.93 -0.47)
+		(fp_rect
+			(start -0.93 -0.47)
 			(end 0.93 0.47)
 			(stroke
 				(width 0.05)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.CrtYd")
-			(uuid "3ce1f9b4-2d9c-438a-9447-b2a4e1b789a0")
+			(uuid "078c2f3d-df80-4201-ae91-02980f5cb154")
 		)
-		(fp_line
-			(start -0.93 0.47)
-			(end -0.93 -0.47)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "dce1da7b-5bbb-4556-b09d-3a0770e41b75")
-		)
-		(fp_line
-			(start -0.93 -0.47)
-			(end 0.93 -0.47)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "706966a5-7c7c-48c3-94fd-73257eef3412")
-		)
-		(fp_line
-			(start 0.525 0.27)
-			(end -0.525 0.27)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "12c947d3-61a6-4b5f-9af0-cefc63e2a79a")
-		)
-		(fp_line
-			(start 0.525 -0.27)
+		(fp_rect
+			(start -0.525 -0.27)
 			(end 0.525 0.27)
 			(stroke
 				(width 0.1)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.Fab")
-			(uuid "93c09fd0-2e3d-4fe2-9671-86821e504c21")
-		)
-		(fp_line
-			(start -0.525 0.27)
-			(end -0.525 -0.27)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "2eda7789-325c-40b1-bc15-eedacd812270")
-		)
-		(fp_line
-			(start -0.525 -0.27)
-			(end 0.525 -0.27)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "958664e4-ea44-415d-b03a-8a3dad8792fa")
+			(uuid "2d8ac6c2-8de9-4594-9827-2a6e210eb79c")
 		)
 		(fp_text user "${REFERENCE}"
 			(at 0 0 0)
@@ -10572,7 +10088,7 @@
 		(layer "F.Cu")
 		(uuid "79b3da24-f995-4d66-b674-9b7caf903f8c")
 		(at 165.9636 116.4336)
-		(descr "Resistor SMD 0402 (1005 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
+		(descr "Resistor SMD 0402 (1005 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf)")
 		(tags "resistor")
 		(property "Reference" "R6"
 			(at -2.048 -0.044 0)
@@ -10622,6 +10138,18 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "SMD_2terminal_chip_molded"
+			(at 0 0 0)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "cff52657-c477-41af-a800-482a99bf9d9d")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 0)
 			(unlocked yes)
@@ -10652,12 +10180,6 @@
 		(path "/37a3c81b-cf47-4b31-9278-4ae512dd327f")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -10680,85 +10202,27 @@
 			(layer "F.SilkS")
 			(uuid "31d3334a-97c7-44dd-81a8-4e215a9c21de")
 		)
-		(fp_line
+		(fp_rect
 			(start -0.93 -0.47)
-			(end 0.93 -0.47)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "eea8aea5-975b-478d-b0e6-1d1195923a50")
-		)
-		(fp_line
-			(start -0.93 0.47)
-			(end -0.93 -0.47)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "72655791-fa16-4102-9f9e-df06bfb91515")
-		)
-		(fp_line
-			(start 0.93 -0.47)
 			(end 0.93 0.47)
 			(stroke
 				(width 0.05)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.CrtYd")
-			(uuid "aacc6414-8a10-4f6a-a96b-65e1b1e631f6")
+			(uuid "71f17c1d-d77f-4322-930f-3326d0325322")
 		)
-		(fp_line
-			(start 0.93 0.47)
-			(end -0.93 0.47)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "e385b8ad-b543-479b-943f-db9a314e6f79")
-		)
-		(fp_line
+		(fp_rect
 			(start -0.525 -0.27)
-			(end 0.525 -0.27)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "f8f63522-387e-4825-b02b-f3f9cf79ff64")
-		)
-		(fp_line
-			(start -0.525 0.27)
-			(end -0.525 -0.27)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "20321944-f18c-40ef-a13a-66309aac60fe")
-		)
-		(fp_line
-			(start 0.525 -0.27)
 			(end 0.525 0.27)
 			(stroke
 				(width 0.1)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.Fab")
-			(uuid "64b85ee4-aec9-4e4e-8f1a-b564c2c4d0a8")
-		)
-		(fp_line
-			(start 0.525 0.27)
-			(end -0.525 0.27)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "baf2e694-d4b2-4d47-b105-dbeb36268237")
+			(uuid "ab6a88b8-ae3b-4361-a1c9-6672063fb1ef")
 		)
 		(fp_text user "${REFERENCE}"
 			(at 0 0 0)
@@ -10855,6 +10319,18 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "terminal_block/Phoenix"
+			(at 0 0 270)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "ab1290c5-040c-4582-87c5-0fea50189c00")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 270)
 			(unlocked yes)
@@ -10885,12 +10361,6 @@
 		(path "/1642caff-1e8e-4e52-bca5-7e54109f34c8")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -11237,6 +10707,19 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "C49326649 "
+			(at 0 0 270)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "abb9a801-b506-4c9b-8d01-513822d99835")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 270)
 			(unlocked yes)
@@ -11250,29 +10733,10 @@
 				)
 			)
 		)
-		(property "LCSC" "C49326649 "
-			(at 0 0 270)
-			(unlocked yes)
-			(layer "F.Fab")
-			(hide yes)
-			(uuid "abb9a801-b506-4c9b-8d01-513822d99835")
-			(effects
-				(font
-					(size 1 1)
-					(thickness 0.15)
-				)
-			)
-		)
 		(property ki_fp_filters "C_*")
 		(path "/6f1fc741-cc37-47f9-b1cd-488b7de69675")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -11412,6 +10876,19 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "C11429 "
+			(at 0 0 270)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "605fffdd-db2f-44b7-b49c-10ce01b8ed5d")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 270)
 			(unlocked yes)
@@ -11425,29 +10902,10 @@
 				)
 			)
 		)
-		(property "LCSC" "C11429 "
-			(at 0 0 270)
-			(unlocked yes)
-			(layer "F.Fab")
-			(hide yes)
-			(uuid "605fffdd-db2f-44b7-b49c-10ce01b8ed5d")
-			(effects
-				(font
-					(size 1 1)
-					(thickness 0.15)
-				)
-			)
-		)
 		(property ki_fp_filters "R_*")
 		(path "/110914ae-fd3d-4269-a299-9f435daee794")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -11585,6 +11043,19 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "C22859 "
+			(at 0 0 180)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "4f412e22-00f3-478f-9694-656a785b334f")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 180)
 			(unlocked yes)
@@ -11598,29 +11069,10 @@
 				)
 			)
 		)
-		(property "LCSC" "C22859 "
-			(at 0 0 180)
-			(unlocked yes)
-			(layer "F.Fab")
-			(hide yes)
-			(uuid "4f412e22-00f3-478f-9694-656a785b334f")
-			(effects
-				(font
-					(size 1 1)
-					(thickness 0.15)
-				)
-			)
-		)
 		(property ki_fp_filters "R_*")
 		(path "/6007f691-ea6e-4c9c-a850-10871c66406f")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -11817,12 +11269,6 @@
 		(path "/6aa9c6ba-cf9f-4ff3-b4fd-1a6e45863c05")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -12092,6 +11538,18 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "connector/pin_header_socket"
+			(at 0 0 90)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "bbd593f0-1c14-4a2c-8d98-b506ca4de132")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 90)
 			(unlocked yes)
@@ -12122,12 +11580,6 @@
 		(path "/4b1e14ed-f694-421b-be59-9e04890b0b5f")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2" "3")
-			)
-		)
 		(attr through_hole exclude_from_bom)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -12714,6 +12166,18 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "package/gullwing"
+			(at 0 0 270)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "a4a8e596-d9f5-4667-964c-b3cf4d9fdcde")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 270)
 			(unlocked yes)
@@ -12744,12 +12208,6 @@
 		(path "/770d8b57-71f1-447d-8df4-d1a9870c8f65")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "3" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -13064,7 +12522,7 @@
 		(layer "F.Cu")
 		(uuid "9c174a50-7560-4a7f-af18-bd31b680ad0b")
 		(at 154.136551 111.3663 180)
-		(descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
+		(descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf)")
 		(tags "capacitor")
 		(property "Reference" "C21"
 			(at 0.127 1.524 0)
@@ -13115,6 +12573,19 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "C326595 "
+			(at 0 0 180)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "2ad3a8a0-07cb-45c4-86d4-2669f1e0a66c")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 180)
 			(unlocked yes)
@@ -13128,29 +12599,10 @@
 				)
 			)
 		)
-		(property "LCSC" "C326595 "
-			(at 0 0 180)
-			(unlocked yes)
-			(layer "F.Fab")
-			(hide yes)
-			(uuid "2ad3a8a0-07cb-45c4-86d4-2669f1e0a66c")
-			(effects
-				(font
-					(size 1 1)
-					(thickness 0.15)
-				)
-			)
-		)
 		(property ki_fp_filters "C_*")
 		(path "/9f6e41f7-a79e-4c3f-b831-af10f1b99411")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -13173,85 +12625,27 @@
 			(layer "F.SilkS")
 			(uuid "423142f9-0956-424e-8bcc-cc0568dd203e")
 		)
-		(fp_line
-			(start 1.48 0.73)
-			(end -1.48 0.73)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "b3ed3cda-cbff-4b71-a608-c8cb80c11681")
-		)
-		(fp_line
-			(start 1.48 -0.73)
+		(fp_rect
+			(start -1.48 -0.73)
 			(end 1.48 0.73)
 			(stroke
 				(width 0.05)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.CrtYd")
-			(uuid "cb3a0931-783b-4931-9069-a61d4e35f5e9")
+			(uuid "264f5238-8ead-4e33-8382-ab3f13274dae")
 		)
-		(fp_line
-			(start -1.48 0.73)
-			(end -1.48 -0.73)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "580da6e3-704e-4cf8-aa0a-44ee4c36a53a")
-		)
-		(fp_line
-			(start -1.48 -0.73)
-			(end 1.48 -0.73)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "59bdf799-482c-4ff5-af9f-3fefeab09116")
-		)
-		(fp_line
-			(start 0.8 0.4)
-			(end -0.8 0.4)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "22200834-c73b-4f01-b266-eedc8a8a862f")
-		)
-		(fp_line
-			(start 0.8 -0.4)
+		(fp_rect
+			(start -0.8 -0.4)
 			(end 0.8 0.4)
 			(stroke
 				(width 0.1)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.Fab")
-			(uuid "8e1baab6-e40d-464a-b927-6d16142cbade")
-		)
-		(fp_line
-			(start -0.8 0.4)
-			(end -0.8 -0.4)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "5eba0f4b-22d5-4656-9965-ff069a15da30")
-		)
-		(fp_line
-			(start -0.8 -0.4)
-			(end 0.8 -0.4)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "06261b6e-0580-4ad3-83c4-f9cbd1bfd4da")
+			(uuid "9f734531-d208-4497-9b71-781812462109")
 		)
 		(fp_text user "${REFERENCE}"
 			(at 0 0 0)
@@ -13350,6 +12744,18 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "connector/pin_header_socket"
+			(at 0 0 180)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "1de97e15-354f-48ec-9563-26cd16b69afe")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 180)
 			(unlocked yes)
@@ -13380,12 +12786,6 @@
 		(path "/8c19da04-d0aa-44ef-8822-377e05c39b88")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2" "3")
-			)
-		)
 		(attr through_hole exclude_from_bom)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -13448,45 +12848,16 @@
 			(layer "F.SilkS")
 			(uuid "4abb72fc-947d-4b2a-a9ce-49a65464b13e")
 		)
-		(fp_line
-			(start 1.77 6.85)
-			(end 1.77 -1.77)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "16c2c3ec-47a9-4fd9-adbd-a4a8c77bccf3")
-		)
-		(fp_line
-			(start 1.77 -1.77)
-			(end -1.77 -1.77)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "4a31fbab-94cf-4980-914c-32f00c3bbbaf")
-		)
-		(fp_line
-			(start -1.77 6.85)
+		(fp_rect
+			(start -1.77 -1.77)
 			(end 1.77 6.85)
 			(stroke
 				(width 0.05)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.CrtYd")
-			(uuid "dfab7a6b-a405-4ffc-b502-8f19cefc6f67")
-		)
-		(fp_line
-			(start -1.77 -1.77)
-			(end -1.77 6.85)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "89ce3123-d524-4f87-94f4-69d79b5a9a47")
+			(uuid "29bc0480-d75f-4ab6-9820-ec2fb25f0edc")
 		)
 		(fp_line
 			(start 1.27 6.35)
@@ -13683,12 +13054,6 @@
 		(path "/4f1560c8-0e92-43b7-9b57-74ad587f6ed0")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1")
-			)
-		)
 		(attr exclude_from_bom)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_circle
@@ -13775,6 +13140,19 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "C21122 "
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "ee730d0d-16d1-4eba-871f-691ffadc7037")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 0)
 			(unlocked yes)
@@ -13788,29 +13166,10 @@
 				)
 			)
 		)
-		(property "LCSC" "C21122 "
-			(at 0 0 0)
-			(unlocked yes)
-			(layer "F.Fab")
-			(hide yes)
-			(uuid "ee730d0d-16d1-4eba-871f-691ffadc7037")
-			(effects
-				(font
-					(size 1 1)
-					(thickness 0.15)
-				)
-			)
-		)
 		(property ki_fp_filters "C_*")
 		(path "/51dbb29e-d905-4b09-a45a-f468adfc7d62")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -13901,7 +13260,7 @@
 		(layer "F.Cu")
 		(uuid "a4a50820-2e4e-47f9-9063-3795d1224739")
 		(at 106.553 123.6525 180)
-		(descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
+		(descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf)")
 		(tags "capacitor")
 		(property "Reference" "C1"
 			(at 0 -1.43 0)
@@ -13952,6 +13311,18 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "SMD_2terminal_chip_molded"
+			(at 0 0 180)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "ad86d3f0-fca4-4c35-857c-7add505be940")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 180)
 			(unlocked yes)
@@ -13982,12 +13353,6 @@
 		(path "/655a14aa-6643-490b-9dff-ec4d61b36318")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -14010,85 +13375,27 @@
 			(layer "F.SilkS")
 			(uuid "0a306391-c883-43c1-b3cd-3ef9b0a5e3c8")
 		)
-		(fp_line
-			(start 1.48 0.73)
-			(end -1.48 0.73)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "91a40d77-a7d6-4401-9d4f-61c35f50daef")
-		)
-		(fp_line
-			(start 1.48 -0.73)
+		(fp_rect
+			(start -1.48 -0.73)
 			(end 1.48 0.73)
 			(stroke
 				(width 0.05)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.CrtYd")
-			(uuid "dfdca7f5-fb84-4b1e-8e37-e082bdfd4766")
+			(uuid "b5fb77d5-11e4-4c8d-98c6-b7733670461d")
 		)
-		(fp_line
-			(start -1.48 0.73)
-			(end -1.48 -0.73)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "62678978-754b-433e-99ca-018b837a9550")
-		)
-		(fp_line
-			(start -1.48 -0.73)
-			(end 1.48 -0.73)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "5f7be7e2-8784-45bb-bed2-beec9985b892")
-		)
-		(fp_line
-			(start 0.8 0.4)
-			(end -0.8 0.4)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "c810ba9d-23eb-4b96-92e3-164b09e83532")
-		)
-		(fp_line
-			(start 0.8 -0.4)
+		(fp_rect
+			(start -0.8 -0.4)
 			(end 0.8 0.4)
 			(stroke
 				(width 0.1)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.Fab")
-			(uuid "88f4eac1-4cce-47bc-a7f2-29743fb14cc0")
-		)
-		(fp_line
-			(start -0.8 0.4)
-			(end -0.8 -0.4)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "61687589-3702-4ddc-b014-6ea5c308839c")
-		)
-		(fp_line
-			(start -0.8 -0.4)
-			(end 0.8 -0.4)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "673b332f-e867-47c8-b885-a53a2031b8d9")
+			(uuid "9be59903-c885-40a2-a9e0-2489e04dd6e4")
 		)
 		(fp_text user "${REFERENCE}"
 			(at 0 0 0)
@@ -14146,7 +13453,7 @@
 			(effects
 				(font
 					(size 1 1)
-					(thickness 0.1)
+					(thickness 0.15)
 				)
 			)
 		)
@@ -14162,27 +13469,25 @@
 				)
 			)
 		)
-		(property "Datasheet" "http://ww1.microchip.com/downloads/en/DeviceDoc/21373C.pdf"
-			(at 0 0 0)
+		(property "Datasheet" ""
+			(at 0 0 180)
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "f8dfa29f-10cf-4cd7-bf54-8849832e1a18")
 			(effects
 				(font
 					(size 1.27 1.27)
-					(thickness 0.15)
 				)
 			)
 		)
-		(property "Description" "500mA Low Dropout CMOS Voltage Regulator, Fixed Output 3.3V, TO-220/SOT-223/TO-263"
-			(at 0 0 0)
+		(property "Description" ""
+			(at 0 0 180)
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "ff9c35bd-d143-4a01-b074-a8f16c956127")
 			(effects
 				(font
 					(size 1.27 1.27)
-					(thickness 0.15)
 				)
 			)
 		)
@@ -14216,12 +13521,6 @@
 		(path "/ed595a32-8dfd-491d-953b-6b2b66cf64c5")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2" "3")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_poly
@@ -14780,12 +14079,6 @@
 		(path "/d0e712c7-a50c-4469-aeb4-05cdd4b141a6")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "6" "5" "8" "7" "2" "1" "4" "3")
-			)
-		)
 		(attr through_hole exclude_from_bom)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -15095,13 +14388,13 @@
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/../lib/models/Ag9900LP.step"
 			(offset
-				(xyz 12.7 -20.0025 0)
+				(xyz -1.5 1.5 0)
 			)
 			(scale
 				(xyz 1 1 1)
 			)
 			(rotate
-				(xyz -0 -0 -90)
+				(xyz -0 -0 90)
 			)
 		)
 	)
@@ -15155,6 +14448,18 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "package/gullwing"
+			(at 0 0 90)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "1548f425-2af2-4f24-bb4b-5c571908cb6a")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 90)
 			(unlocked yes)
@@ -15185,12 +14490,6 @@
 		(path "/6867c24f-c974-4f14-b5d8-c441140705a1")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "3" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -15551,6 +14850,18 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "SMD_2terminal_chip_molded"
+			(at 0 0 0)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "5e7a507a-b052-4b68-8329-45617176f354")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 0)
 			(unlocked yes)
@@ -15581,12 +14892,6 @@
 		(path "/b3551995-2983-4536-bf1b-8d49dc4e33de")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -15723,6 +15028,18 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "package/gullwing"
+			(at 0 0 90)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "978f2afb-0046-4c4b-bdbc-1bb11f760a7d")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 90)
 			(unlocked yes)
@@ -15753,12 +15070,6 @@
 		(path "/bf2c1897-2684-4dae-a07c-32fd38ea7103")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "3" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -16155,12 +15466,6 @@
 		(path "/a9b2d60f-c8a4-4fcd-9407-c0687d04fbed")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "2" "4" "3" "1")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -16398,6 +15703,18 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "connector/pin_header_socket"
+			(at 0 0 0)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "f4434d32-faff-4456-a051-83b71e81ead4")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" "90"
 			(at 0 0 0)
 			(unlocked yes)
@@ -16428,12 +15745,6 @@
 		(path "/dc1408aa-17bb-460b-bb1d-d22b63c101f6")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2" "3" "4" "5" "6")
-			)
-		)
 		(attr through_hole)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -16497,8 +15808,8 @@
 			(uuid "eca58b1d-6d49-4a3c-a775-654aff184f70")
 		)
 		(fp_line
-			(start -1.8 -1.8)
-			(end 1.75 -1.8)
+			(start -1.77 -1.77)
+			(end 1.77 -1.77)
 			(stroke
 				(width 0.05)
 				(type solid)
@@ -16507,8 +15818,8 @@
 			(uuid "eee07d85-96d3-4fd8-bc6e-8cdfe0ca82e2")
 		)
 		(fp_line
-			(start -1.8 14.45)
-			(end -1.8 -1.8)
+			(start -1.77 14.47)
+			(end -1.77 -1.77)
 			(stroke
 				(width 0.05)
 				(type solid)
@@ -16517,8 +15828,8 @@
 			(uuid "45ca1de0-80c5-40c7-86f2-3dd5bfa0ff4e")
 		)
 		(fp_line
-			(start 1.75 -1.8)
-			(end 1.75 14.45)
+			(start 1.77 -1.77)
+			(end 1.77 14.47)
 			(stroke
 				(width 0.05)
 				(type solid)
@@ -16527,8 +15838,8 @@
 			(uuid "99954231-c164-45d9-a87b-497916203774")
 		)
 		(fp_line
-			(start 1.75 14.45)
-			(end -1.8 14.45)
+			(start 1.77 14.47)
+			(end -1.77 14.47)
 			(stroke
 				(width 0.05)
 				(type solid)
@@ -16764,12 +16075,6 @@
 		(path "/35e20eda-bc92-40ed-8487-75f7242ad520")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1")
-			)
-		)
 		(attr exclude_from_bom)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_circle
@@ -16889,12 +16194,6 @@
 		(path "/8f0678d6-bed8-4af3-857d-dcd133bf4ab8")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -17463,12 +16762,6 @@
 		(path "/984618f9-a026-41f2-9ea3-3a954b07f8c8")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "4" "5" "6" "1" "2" "3")
-			)
-		)
 		(attr through_hole exclude_from_bom)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -17679,7 +16972,7 @@
 			(members "64b33eb2-8270-4d80-834c-4d2f3f0a92f5")
 		)
 		(embedded_fonts no)
-		(model "${KIPRJMOD}/../lib/models/PC-1053866.stp"
+		(model "${KIPRJMOD}/../lib/models/PC-1053866.step"
 			(offset
 				(xyz -2.032 -10.4902 0.4299966)
 			)
@@ -17778,12 +17071,6 @@
 		(path "/7b56a828-3860-4404-beaa-f263d6fd03d2")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1")
-			)
-		)
 		(attr exclude_from_bom)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_circle
@@ -17907,12 +17194,6 @@
 		(path "/d8c4c393-d798-422f-8067-a7936637359b")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1")
-			)
-		)
 		(attr exclude_from_bom)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_circle
@@ -18035,12 +17316,6 @@
 		(path "/718f1f6d-00a4-48ac-8876-b833d694039e")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "2" "4" "3" "1")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -18279,6 +17554,18 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "connector/pin_header_socket"
+			(at 0 0 270)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "adff2b2e-c935-4199-a13d-0e771e2f0c3b")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 270)
 			(unlocked yes)
@@ -18309,12 +17596,6 @@
 		(path "/e6484e55-9bbc-4aa8-adc4-aae2ed9aa895")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2" "3")
-			)
-		)
 		(attr through_hole exclude_from_bom)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -18377,45 +17658,16 @@
 			(layer "F.SilkS")
 			(uuid "b13f79ec-c800-4f8d-9f5f-09c4dc929507")
 		)
-		(fp_line
-			(start -1.77 6.85)
+		(fp_rect
+			(start -1.77 -1.77)
 			(end 1.77 6.85)
 			(stroke
 				(width 0.05)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.CrtYd")
-			(uuid "7f0d18b9-83ed-4ea6-9bb8-98fddd81bc8c")
-		)
-		(fp_line
-			(start 1.77 6.85)
-			(end 1.77 -1.77)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "72e2301c-0036-4e28-9a3e-a029c1460a7a")
-		)
-		(fp_line
-			(start -1.77 -1.77)
-			(end -1.77 6.85)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "91c4cf61-e243-4983-8423-3b9005ed6d58")
-		)
-		(fp_line
-			(start 1.77 -1.77)
-			(end -1.77 -1.77)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "4060384f-ea05-4086-8508-9b82291325eb")
+			(uuid "dae1096e-bc25-4538-97cf-deb6bae82a0d")
 		)
 		(fp_line
 			(start -1.27 6.35)
@@ -18612,12 +17864,6 @@
 		(path "/d6f60016-8a7c-4cf2-905d-bb7174a716e4")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1")
-			)
-		)
 		(attr exclude_from_bom)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_circle
@@ -18741,12 +17987,6 @@
 		(path "/0d025e60-9441-4d77-9d6b-c49a48b79d3d")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1")
-			)
-		)
 		(attr exclude_from_bom)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_circle
@@ -18836,7 +18076,7 @@
 				)
 			)
 		)
-		(property "Sim.Pins" "1=K 2=A"
+		(property "KiLib_Generator" "1=K 2=A"
 			(at 0 0 90)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -18879,12 +18119,6 @@
 		(path "/7e0285ca-1cce-4945-ae19-57c6ec38509c")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -19027,7 +18261,7 @@
 		(layer "F.Cu")
 		(uuid "f9ed5824-8a0a-48dc-bc26-a244fff014d5")
 		(at 164.741051 134.49)
-		(descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
+		(descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf)")
 		(tags "capacitor")
 		(property "Reference" "C5"
 			(at 0 -1.43 0)
@@ -19078,6 +18312,19 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "C326595 "
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "356412cd-6796-40db-b169-2753715bc461")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 0)
 			(unlocked yes)
@@ -19091,29 +18338,10 @@
 				)
 			)
 		)
-		(property "LCSC" "C326595 "
-			(at 0 0 0)
-			(unlocked yes)
-			(layer "F.Fab")
-			(hide yes)
-			(uuid "356412cd-6796-40db-b169-2753715bc461")
-			(effects
-				(font
-					(size 1 1)
-					(thickness 0.15)
-				)
-			)
-		)
 		(property ki_fp_filters "C_*")
 		(path "/ec818b43-b9ff-4d78-962d-35277d4e369b")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -19136,85 +18364,27 @@
 			(layer "F.SilkS")
 			(uuid "0ea2238b-a803-4dad-940e-8c4f646382d4")
 		)
-		(fp_line
+		(fp_rect
 			(start -1.48 -0.73)
-			(end 1.48 -0.73)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "2e077969-d906-4d23-91e3-f1998b86b5a1")
-		)
-		(fp_line
-			(start -1.48 0.73)
-			(end -1.48 -0.73)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "ebaf05e7-a7d2-44b0-a78c-a7eb2aceedc4")
-		)
-		(fp_line
-			(start 1.48 -0.73)
 			(end 1.48 0.73)
 			(stroke
 				(width 0.05)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.CrtYd")
-			(uuid "ed7cb5f3-1f56-47f3-8ddb-c1cc7c18eff6")
+			(uuid "6848439a-3929-4a88-a83a-9afa09334e5e")
 		)
-		(fp_line
-			(start 1.48 0.73)
-			(end -1.48 0.73)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(layer "F.CrtYd")
-			(uuid "d485ba99-9a4f-4ea8-b530-c5cbf5b373c4")
-		)
-		(fp_line
+		(fp_rect
 			(start -0.8 -0.4)
-			(end 0.8 -0.4)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "f99c9c26-5346-4d48-ad02-74fe33538190")
-		)
-		(fp_line
-			(start -0.8 0.4)
-			(end -0.8 -0.4)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "92c46aee-600d-49c6-93c1-9d6cf2a9e93f")
-		)
-		(fp_line
-			(start 0.8 -0.4)
 			(end 0.8 0.4)
 			(stroke
 				(width 0.1)
 				(type solid)
 			)
+			(fill no)
 			(layer "F.Fab")
-			(uuid "20e45e29-dac9-418c-bb0b-c3209cd41246")
-		)
-		(fp_line
-			(start 0.8 0.4)
-			(end -0.8 0.4)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(layer "F.Fab")
-			(uuid "52df017b-a1fe-4264-8899-71a4d99994f0")
+			(uuid "b6561c4f-bea4-4e1d-946b-8715bb6f7afb")
 		)
 		(fp_text user "${REFERENCE}"
 			(at 0 0 0)
@@ -19310,6 +18480,19 @@
 				)
 			)
 		)
+		(property "KiLib_Generator" "C43922 "
+			(at 0 0 270)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "7b39b1de-623e-49bc-801b-6a1f9acc4f7f")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property "FT Rotation Offset" ""
 			(at 0 0 270)
 			(unlocked yes)
@@ -19323,29 +18506,10 @@
 				)
 			)
 		)
-		(property "LCSC" "C43922 "
-			(at 0 0 270)
-			(unlocked yes)
-			(layer "F.Fab")
-			(hide yes)
-			(uuid "7b39b1de-623e-49bc-801b-6a1f9acc4f7f")
-			(effects
-				(font
-					(size 1 1)
-					(thickness 0.15)
-				)
-			)
-		)
 		(property ki_fp_filters "C_*")
 		(path "/e0c1eba1-849a-416e-9d14-aa83d8f49a8a")
 		(sheetname "/")
 		(sheetfile "motherboard.kicad_sch")
-		(units
-			(unit
-				(name "A")
-				(pins "1" "2")
-			)
-		)
 		(attr smd)
 		(duplicate_pad_numbers_are_jumpers no)
 		(fp_line
@@ -20071,7 +19235,7 @@
 			(extension_offset 0.5)
 			(keep_text_aligned yes)
 		)
-		(gr_text "3.5"
+		(gr_text "88.9"
 			(at 84.702 94.869 90)
 			(layer "User.1")
 			(uuid "26fa057e-de71-4510-bd11-81a99a47ea01")
@@ -20110,7 +19274,7 @@
 			(extension_offset 0.5)
 			(keep_text_aligned yes)
 		)
-		(gr_text "4.25"
+		(gr_text "107.95"
 			(locked yes)
 			(at 145.415 40.379 0)
 			(layer "User.1")
@@ -20149,7 +19313,7 @@
 			(extension_offset 0.5)
 			(keep_text_aligned yes)
 		)
-		(gr_text "0.46"
+		(gr_text "11.684"
 			(at 131.311 58.4454 90)
 			(layer "User.2")
 			(uuid "10ce7a98-23f0-4fc1-b999-142659382909")
@@ -20187,7 +19351,7 @@
 			(extension_offset 0.5)
 			(keep_text_aligned yes)
 		)
-		(gr_text "2"
+		(gr_text "50.8"
 			(at 84.575 78.0034 90)
 			(layer "User.2")
 			(uuid "397f3405-bdfa-4045-8ac6-6f80d3706486")
@@ -20225,7 +19389,7 @@
 			(extension_offset 0.5)
 			(keep_text_aligned yes)
 		)
-		(gr_text "1.375"
+		(gr_text "34.925"
 			(at 87.75 70.0659 90)
 			(layer "User.2")
 			(uuid "41b72898-14ac-42e7-8e19-1e1ecbfb5dd4")
@@ -20263,7 +19427,7 @@
 			(extension_offset 0.5)
 			(keep_text_aligned yes)
 		)
-		(gr_text "0.125"
+		(gr_text "3.175"
 			(at 176.784 90.551 0)
 			(layer "User.2")
 			(uuid "57ab4802-3e94-43cb-a90e-50fca68453c9")
@@ -20301,7 +19465,7 @@
 			(extension_offset 0.5)
 			(keep_text_aligned yes)
 		)
-		(gr_text "0.125"
+		(gr_text "3.175"
 			(at 150.368 87.503 0)
 			(layer "User.2")
 			(uuid "5c147747-7c28-4829-8ac7-662c99b305b3")
@@ -20339,7 +19503,7 @@
 			(extension_offset 0.5)
 			(keep_text_aligned yes)
 		)
-		(gr_text "0.45"
+		(gr_text "11.43"
 			(at 154.756 88.646 90)
 			(layer "User.2")
 			(uuid "62a5a55d-d265-4306-a845-e39ca3277b4b")
@@ -20377,7 +19541,7 @@
 			(extension_offset 0.5)
 			(keep_text_aligned yes)
 		)
-		(gr_text "0.125"
+		(gr_text "3.175"
 			(at 136.906 48.768 0)
 			(layer "User.2")
 			(uuid "a70d425e-842c-4f6c-a0e7-626a891ac90e")
@@ -20415,7 +19579,7 @@
 			(extension_offset 0.5)
 			(keep_text_aligned yes)
 		)
-		(gr_text "0.125"
+		(gr_text "3.175"
 			(at 101.346 58.4454 90)
 			(layer "User.2")
 			(uuid "aaeb6c08-4611-420b-ae54-d8a22962c8a4")
@@ -20453,7 +19617,7 @@
 			(extension_offset 0.5)
 			(keep_text_aligned yes)
 		)
-		(gr_text "0.125"
+		(gr_text "3.175"
 			(at 97.917 50.3174 0)
 			(layer "User.2")
 			(uuid "acf2cd45-aa43-4c22-a599-5722a3738caf")
@@ -20491,7 +19655,7 @@
 			(extension_offset 0.5)
 			(keep_text_aligned yes)
 		)
-		(gr_text "0.4"
+		(gr_text "10.16"
 			(at 169.869 89.281 90)
 			(layer "User.2")
 			(uuid "b76f7c90-f59f-45a5-ab91-300eeda9da69")
@@ -20529,7 +19693,7 @@
 			(extension_offset 0.5)
 			(keep_text_aligned yes)
 		)
-		(gr_text "1.5"
+		(gr_text "38.1"
 			(at 163.576 40.085 0)
 			(layer "User.2")
 			(uuid "c82bab49-6a0a-4c56-9679-e1df704954d5")
@@ -20567,7 +19731,7 @@
 			(extension_offset 0.5)
 			(keep_text_aligned yes)
 		)
-		(gr_text "1.375"
+		(gr_text "34.925"
 			(at 135.375 76.8985 90)
 			(layer "User.2")
 			(uuid "f589a8ce-7e5d-4d19-91a8-0fa70ef04fda")
@@ -20605,7 +19769,7 @@
 			(extension_offset 0.5)
 			(keep_text_aligned yes)
 		)
-		(gr_text "2"
+		(gr_text "50.8"
 			(at 117.475 45.8654 0)
 			(layer "User.2")
 			(uuid "f696709d-6644-4907-9473-89c93cebc8b0")
@@ -32977,20 +32141,6 @@
 			"a5fb4ab3-5fb2-4476-b7c4-df2709415700" "a67c35b2-aa59-407f-9f5f-a6bf8ba0bbba"
 			"a8f6badd-2e76-49d6-ac7e-cd097961d82d" "a9afde6d-e2e1-486d-ad37-688ab3b23ac5"
 			"ba323644-ad69-4857-9c03-58823f2ad18d"
-		)
-	)
-	(group ""
-		(uuid "09234caa-7cb0-466e-8579-56a49958d5bc")
-		(members "0e00484a-ccf1-4dda-9bc8-063f183cb8f2" "10ce7a98-23f0-4fc1-b999-142659382909"
-			"26c1f32a-89a0-4df7-a68d-7ad4cf293070" "397f3405-bdfa-4045-8ac6-6f80d3706486"
-			"40322cd6-4ae2-4050-acb0-88f1c9c26d45" "41b72898-14ac-42e7-8e19-1e1ecbfb5dd4"
-			"50b2df07-8669-416a-8eb6-19fc4a7c4ad3" "569a9636-978b-4d4c-93a9-4d851ffff628"
-			"5765aaed-3593-4491-b105-7ee4bc224e8d" "67547e0a-2dfa-4102-aeac-6f350330ffeb"
-			"71cc0bfc-6f59-42bd-951c-279f8c14a4d4" "91a4d45d-272c-4ae6-a02b-b4af8b9844c1"
-			"a70d425e-842c-4f6c-a0e7-626a891ac90e" "aaeb6c08-4611-420b-ae54-d8a22962c8a4"
-			"acf2cd45-aa43-4c22-a599-5722a3738caf" "b151ec58-4a35-4e25-9517-95067447a3ef"
-			"bec74abc-0958-4f38-a03a-67fbdc844f22" "cf099362-d350-453d-9027-c7349ab49381"
-			"f696709d-6644-4907-9473-89c93cebc8b0"
 		)
 	)
 	(group ""
