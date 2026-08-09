@@ -33,7 +33,6 @@
 *-save.kicad_pcb
 *-save.kicad_sch
 fp-info-cache
-sym-lib-table-bak
 
 # Simulation and temporary data
 *.log
