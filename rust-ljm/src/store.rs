@@ -16,10 +16,7 @@ use chrono::{DateTime, NaiveDate, Utc};
 use futures_util::StreamExt;
 use parquet::{
     column::writer::ColumnWriter,
-    file::{
-        metadata::KeyValue, properties::WriterProperties, reader::SerializedFileReader,
-        writer::SerializedFileWriter,
-    },
+    file::{metadata::KeyValue, properties::WriterProperties, writer::SerializedFileWriter},
     schema::parser::parse_message_type,
 };
 use std::{
@@ -383,11 +380,18 @@ struct ParquetLogger {
     final_path: PathBuf,
     buffer: Vec<(i64, f64)>,
     max_rows: usize,
+    first_timestamp_unix_ns: Option<i64>,
+    row_groups_written: usize,
     date: NaiveDate,
     asset: u32,
     channel: u8,
     file_index: usize,
 }
+
+// Parquet's hard limit is 32,767 row groups per file. Keep headroom even if a
+// large JetStream backlog is replayed faster than the wall-clock rotation
+// ticker can fire.
+const MAX_ROW_GROUPS_PER_FILE: usize = 30_000;
 
 /// Runtime state for one active channel consumer and writer task.
 ///
@@ -466,6 +470,8 @@ impl ParquetLogger {
             final_path,
             buffer: Vec::with_capacity(1000),
             max_rows: 1000,
+            first_timestamp_unix_ns: None,
+            row_groups_written: 0,
             date,
             asset,
             channel,
@@ -475,6 +481,8 @@ impl ParquetLogger {
 
     /// Buffers one timestamped value and flushes when the row group is full.
     fn write_row(&mut self, timestamp_unix_ns: i64, val: f64) {
+        self.first_timestamp_unix_ns
+            .get_or_insert(timestamp_unix_ns);
         self.buffer.push((timestamp_unix_ns, val));
         if self.buffer.len() >= self.max_rows {
             self.flush();
@@ -511,7 +519,29 @@ impl ParquetLogger {
         }
 
         rg.close().unwrap();
+        self.row_groups_written += 1;
         self.buffer.clear();
+    }
+
+    /// Returns whether the next source sample belongs in a new file.
+    ///
+    /// Source-time rotation is important during backlog replay: several hours
+    /// of samples can be consumed in under one wall-clock rotation interval.
+    fn should_rotate_before(&self, timestamp_unix_ns: i64, rotate_secs: u64) -> bool {
+        if self.row_groups_written >= MAX_ROW_GROUPS_PER_FILE {
+            return true;
+        }
+
+        let Some(first_timestamp_unix_ns) = self.first_timestamp_unix_ns else {
+            return false;
+        };
+        if timestamp_unix_ns < first_timestamp_unix_ns {
+            return true;
+        }
+
+        let elapsed_ns = i128::from(timestamp_unix_ns) - i128::from(first_timestamp_unix_ns);
+        let rotate_ns = i128::from(rotate_secs) * 1_000_000_000;
+        elapsed_ns >= rotate_ns
     }
 
     /// Flushes buffered rows and closes the Parquet writer.
@@ -545,25 +575,14 @@ fn quarantine_incomplete_files(root: &Path) -> io::Result<Vec<PathBuf>> {
             let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
                 continue;
             };
-            let unfinished = name.ends_with(".parquet.inprogress");
-            let unreadable_parquet = name.ends_with(".parquet")
-                && match fs::File::open(&path) {
-                    Ok(file) => SerializedFileReader::new(file).is_err(),
-                    Err(err) => {
-                        eprintln!(
-                            "[logger] Could not inspect existing Parquet file {}: {err}",
-                            path.display()
-                        );
-                        false
-                    }
-                };
-            if !unfinished && !unreadable_parquet {
+            if !name.ends_with(".parquet.inprogress") {
                 continue;
             }
 
-            let reason = if unfinished { "unfinished" } else { "corrupt" };
-            let quarantine_name =
-                format!("{name}.{reason}.quarantined-{stamp}-{}", quarantined.len());
+            let quarantine_name = format!(
+                "{name}.unfinished.quarantined-{stamp}-{}",
+                quarantined.len()
+            );
             let quarantine_path = path.with_file_name(quarantine_name);
             fs::rename(&path, &quarantine_path)?;
             quarantined.push(quarantine_path);
@@ -648,6 +667,7 @@ fn process_scan_payload(
     asset: u32,
     parquet_root: &Path,
     active_calibration: &CalibrationSpec,
+    rotate_secs: u64,
     logger: &mut Option<ParquetLogger>,
     file_index: &mut usize,
     last_sequence: &mut Option<u64>,
@@ -696,7 +716,10 @@ fn process_scan_payload(
                 let sample_date = timestamp_ns_to_utc_date(timestamp_unix_ns);
                 if logger
                     .as_ref()
-                    .map(|l| l.date != sample_date)
+                    .map(|l| {
+                        l.date != sample_date
+                            || l.should_rotate_before(timestamp_unix_ns, rotate_secs)
+                    })
                     .unwrap_or(true)
                 {
                     if let Some(l) = logger.take() {
@@ -800,6 +823,7 @@ async fn spawn_channel_logger(
                                 asset,
                                 &parquet_root,
                                 &active_calibration,
+                                rotate_secs,
                                 &mut logger,
                                 &mut file_index,
                                 &mut last_sequence,
@@ -964,7 +988,7 @@ async fn main() -> Result<(), DynError> {
     let entry = store.entry(key.as_str()).await?.ok_or("KV key not found")?;
 
     let nested = serde_json::from_slice::<NestedConfig>(&entry.value)?;
-    let cfg: SampleConfig = sample_config_from_nested(nested);
+    let mut cfg: SampleConfig = sample_config_from_nested(nested);
 
     println!("[logger] Loaded config: {:?}", cfg);
 
@@ -1008,6 +1032,9 @@ async fn main() -> Result<(), DynError> {
     println!("[logger] Watching KV for config changes...");
     let shutdown = tokio::signal::ctrl_c();
     tokio::pin!(shutdown);
+    let mut health_check = tokio::time::interval(Duration::from_secs(5));
+    // Skip the immediate first tick; initial channel setup just completed.
+    health_check.tick().await;
 
     loop {
         let entry = tokio::select! {
@@ -1028,6 +1055,72 @@ async fn main() -> Result<(), DynError> {
                         break;
                     }
                 }
+            }
+            _ = health_check.tick() => {
+                let restart_channels: Vec<u8> = cfg
+                    .channels
+                    .iter()
+                    .copied()
+                    .filter(|channel| {
+                        active
+                            .get(channel)
+                            .map(|logger| logger.handle.is_finished())
+                            .unwrap_or(true)
+                    })
+                    .collect();
+
+                for channel in restart_channels {
+                    if let Some(logger) = active.remove(&channel) {
+                        eprintln!(
+                            "[logger] Channel {channel:02} writer ended; restarting it."
+                        );
+                        logger.stop().await;
+                    } else {
+                        eprintln!(
+                            "[logger] Channel {channel:02} writer is missing; starting it."
+                        );
+                    }
+
+                    let subject = subjects::live_labjack_channel_subject(
+                        &cfg.nats_subject,
+                        cfg.asset_number,
+                        channel,
+                        cfg.site_id.as_deref(),
+                        cfg.box_id.as_deref(),
+                        Some(&cfg.labjack_name),
+                        cfg.source_type.as_deref(),
+                        cfg.source_id.as_deref(),
+                    );
+                    let consumer_name = archiver_consumer_name(&cfg, channel);
+                    let calibration = cfg
+                        .calibrations
+                        .get(&channel)
+                        .cloned()
+                        .unwrap_or_default();
+                    match spawn_channel_logger(
+                        js.clone(),
+                        cfg.nats_stream.clone(),
+                        consumer_name,
+                        subject,
+                        cfg.asset_number,
+                        channel,
+                        cfg.rotate_secs,
+                        calibration,
+                        parquet_root.clone(),
+                    )
+                    .await
+                    {
+                        Ok(logger) => {
+                            active.insert(channel, logger);
+                        }
+                        Err(err) => {
+                            eprintln!(
+                                "[logger] Failed to restart channel {channel:02}: {err}"
+                            );
+                        }
+                    }
+                }
+                continue;
             }
         };
 
@@ -1122,6 +1215,7 @@ async fn main() -> Result<(), DynError> {
                 }
             }
         }
+        cfg = new_cfg;
     }
 
     println!("[logger] Closing {} channel writer(s)...", active.len());
@@ -1135,7 +1229,7 @@ async fn main() -> Result<(), DynError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parquet::file::reader::FileReader;
+    use parquet::file::reader::{FileReader, SerializedFileReader};
     use uuid::Uuid;
 
     fn temporary_parquet_root(name: &str) -> PathBuf {
@@ -1160,7 +1254,26 @@ mod tests {
     }
 
     #[test]
-    fn startup_quarantines_unfinished_and_corrupt_files() {
+    fn writer_rotates_by_source_time_and_before_parquet_row_group_limit() {
+        let root = temporary_parquet_root("source-rotation");
+        let date = NaiveDate::from_ymd_opt(2026, 8, 18).expect("valid date");
+        let start = 1_787_020_000_000_000_000_i64;
+        let mut logger = ParquetLogger::new(1001, 0, 1, date, CalibrationSpec::default(), &root);
+        logger.write_row(start, 1.0);
+
+        assert!(!logger.should_rotate_before(start + 299_000_000_000, 300));
+        assert!(logger.should_rotate_before(start + 300_000_000_000, 300));
+        assert!(logger.should_rotate_before(start - 1, 300));
+
+        logger.row_groups_written = MAX_ROW_GROUPS_PER_FILE;
+        assert!(logger.should_rotate_before(start + 1, 300));
+
+        let _ = logger.close().expect("writer should finalize");
+        fs::remove_dir_all(root).expect("temporary directory should be removable");
+    }
+
+    #[test]
+    fn startup_quarantines_unfinished_without_scanning_completed_parquet() {
         let root = temporary_parquet_root("quarantine");
         let channel_dir = root.join("asset1001/2026-08-05/ch11");
         fs::create_dir_all(&channel_dir).expect("channel directory should be created");
@@ -1170,10 +1283,10 @@ mod tests {
             .expect("corrupt file should be written");
 
         let quarantined = quarantine_incomplete_files(&root).expect("quarantine should succeed");
-        assert_eq!(quarantined.len(), 2);
+        assert_eq!(quarantined.len(), 1);
         assert!(quarantined.iter().all(|path| path.exists()));
         assert!(!channel_dir.join("part-0001.parquet.inprogress").exists());
-        assert!(!channel_dir.join("part-0002.parquet").exists());
+        assert!(channel_dir.join("part-0002.parquet").exists());
         fs::remove_dir_all(root).expect("temporary directory should be removable");
     }
 }
