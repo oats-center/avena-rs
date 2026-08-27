@@ -1,6 +1,6 @@
 {
-  "labjack_name": "i69-lj2",
-  "asset_number": 1001,
+  "labjack_name": "I69-Box-2",
+  "asset_number": 1002,
   "max_channels": 14,
   "site_id": "i69",
   "box_id": "i69-mu2",
@@ -13,21 +13,93 @@
     "scans_per_read": 100,
     "scan_rate_hz": 500,
     "channels_enabled": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
       11,
+      12,
       13
     ],
     "gains": 1,
     "data_formats": [
       "voltage",
+      "voltage",
+      "voltage",
+      "voltage",
+      "voltage",
+      "voltage",
+      "voltage",
+      "voltage",
+      "voltage",
+      "voltage",
+      "voltage",
+      "voltage",
+      "voltage",
       "voltage"
     ],
     "measurement_units": [
+      "V",
+      "V",
+      "V",
+      "V",
+      "V",
+      "V",
+      "V",
+      "V",
+      "V",
+      "V",
+      "V",
+      "V",
       "V",
       "V"
     ],
     "labjack_on_off": true,
     "calibrations": {
+      "0": {
+        "type": "identity"
+      },
+      "1": {
+        "type": "identity"
+      },
+      "2": {
+        "type": "identity"
+      },
+      "3": {
+        "type": "identity"
+      },
+      "4": {
+        "type": "identity"
+      },
+      "5": {
+        "type": "identity"
+      },
+      "6": {
+        "type": "identity"
+      },
+      "7": {
+        "type": "identity"
+      },
+      "8": {
+        "type": "identity"
+      },
+      "9": {
+        "type": "identity"
+      },
+      "10": {
+        "type": "identity"
+      },
       "11": {
+        "type": "identity"
+      },
+      "12": {
         "type": "identity"
       },
       "13": {

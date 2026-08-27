@@ -1,5 +1,10 @@
 Static project guide: https://oats-center.github.io/avena-rs/
 
+For a new LattePanda, start with [`docs/field-deployment.md`](docs/field-deployment.md).
+It is the concise offline runbook for the complete LabJack, NATS, monitoring,
+and camera stack. After installation, run `scripts/edge-status.sh` for a single
+health and boot-state summary.
+
 For the LabJack pipeline:
 
 - Select the immutable MU profile under
