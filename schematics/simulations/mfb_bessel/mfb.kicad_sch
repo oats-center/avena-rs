@@ -3975,7 +3975,7 @@
 				)
 			)
 		)
-		(property "Sim.Library" "C:\\Users\\smbea\\OneDrive\\personal-files\\oats\\avena-rs\\schematics\\lib\\spice\\AD8422.cir"
+		(property "Sim.Library" "${KIPRJMOD}\\..\\..\\lib\\spice\\AD8422.cir"
 			(at 134.62 115.57 0)
 			(hide yes)
 			(show_name no)
@@ -4702,7 +4702,7 @@
 				)
 			)
 		)
-		(property "Sim.Library" "C:\\Users\\smbea\\OneDrive\\personal-files\\oats\\avena-rs\\schematics\\lib\\spice\\AD8422.cir"
+		(property "Sim.Library" "${KIPRJMOD}\\..\\..\\lib\\spice\\AD8422.cir"
 			(at 135.89 63.5 0)
 			(hide yes)
 			(show_name no)
@@ -6298,7 +6298,7 @@
 				)
 			)
 		)
-		(property "Sim.Library" "C:\\Users\\smbea\\OneDrive\\personal-files\\oats\\avena-rs\\schematics\\lib\\spice\\OPAx182.lib"
+		(property "Sim.Library" "${KIPRJMOD}\\..\\..\\lib\\spice\\OPAx182.lib"
 			(at 179.07 66.04 0)
 			(hide yes)
 			(show_name no)
@@ -6508,7 +6508,7 @@
 				)
 			)
 		)
-		(property "Sim.Library" "C:\\Users\\smbea\\OneDrive\\personal-files\\oats\\avena-rs\\schematics\\lib\\spice\\OPAx182.lib"
+		(property "Sim.Library" "${KIPRJMOD}\\..\\..\\lib\\spice\\OPAx182.lib"
 			(at 177.8 118.11 0)
 			(hide yes)
 			(show_name no)
