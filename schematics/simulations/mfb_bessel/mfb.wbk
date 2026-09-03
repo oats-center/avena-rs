@@ -1,5 +1,5 @@
 {
-  "custom_cursors": 2,
+  "custom_cursors": 3,
   "last_sch_text_sim_command": "",
   "tabs": [
     {
@@ -12,11 +12,15 @@
         ".probe allp"
       ],
       "dottedSecondary": true,
+      "legend": {
+        "x": 1317,
+        "y": 49
+      },
       "margins": {
-        "bottom": 45,
-        "left": 70,
-        "right": 70,
-        "top": 30
+        "bottom": 50,
+        "left": 100,
+        "right": 100,
+        "top": 50
       },
       "measurements": [
         {
@@ -24,7 +28,7 @@
           "format": ""
         }
       ],
-      "showGrid": true,
+      "showGrid": false,
       "traces": [
         {
           "color": "rgb(55, 126, 184)",
@@ -54,48 +58,44 @@
       ],
       "dottedSecondary": true,
       "legend": {
-        "x": 148,
-        "y": 912
+        "x": 161,
+        "y": 1024
       },
       "margins": {
-        "bottom": 45,
-        "left": 70,
-        "right": 70,
-        "top": 30
+        "bottom": 50,
+        "left": 100,
+        "right": 100,
+        "top": 50
       },
       "measurements": [],
-      "showGrid": true,
+      "showGrid": false,
       "traces": [
         {
           "color": "rgb(55, 126, 184)",
-          "cursor1": {
-            "position": 32000.0,
-            "x_format": "3~Hz",
-            "y_format": "3~dB"
-          },
-          "cursorD": {
-            "x_format": "3~s",
-            "y_format": "3~V"
-          },
           "signal": "V(/Sc1-) (phase)",
           "trace_type": 517
         },
         {
           "color": "rgb(55, 126, 184)",
-          "cursor2": {
-            "position": 255260.18980660196,
-            "x_format": "3~s",
-            "y_format": "3~V"
-          },
-          "cursorD": {
-            "x_format": "3~s",
-            "y_format": "3~V"
+          "cursor3": {
+            "position": 5931223.465940061,
+            "x_format": "3~Hz",
+            "y_format": "3~dB"
           },
           "signal": "V(/Sc1-) (gain)",
           "trace_type": 521
         },
         {
           "color": "rgb(228, 26, 28)",
+          "cursor2": {
+            "position": 65793.32246575844,
+            "x_format": "3~s",
+            "y_format": "3~V"
+          },
+          "cursorD": {
+            "x_format": "3~s",
+            "y_format": "3~V"
+          },
           "signal": "V(/Sc2-) (phase)",
           "trace_type": 517
         },
@@ -120,14 +120,18 @@
         "max": 5.000000000000001e-07,
         "min": -5.0000000000000004e-08
       },
+      "legend": {
+        "x": 1256,
+        "y": 1
+      },
       "margins": {
-        "bottom": 45,
-        "left": 70,
-        "right": 70,
-        "top": 30
+        "bottom": 50,
+        "left": 100,
+        "right": 100,
+        "top": 50
       },
       "measurements": [],
-      "showGrid": true,
+      "showGrid": false,
       "traces": [
         {
           "color": "rgb(228, 26, 28)",
@@ -136,15 +140,6 @@
         },
         {
           "color": "rgb(55, 126, 184)",
-          "cursor1": {
-            "position": 64000.0,
-            "x_format": "3~Hz",
-            "y_format": "3~dB"
-          },
-          "cursorD": {
-            "x_format": "3~s",
-            "y_format": "3~V"
-          },
           "signal": "onoise_spectrum",
           "trace_type": 513
         }
@@ -164,14 +159,18 @@
         "max": 5.000000000000001e-07,
         "min": -5.0000000000000004e-08
       },
+      "legend": {
+        "x": 1252,
+        "y": 2
+      },
       "margins": {
-        "bottom": 45,
-        "left": 70,
-        "right": 70,
-        "top": 30
+        "bottom": 50,
+        "left": 100,
+        "right": 100,
+        "top": 50
       },
       "measurements": [],
-      "showGrid": true,
+      "showGrid": false,
       "traces": [
         {
           "color": "rgb(228, 26, 28)",
@@ -180,15 +179,6 @@
         },
         {
           "color": "rgb(55, 128, 184)",
-          "cursor1": {
-            "position": 64000.0,
-            "x_format": "3~Hz",
-            "y_format": "3~dB"
-          },
-          "cursorD": {
-            "x_format": "3~s",
-            "y_format": "3~V"
-          },
           "signal": "onoise_spectrum",
           "trace_type": 513
         }
