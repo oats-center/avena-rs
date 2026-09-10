@@ -1542,14 +1542,14 @@
 			)
 			(embedded_fonts no)
 		)
-		(symbol "Link_Components:Ag9912-MTB"
+		(symbol "Link_Components:Ag9912-LP"
 			(exclude_from_sim no)
 			(in_bom yes)
 			(on_board yes)
 			(in_pos_files yes)
 			(duplicate_pin_numbers_are_jumpers no)
 			(property "Reference" "U"
-				(at -7.62 7.62 0)
+				(at 0 9.398 0)
 				(show_name no)
 				(do_not_autoplace no)
 				(effects
@@ -1558,15 +1558,14 @@
 					)
 				)
 			)
-			(property "Value" "Ag9912-MTB"
-				(at 10.16 7.62 0)
+			(property "Value" "Ag9912-LP"
+				(at 0 6.858 0)
 				(show_name no)
 				(do_not_autoplace no)
 				(effects
 					(font
 						(size 1.27 1.27)
 					)
-					(justify right)
 				)
 			)
 			(property "Footprint" "Converter_DCDC:Converter_DCDC_Silvertel_Ag99xxLP_THT"
@@ -1624,7 +1623,7 @@
 					)
 				)
 			)
-			(symbol "Ag9912-MTB_0_1"
+			(symbol "Ag9912-LP_0_1"
 				(rectangle
 					(start -7.62 5.08)
 					(end 7.62 -5.08)
@@ -1685,9 +1684,9 @@
 					)
 				)
 			)
-			(symbol "Ag9912-MTB_1_1"
+			(symbol "Ag9912-LP_1_1"
 				(pin power_out line
-					(at 10.16 2.54 180)
+					(at 10.16 -2.54 180)
 					(length 2.54)
 					(name "+VDC"
 						(effects
@@ -1707,7 +1706,8 @@
 				(pin power_in line
 					(at 10.16 -2.54 180)
 					(length 2.54)
-					(name "-VDC"
+					(hide yes)
+					(name "+VDC"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -1723,9 +1723,9 @@
 					)
 				)
 				(pin power_out line
-					(at 10.16 0 180)
+					(at 10.16 2.54 180)
 					(length 2.54)
-					(name "ADJ"
+					(name "-VDC"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -1733,6 +1733,24 @@
 						)
 					)
 					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin power_in line
+					(at 10.16 0 180)
+					(length 2.54)
+					(name "ADC"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "4"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -1750,7 +1768,26 @@
 							)
 						)
 					)
-					(number "4"
+					(number "5"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin power_in line
+					(at -10.16 2.54 0)
+					(length 2.54)
+					(hide yes)
+					(name "VIN+"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "6"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -1768,7 +1805,26 @@
 							)
 						)
 					)
-					(number "5"
+					(number "7"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin power_in line
+					(at -10.16 -2.54 0)
+					(length 2.54)
+					(hide yes)
+					(name "VIN-"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "8"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -4639,7 +4695,7 @@
 		)
 		(uuid "e645d8cf-fe4e-4da6-b851-1c3a6623a606")
 	)
-	(hierarchical_label "V-"
+	(hierarchical_label "Vin-"
 		(shape input)
 		(at 180.34 41.91 180)
 		(effects
@@ -4650,7 +4706,7 @@
 		)
 		(uuid "1db3638b-85af-4d48-88ad-fbd2d70defe7")
 	)
-	(hierarchical_label "V+"
+	(hierarchical_label "Vin+"
 		(shape input)
 		(at 180.34 34.29 180)
 		(effects
@@ -5138,7 +5194,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "17a11f0f-75ea-485e-bf16-731cb4bf45d5")
-		(property "Reference" "D13"
+		(property "Reference" "D16"
 			(at 232.41 64.7699 90)
 			(show_name no)
 			(do_not_autoplace no)
@@ -5246,7 +5302,7 @@
 		(instances
 			(project "link"
 				(path "/e6a73b1b-9233-47b9-8d6b-253608bed688/dab49fcf-3c96-4274-9192-150c01f7c53c"
-					(reference "D13")
+					(reference "D16")
 					(unit 1)
 				)
 			)
@@ -6190,7 +6246,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "3f658c2b-ac50-41c3-befa-c7fdb4efc3ee")
-		(property "Reference" "D12"
+		(property "Reference" "D13"
 			(at 192.278 37.084 90)
 			(show_name no)
 			(do_not_autoplace no)
@@ -6276,7 +6332,7 @@
 		(instances
 			(project "link"
 				(path "/e6a73b1b-9233-47b9-8d6b-253608bed688/dab49fcf-3c96-4274-9192-150c01f7c53c"
-					(reference "D12")
+					(reference "D13")
 					(unit 1)
 				)
 			)
@@ -8220,7 +8276,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "950ec3ae-c40a-4705-aa00-c4958a10f3bb")
-		(property "Reference" "D11"
+		(property "Reference" "D12"
 			(at 76.2 46.0374 90)
 			(show_name no)
 			(do_not_autoplace no)
@@ -8317,7 +8373,7 @@
 		(instances
 			(project "link"
 				(path "/e6a73b1b-9233-47b9-8d6b-253608bed688/dab49fcf-3c96-4274-9192-150c01f7c53c"
-					(reference "D11")
+					(reference "D12")
 					(unit 1)
 				)
 			)
@@ -9359,7 +9415,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
 			(at 82.55 54.61 0)
 			(hide yes)
 			(show_name no)
@@ -9662,12 +9718,12 @@
 		)
 	)
 	(symbol
-		(lib_id "Link_Components:Ag9912-MTB")
+		(lib_id "Link_Components:Ag9912-LP")
 		(at 213.36 38.1 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
-		(in_bom no)
+		(in_bom yes)
 		(on_board yes)
 		(in_pos_files yes)
 		(dnp no)
@@ -9762,6 +9818,15 @@
 		)
 		(pin "4"
 			(uuid "123c4d64-eeb3-494f-97b5-08db55e2060f")
+		)
+		(pin "6"
+			(uuid "bb14113f-637a-4ab2-a0f3-a94936b16c0f")
+		)
+		(pin "7"
+			(uuid "375b251f-20fb-4fab-87c5-f88d31640f8b")
+		)
+		(pin "8"
+			(uuid "66de7541-1ec1-48ab-aed6-c6af0b1f1396")
 		)
 		(instances
 			(project "link"
@@ -10102,7 +10167,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "f216bfb6-40bf-4d03-acfa-afe0bc66b4c0")
-		(property "Reference" "J5"
+		(property "Reference" "J2"
 			(at 205.74 67.3101 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10188,7 +10253,7 @@
 		(instances
 			(project "link"
 				(path "/e6a73b1b-9233-47b9-8d6b-253608bed688/dab49fcf-3c96-4274-9192-150c01f7c53c"
-					(reference "J5")
+					(reference "J2")
 					(unit 1)
 				)
 			)
