@@ -1,0 +1,348 @@
+(footprint "Silvertel_Ag99xxLP"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(descr "Converter, DCDC, Silvertel Ag9900 PoE, 1500VDC isolation, Vin 36V - 75V, 4.9W - 10W output, https://silvertel.com/images/datasheets/Ag9900M-datasheet-ultra-miniature-isolated-Power-over-Ethernet-POE-module.pdf")
+	(tags "DCDC converter IEEE 802.3af")
+	(property "Reference" "REF**"
+		(at 5.69 -2.51 0)
+		(layer "F.SilkS")
+		(uuid "ffa3c62c-0f17-45b1-ab69-1b6d96344e4d")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "Silvertel_Ag99xxLP"
+		(at 5.69 21.99 0)
+		(layer "F.Fab")
+		(uuid "766bbabe-0ec8-4041-8780-0dab382892b1")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "3d30ff09-d80b-4b2a-ba9e-66a62adf9d15")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "6d1a89f8-c67e-49be-8768-6307409c1f38")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr through_hole)
+	(duplicate_pad_numbers_are_jumpers no)
+	(fp_line
+		(start -1.68 -1.67)
+		(end -1.68 0.78)
+		(stroke
+			(width 0.12)
+			(type default)
+		)
+		(layer "F.SilkS")
+		(uuid "9597180b-1a17-40be-bba5-47e61d06e3b8")
+	)
+	(fp_line
+		(start -1.38 -1.38)
+		(end -1.38 20.05)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "6877a9a1-cd0c-4781-8c28-e2114dbe518a")
+	)
+	(fp_line
+		(start -1.38 -1.38)
+		(end 12.76 -1.38)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "7e62e9d5-c707-4d47-8c00-c1394205490c")
+	)
+	(fp_line
+		(start -1.38 20.05)
+		(end 12.76 20.05)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "e7b2f3b4-0dfb-40e8-98ef-d22b49810181")
+	)
+	(fp_line
+		(start 0.77 -1.67)
+		(end -1.68 -1.67)
+		(stroke
+			(width 0.12)
+			(type default)
+		)
+		(layer "F.SilkS")
+		(uuid "4a0915b4-1ac2-4255-9814-b6d38d6081d6")
+	)
+	(fp_line
+		(start 12.76 -1.38)
+		(end 12.76 20.05)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "810be576-5e5a-438d-bc98-ca24abcc4c70")
+	)
+	(fp_line
+		(start -1.97 -1.97)
+		(end -1.97 20.64)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "9a129203-6acc-4778-8110-c37f2d6b4bc6")
+	)
+	(fp_line
+		(start -1.97 -1.97)
+		(end 13.35 -1.97)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "2baafae3-d704-494f-bf78-b4f5e87d28a1")
+	)
+	(fp_line
+		(start -1.97 20.64)
+		(end 13.35 20.64)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "ece2bda7-4a8f-4426-a649-5032b6347625")
+	)
+	(fp_line
+		(start 13.35 -1.97)
+		(end 13.35 20.64)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "c61da992-26c6-46ad-a4ef-2b1e8a5d321e")
+	)
+	(fp_line
+		(start -1.31 -1.27)
+		(end 12.65 -1.27)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "c7e7e5fd-17cf-49d2-a0a8-4ee9f48ee0cd")
+	)
+	(fp_line
+		(start -1.27 -1.27)
+		(end -1.27 -0.99)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "51cb740c-0674-465e-a24a-3d077223fc63")
+	)
+	(fp_line
+		(start -1.27 -0.99)
+		(end -0.27 0.01)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "d55a0e0a-8864-41d1-94f4-61434d647ab6")
+	)
+	(fp_line
+		(start -1.27 1.01)
+		(end -1.27 19.94)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "310b0aa6-777b-4eea-8a86-9303fc9a4295")
+	)
+	(fp_line
+		(start -1.27 19.94)
+		(end 12.65 19.94)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "3e60f5f8-4b0c-4632-bd40-7d857fb8c845")
+	)
+	(fp_line
+		(start -0.27 0.01)
+		(end -1.27 1.01)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "fafa9a59-d44a-4b86-9801-7cec9a826183")
+	)
+	(fp_line
+		(start 12.65 -1.27)
+		(end 12.65 19.94)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "6e4f3aa8-cf73-4b4a-a4f0-01ea91a206d0")
+	)
+	(fp_text user "${REFERENCE}"
+		(at 5.69 9.32 270)
+		(layer "F.Fab")
+		(uuid "e56a42b8-1a10-435f-9b87-ce0d7a131f60")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(pad "1" thru_hole roundrect
+		(at 0 0 270)
+		(size 2 2)
+		(drill 1.1)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(roundrect_rratio 0.125)
+		(uuid "5e43a54a-a28a-40ca-a478-83ad88ab3f14")
+	)
+	(pad "2" thru_hole circle
+		(at 0 2.54 270)
+		(size 2 2)
+		(drill 1.12)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "c65c72d6-adab-4664-b384-c85488c3cf4c")
+	)
+	(pad "3" thru_hole circle
+		(at 0 16.13 270)
+		(size 2 2)
+		(drill 1.12)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "f6bb0d1e-bd39-4a6a-acd2-5b682b39067f")
+	)
+	(pad "4" thru_hole circle
+		(at 0 18.67 270)
+		(size 2 2)
+		(drill 1.12)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "a02f9575-8ec3-4082-be8d-17d2dc7ad53c")
+	)
+	(pad "5" thru_hole circle
+		(at 11.38 18.67 270)
+		(size 2 2)
+		(drill 1.12)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "589f54a1-b07d-4168-b21a-1a6b858533c6")
+	)
+	(pad "6" thru_hole circle
+		(at 11.38 16.13 270)
+		(size 2 2)
+		(drill 1.12)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "cc786bbc-f761-4a72-9699-f461aef36d79")
+	)
+	(pad "7" thru_hole circle
+		(at 11.38 2.54 270)
+		(size 2 2)
+		(drill 1.12)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "5124ec0b-630a-4318-8ba6-768d5ac1da0d")
+	)
+	(pad "8" thru_hole circle
+		(at 11.38 0 270)
+		(size 2 2)
+		(drill 1.12)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "76888e5c-d157-4dc9-9b12-aafa7ee3e202")
+	)
+	(zone
+		(layers "F.Cu" "Dwgs.User")
+		(uuid "23056474-7fb8-4bee-a4d9-c20cfda74d3a")
+		(name "Underside")
+		(hatch edge 0.5)
+		(connect_pads
+			(clearance 0)
+		)
+		(min_thickness 0.25)
+		(keepout
+			(tracks not_allowed)
+			(vias not_allowed)
+			(pads not_allowed)
+			(copperpour not_allowed)
+			(footprints allowed)
+		)
+		(placement
+			(enabled no)
+			(sheetname "")
+		)
+		(fill
+			(thermal_gap 0.5)
+			(thermal_bridge_width 0.5)
+			(island_removal_mode 0)
+		)
+		(polygon
+			(pts
+				(xy 4.02 -1.98) (xy 4.02 6.55) (xy 0.71 6.55) (xy 0.71 11.93) (xy 7.82 11.93) (xy 7.82 20.63) (xy 4.82 20.63)
+				(xy 4.82 14.93) (xy -2.29 14.93) (xy -2.29 3.56) (xy 1.02 3.56) (xy 1.02 -1.98)
+			)
+		)
+	)
+	(embedded_fonts no)
+	(model "${KIPRJMOD}/../lib/models/Ag9900LP.step"
+		(offset
+			(xyz 12.5 -20 0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz -0 -0 -90)
+		)
+	)
+)

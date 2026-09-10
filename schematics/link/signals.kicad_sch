@@ -2325,6 +2325,12 @@
 		(uuid "173d4109-b51f-4a55-b828-b07b22b900de")
 	)
 	(junction
+		(at 85.09 53.34)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "19dc4f4f-4b1e-46c0-937e-874552cda8f0")
+	)
+	(junction
 		(at 137.16 53.34)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -2337,22 +2343,10 @@
 		(uuid "482637f1-cb3a-42b1-a397-3368b69d22f2")
 	)
 	(junction
-		(at 128.27 50.8)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "4f581e05-4921-4523-a17a-37e48864c280")
-	)
-	(junction
 		(at 71.12 97.79)
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "6c554699-1eb1-41c6-9a22-bd73225091ca")
-	)
-	(junction
-		(at 128.27 114.3)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "6f86ae77-2aaa-4f1a-b028-14daf3b34c35")
 	)
 	(junction
 		(at 92.71 53.34)
@@ -2365,6 +2359,12 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "7cf7377c-1c9c-4186-ba52-54517225e161")
+	)
+	(junction
+		(at 85.09 116.84)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "87e9d6df-6fa0-4b55-b91a-be6e44518de6")
 	)
 	(junction
 		(at 71.12 62.23)
@@ -3018,6 +3018,16 @@
 	)
 	(wire
 		(pts
+			(xy 85.09 116.84) (xy 92.71 116.84)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "767e8b23-cd8e-49b1-8e85-896244e25738")
+	)
+	(wire
+		(pts
 			(xy 40.64 77.47) (xy 40.64 80.01)
 		)
 		(stroke
@@ -3418,7 +3428,7 @@
 	)
 	(wire
 		(pts
-			(xy 83.82 53.34) (xy 92.71 53.34)
+			(xy 83.82 53.34) (xy 85.09 53.34)
 		)
 		(stroke
 			(width 0)
@@ -3518,6 +3528,16 @@
 	)
 	(wire
 		(pts
+			(xy 85.09 53.34) (xy 92.71 53.34)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "d7bc924b-b3a6-41c1-9302-1edddf15c820")
+	)
+	(wire
+		(pts
 			(xy 241.3 45.72) (xy 247.65 45.72)
 		)
 		(stroke
@@ -3608,7 +3628,7 @@
 	)
 	(wire
 		(pts
-			(xy 83.82 116.84) (xy 92.71 116.84)
+			(xy 83.82 116.84) (xy 85.09 116.84)
 		)
 		(stroke
 			(width 0)
@@ -3837,7 +3857,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
 			(at 241.3 67.31 0)
 			(hide yes)
 			(show_name no)
@@ -4028,7 +4048,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric_Pad0.72x0.64mm_HandSolder"
 			(at 60.96 116.84 0)
 			(hide yes)
 			(show_name no)
@@ -4102,7 +4122,7 @@
 		(lib_id "Link_Components:OPA2182")
 		(at 156.21 119.38 0)
 		(mirror x)
-		(unit 2)
+		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -4268,7 +4288,7 @@
 			(project "link"
 				(path "/e6a73b1b-9233-47b9-8d6b-253608bed688/8a1af58c-1394-41ad-9137-7f60a6d007c9"
 					(reference "U5")
-					(unit 2)
+					(unit 1)
 				)
 			)
 		)
@@ -4545,7 +4565,7 @@
 	)
 	(symbol
 		(lib_id "Connector:TestPoint")
-		(at 128.27 114.3 0)
+		(at 85.09 116.84 180)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -4555,7 +4575,7 @@
 		(dnp no)
 		(uuid "15772714-0215-43ec-972d-062d58b0bf45")
 		(property "Reference" "TP11"
-			(at 128.27 108.204 0)
+			(at 85.09 122.936 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -4565,7 +4585,7 @@
 			)
 		)
 		(property "Value" "S2"
-			(at 128.27 106.426 0)
+			(at 85.09 124.714 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -4574,8 +4594,8 @@
 				)
 			)
 		)
-		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
-			(at 133.35 114.3 0)
+		(property "Footprint" "Link_Footprints:TestPoint_Pad_D1.5mm"
+			(at 80.01 116.84 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4586,7 +4606,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 133.35 114.3 0)
+			(at 80.01 116.84 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4597,7 +4617,7 @@
 			)
 		)
 		(property "Description" "test point"
-			(at 128.27 114.3 0)
+			(at 85.09 116.84 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4608,7 +4628,7 @@
 			)
 		)
 		(property "FT Rotation Offset" ""
-			(at 128.27 114.3 0)
+			(at 85.09 116.84 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4619,7 +4639,7 @@
 			)
 		)
 		(property "Sim.Params" ""
-			(at 128.27 114.3 0)
+			(at 85.09 116.84 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4673,7 +4693,7 @@
 				(justify right)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
 			(at 113.03 50.8 0)
 			(hide yes)
 			(show_name no)
@@ -4787,7 +4807,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
 			(at 241.3 49.53 0)
 			(hide yes)
 			(show_name no)
@@ -5291,7 +5311,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
 			(at 142.24 53.34 0)
 			(hide yes)
 			(show_name no)
@@ -5405,7 +5425,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
 			(at 67.31 38.1 0)
 			(hide yes)
 			(show_name no)
@@ -5517,7 +5537,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
 			(at 142.24 116.84 0)
 			(hide yes)
 			(show_name no)
@@ -5631,7 +5651,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
 			(at 64.77 66.04 0)
 			(hide yes)
 			(show_name no)
@@ -5744,7 +5764,7 @@
 				(justify right)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
 			(at 113.03 53.34 0)
 			(hide yes)
 			(show_name no)
@@ -5934,7 +5954,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric_Pad0.72x0.64mm_HandSolder"
 			(at 60.96 53.34 0)
 			(hide yes)
 			(show_name no)
@@ -6321,7 +6341,7 @@
 	)
 	(symbol
 		(lib_id "Connector:TestPoint")
-		(at 128.27 50.8 0)
+		(at 85.09 53.34 180)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -6331,7 +6351,7 @@
 		(dnp no)
 		(uuid "6341b3db-6ddd-4d9f-8bc7-b97f2dc4be56")
 		(property "Reference" "TP10"
-			(at 128.27 44.704 0)
+			(at 85.09 59.436 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -6341,7 +6361,7 @@
 			)
 		)
 		(property "Value" "S1"
-			(at 128.27 42.926 0)
+			(at 85.09 61.214 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -6350,8 +6370,8 @@
 				)
 			)
 		)
-		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
-			(at 133.35 50.8 0)
+		(property "Footprint" "Link_Footprints:TestPoint_Pad_D1.5mm"
+			(at 80.01 53.34 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -6362,7 +6382,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 133.35 50.8 0)
+			(at 80.01 53.34 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -6373,7 +6393,7 @@
 			)
 		)
 		(property "Description" "test point"
-			(at 128.27 50.8 0)
+			(at 85.09 53.34 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -6384,7 +6404,7 @@
 			)
 		)
 		(property "FT Rotation Offset" ""
-			(at 128.27 50.8 0)
+			(at 85.09 53.34 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -6395,7 +6415,7 @@
 			)
 		)
 		(property "Sim.Params" ""
-			(at 128.27 50.8 0)
+			(at 85.09 53.34 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -6450,7 +6470,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
 			(at 64.77 129.54 0)
 			(hide yes)
 			(show_name no)
@@ -6563,7 +6583,7 @@
 				(justify right)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
 			(at 113.03 116.84 0)
 			(hide yes)
 			(show_name no)
@@ -6840,7 +6860,7 @@
 		(lib_id "Link_Components:OPA2182")
 		(at 156.21 55.88 0)
 		(mirror x)
-		(unit 1)
+		(unit 2)
 		(body_style 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -7006,7 +7026,7 @@
 			(project "link"
 				(path "/e6a73b1b-9233-47b9-8d6b-253608bed688/8a1af58c-1394-41ad-9137-7f60a6d007c9"
 					(reference "U5")
-					(unit 1)
+					(unit 2)
 				)
 			)
 		)
@@ -7044,7 +7064,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
 			(at 137.16 121.92 0)
 			(hide yes)
 			(show_name no)
@@ -7412,7 +7432,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
 			(at 154.94 33.02 0)
 			(hide yes)
 			(show_name no)
@@ -7640,7 +7660,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
 			(at 154.94 106.68 0)
 			(hide yes)
 			(show_name no)
@@ -8444,7 +8464,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric_Pad0.72x0.64mm_HandSolder"
 			(at 113.03 55.88 0)
 			(hide yes)
 			(show_name no)
@@ -8715,7 +8735,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
 			(at 154.94 43.18 0)
 			(hide yes)
 			(show_name no)
@@ -8827,7 +8847,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
 			(at 24.13 48.26 0)
 			(hide yes)
 			(show_name no)
@@ -9064,7 +9084,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
 			(at 154.94 96.52 0)
 			(hide yes)
 			(show_name no)
@@ -9413,7 +9433,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
 			(at 24.13 58.42 0)
 			(hide yes)
 			(show_name no)
@@ -9526,7 +9546,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric_Pad0.72x0.64mm_HandSolder"
 			(at 113.03 119.38 0)
 			(hide yes)
 			(show_name no)
@@ -9638,7 +9658,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
 			(at 24.13 111.76 0)
 			(hide yes)
 			(show_name no)
@@ -9750,7 +9770,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
 			(at 24.13 121.92 0)
 			(hide yes)
 			(show_name no)
@@ -9863,7 +9883,7 @@
 				(justify right)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
 			(at 113.03 114.3 0)
 			(hide yes)
 			(show_name no)
@@ -10056,7 +10076,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
 			(at 137.16 58.42 0)
 			(hide yes)
 			(show_name no)
@@ -10300,7 +10320,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
 			(at 67.31 101.6 0)
 			(hide yes)
 			(show_name no)
