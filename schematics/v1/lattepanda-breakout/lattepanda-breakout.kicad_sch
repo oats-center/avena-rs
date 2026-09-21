@@ -2970,6 +2970,12 @@
 		)
 	)
 	(junction
+		(at 104.14 81.28)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "08698e0f-d8e4-45f1-9655-df60e57d9b99")
+	)
+	(junction
 		(at 182.88 38.1)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -2998,6 +3004,12 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "c1f29fd1-fb05-4e93-a5b5-a8283e4c2500")
+	)
+	(junction
+		(at 86.36 83.82)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "d90bb131-4f94-46d0-9307-1984ff17dcd6")
 	)
 	(no_connect
 		(at 88.9 48.26)
@@ -3040,10 +3052,6 @@
 		(uuid "484cd614-dea4-4b9b-81f5-9ee2bdcad776")
 	)
 	(no_connect
-		(at 101.6 81.28)
-		(uuid "52ee0ced-2457-44ea-bd16-be648874a20e")
-	)
-	(no_connect
 		(at 88.9 58.42)
 		(uuid "56cc412b-6a6c-4e48-87b6-6497754fb2e8")
 	)
@@ -3082,10 +3090,6 @@
 	(no_connect
 		(at 101.6 60.96)
 		(uuid "9da30730-8d54-439c-ab91-5b873713ce89")
-	)
-	(no_connect
-		(at 88.9 81.28)
-		(uuid "a28689a2-2e69-41f2-9e70-3047e8c84f24")
 	)
 	(no_connect
 		(at 88.9 55.88)
@@ -3257,6 +3261,16 @@
 	)
 	(wire
 		(pts
+			(xy 88.9 81.28) (xy 86.36 81.28)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "2c705483-285a-476b-b205-eea8a3ddbea4")
+	)
+	(wire
+		(pts
 			(xy 83.82 35.56) (xy 86.36 35.56)
 		)
 		(stroke
@@ -3337,7 +3351,7 @@
 	)
 	(wire
 		(pts
-			(xy 101.6 83.82) (xy 104.14 83.82)
+			(xy 88.9 83.82) (xy 86.36 83.82)
 		)
 		(stroke
 			(width 0)
@@ -3447,13 +3461,23 @@
 	)
 	(wire
 		(pts
-			(xy 88.9 83.82) (xy 86.36 83.82)
+			(xy 101.6 83.82) (xy 104.14 83.82)
 		)
 		(stroke
 			(width 0)
 			(type default)
 		)
 		(uuid "8e40b42a-c88c-4aa0-bdf4-38adadc19bf0")
+	)
+	(wire
+		(pts
+			(xy 86.36 81.28) (xy 86.36 83.82)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "9211a274-1e6b-445d-9483-59c86e322444")
 	)
 	(wire
 		(pts
@@ -3587,6 +3611,16 @@
 	)
 	(wire
 		(pts
+			(xy 101.6 81.28) (xy 104.14 81.28)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "b5e672a9-90fe-4183-af7a-b444707d6c9f")
+	)
+	(wire
+		(pts
 			(xy 81.28 71.12) (xy 88.9 71.12)
 		)
 		(stroke
@@ -3687,6 +3721,16 @@
 	)
 	(wire
 		(pts
+			(xy 104.14 78.74) (xy 104.14 81.28)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "ced3b9d5-24d7-4f9b-95c1-e263660b5182")
+	)
+	(wire
+		(pts
 			(xy 182.88 45.72) (xy 194.31 45.72)
 		)
 		(stroke
@@ -3707,7 +3751,7 @@
 	)
 	(wire
 		(pts
-			(xy 86.36 81.28) (xy 86.36 83.82)
+			(xy 104.14 81.28) (xy 104.14 83.82)
 		)
 		(stroke
 			(width 0)
@@ -3727,7 +3771,7 @@
 	)
 	(wire
 		(pts
-			(xy 104.14 83.82) (xy 104.14 86.36)
+			(xy 86.36 83.82) (xy 86.36 86.36)
 		)
 		(stroke
 			(width 0)
@@ -3805,7 +3849,7 @@
 		)
 		(uuid "2c29b689-be79-4163-9afb-3e436abcdba0")
 	)
-	(label "TX-"
+	(label "TX+"
 		(at 17.78 93.98 0)
 		(effects
 			(font
@@ -3945,7 +3989,7 @@
 		)
 		(uuid "b954441b-aa8a-4f5f-9c59-dd3bbf1c4bd7")
 	)
-	(label "TX+"
+	(label "TX-"
 		(at 17.78 91.44 0)
 		(effects
 			(font
@@ -4256,7 +4300,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_2x02_P2.54mm_Vertical_SMD"
+		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_2x02_P2.54mm_Vertical"
 			(at 93.98 99.06 0)
 			(hide yes)
 			(show_name no)
@@ -4676,7 +4720,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
 			(at 133.6548 34.29 0)
 			(hide yes)
 			(show_name no)
@@ -4726,7 +4770,8 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 104.14 86.36 0)
+		(at 86.36 86.36 0)
+		(mirror y)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -4736,7 +4781,7 @@
 		(dnp no)
 		(uuid "54e63154-237f-44fb-930d-d6e7563fca4d")
 		(property "Reference" "#PWR02"
-			(at 104.14 92.71 0)
+			(at 86.36 92.71 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4747,7 +4792,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 104.14 90.678 0)
+			(at 86.36 90.678 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -4757,7 +4802,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 104.14 86.36 0)
+			(at 86.36 86.36 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4768,7 +4813,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 104.14 86.36 0)
+			(at 86.36 86.36 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4779,7 +4824,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
-			(at 104.14 86.36 0)
+			(at 86.36 86.36 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -5548,7 +5593,8 @@
 	)
 	(symbol
 		(lib_id "power:+5V")
-		(at 86.36 81.28 0)
+		(at 104.14 78.74 0)
+		(mirror y)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -5558,7 +5604,7 @@
 		(dnp no)
 		(uuid "d2033d00-6b1c-4137-bded-0a110db6dca4")
 		(property "Reference" "#PWR01"
-			(at 86.36 85.09 0)
+			(at 104.14 82.55 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -5569,7 +5615,7 @@
 			)
 		)
 		(property "Value" "+5V"
-			(at 86.106 77.47 0)
+			(at 104.394 74.93 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -5579,7 +5625,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 86.36 81.28 0)
+			(at 104.14 78.74 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -5590,7 +5636,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 86.36 81.28 0)
+			(at 104.14 78.74 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -5601,7 +5647,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"+5V\""
-			(at 86.36 81.28 0)
+			(at 104.14 78.74 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -5655,7 +5701,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_2x15_P2.54mm_Vertical_SMD"
+		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_2x15_P2.54mm_Vertical"
 			(at 96.52 66.04 0)
 			(hide yes)
 			(show_name no)
