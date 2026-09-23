@@ -15,6 +15,7 @@ preferred-dark-theme = "navy"
 git-repository-url = "https://github.com/oats-center/avena-rs"
 edit-url-template = "https://github.com/oats-center/avena-rs/edit/main/docs/{path}"
 site-url = "/avena-rs/"
+no-section-label = true
 
 [output.html.fold]
 enable = false

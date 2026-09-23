@@ -14,6 +14,20 @@
 - [Everyday tasks](operations/tasks.md)
 - [Troubleshooting](operations/troubleshooting.md)
 
+# Reference
+
+- [LabJack configuration](reference/kv-config.md)
+- [Box profile](reference/profile.md)
+- [Environment variables](reference/environment.md)
+- [NATS subjects](reference/subjects.md)
+- [Data formats](reference/data-formats.md)
+- [Export protocol](reference/export-protocol.md)
+- [Command-line tools](reference/tools.md)
+
+# Background
+
+- [Design notes](design.md)
+
 # Code
 
 - [API reference](code-api.md)

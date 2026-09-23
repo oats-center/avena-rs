@@ -14,7 +14,7 @@ to the central servers, and the webapp used to watch and export data.
 
 ## How the pieces fit together
 
-![Avena system overview](figures/system-overview.svg)
+[![Avena system overview](figures/system-overview.svg)](figures/system-overview.svg)
 
 An edge node runs four long-lived programs from this repository and one
 monitoring agent:
