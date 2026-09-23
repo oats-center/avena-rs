@@ -1,6 +1,6 @@
 # rust-ljm
 
-The Rust services that run on each Avena edge node.
+The Rust services that run on each Avena-RS edge node.
 
 | Binary | Source | Role |
 |---|---|---|

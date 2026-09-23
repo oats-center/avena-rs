@@ -1,6 +1,6 @@
-# Avena
+# Avena-RS
 
-Avena records sensor data from instrumented pavement test strips. Each
+Avena-RS records sensor data from instrumented pavement test strips. Each
 roadside edge node streams a LabJack T7 into a local NATS server, archives the
 samples as Parquet, and connects out to central NATS so the data can be plotted
 live and exported from a browser.

@@ -81,7 +81,7 @@ connection count.
 |---|---|
 | `/etc/avena-rs/` | Installed profile, one `*.env.json` per service, and `apt.creds` |
 | `/usr/local/libexec/avena-rs/` | Installed binaries and service scripts |
-| `/etc/systemd/system/avena-*` | The Avena units |
+| `/etc/systemd/system/avena-*` | The Avena-RS units |
 | `/etc/containers/systemd/` | Quadlet container units, `nats-leaf.conf`, `config.alloy`, and `creds/leaf.creds` |
 | `/home/user/nats/` | The local JetStream store. Never delete it while the box is in service. |
 | `rust-ljm/parquet/asset<NNN>/<YYYY-MM-DD>/ch<NN>/` | The archive, one `part-NNNN.parquet` per window |

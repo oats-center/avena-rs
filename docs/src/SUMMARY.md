@@ -2,6 +2,10 @@
 
 [Overview](index.md)
 
+# Code
+
+- [API reference](code-api.md)
+
 # Setting up
 
 - [A new edge node](setup/edge-node.md)
@@ -34,6 +38,3 @@
 
 - [Design notes](design.md)
 
-# Code
-
-- [API reference](code-api.md)

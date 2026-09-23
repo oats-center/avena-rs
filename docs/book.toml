@@ -1,5 +1,5 @@
 [book]
-title = "Avena"
+title = "Avena-RS"
 description = "Field data acquisition for instrumented pavement: LabJack streaming, NATS, Parquet archives and exports."
 authors = ["OATS Center"]
 language = "en"

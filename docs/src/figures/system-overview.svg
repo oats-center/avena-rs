@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" width="1000" height="600" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
-  <title id="t">Avena system overview</title>
+  <title id="t">Avena-RS system overview</title>
   <desc id="d">Each edge node runs a LabJack streamer, a local NATS leaf server, an archiver writing Parquet files, an exporter and Alloy. The leaf connects outbound to central NATS. Your machine reaches the edge only through central NATS, over WebSocket for the webapp or NATS for command-line tools.</desc>
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">

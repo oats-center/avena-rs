@@ -1,6 +1,6 @@
-# Avena
+# Avena-RS
 
-Avena records sensor data from instrumented pavement test strips and makes it
+Avena-RS records sensor data from instrumented pavement test strips and makes it
 available to people who are not standing next to the road. Each test strip has
 an edge node: a small Fedora computer in a roadside box with a LabJack T7 data
 acquisition device wired to the buried sensors. The edge node samples the
@@ -14,7 +14,7 @@ to the central servers, and the webapp used to watch and export data.
 
 ## How the pieces fit together
 
-[![Avena system overview](figures/system-overview.svg)](figures/system-overview.svg)
+[![Avena-RS system overview](figures/system-overview.svg)](figures/system-overview.svg)
 
 An edge node runs four long-lived programs from this repository and one
 monitoring agent:

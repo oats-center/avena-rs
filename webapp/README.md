@@ -1,6 +1,6 @@
-# Avena webapp
+# Avena-RS webapp
 
-SvelteKit app for watching Avena edge nodes live, editing their LabJack
+SvelteKit app for watching Avena-RS edge nodes live, editing their LabJack
 configuration, and downloading archived data as CSV. It runs in the browser and
 talks only to central NATS over WebSocket.
 
