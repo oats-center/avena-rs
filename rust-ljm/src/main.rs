@@ -657,18 +657,36 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
+/// Length of each window over which clock drift is measured.
+const CLOCK_CHECK_WINDOW_NS: u128 = 60_000_000_000;
+/// Drift below this is left alone to avoid reacting to read-latency jitter.
+const CLOCK_REANCHOR_THRESHOLD_NS: i128 = 5_000_000;
+/// Corrections above this are applied but logged as suspicious.
+const CLOCK_LARGE_CORRECTION_NS: i128 = 1_000_000_000;
+
 #[derive(Debug, Clone, Copy)]
 /// Tracks timestamp continuity for successive LabJack stream batches.
 ///
 /// The LabJack stream API returns value batches without per-sample timestamps,
 /// so the streamer derives the first timestamp and sequence number for each
 /// published batch from the actual stream rate.
+///
+/// The LabJack crystal and the system clock disagree by a few ppm, which added
+/// up to about 4-5 s over a 26-day run on MU1. To stop that accumulating, the
+/// clock compares each batch's last-sample time with the system clock. Over
+/// each 60 s window it keeps the smallest difference, which is the drift plus
+/// the fastest read latency, free of jitter. If that exceeds 5 ms, the
+/// timestamps are shifted by it and the correction is logged. Because the
+/// minimum of steadily growing drift is its value at the start of the window,
+/// corrections trail the drift by up to one window (0.12 ms at 2 ppm).
 struct StreamClock {
     sample_interval_ns: u64,
     next_first_sample_unix_ns: u64,
     sequence: u64,
     last_batch_samples: usize,
     run_started: bool,
+    window_start_unix_ns: u128,
+    window_min_error_ns: Option<i128>,
 }
 
 impl StreamClock {
@@ -680,31 +698,73 @@ impl StreamClock {
             sequence: 0,
             last_batch_samples: 0,
             run_started: false,
+            window_start_unix_ns: 0,
+            window_min_error_ns: None,
         }
     }
 
     /// Returns the first sample timestamp and sequence for the next batch.
     ///
     /// The first batch is anchored to wall-clock time minus the batch span. Each
-    /// later batch advances from the previously expected next timestamp.
+    /// later batch advances from the previously expected next timestamp, with
+    /// occasional drift corrections (see the type docs).
     fn next_batch(&mut self, batch_samples: usize) -> Result<(u64, u64), LJMError> {
+        let now_ns = unix_time_now_ns()?;
+        self.next_batch_at(batch_samples, now_ns)
+    }
+
+    /// [`Self::next_batch`] with an explicit receive time, for testing.
+    fn next_batch_at(&mut self, batch_samples: usize, now_ns: u64) -> Result<(u64, u64), LJMError> {
         if batch_samples == 0 {
             return Err(LJMError::LibraryError(
                 "Received empty batch; refusing to guess timestamps".to_string(),
             ));
         }
 
-        let first_sample_unix_ns = if !self.run_started {
-            let now_ns = unix_time_now_ns()?;
-            let offset_ns = (batch_samples.saturating_sub(1) as u128)
-                .saturating_mul(self.sample_interval_ns as u128);
-            let first = (now_ns as u128).saturating_sub(offset_ns);
+        let last_offset_ns = (batch_samples.saturating_sub(1) as u128)
+            .saturating_mul(self.sample_interval_ns as u128);
+        let mut first_sample_unix_ns = if !self.run_started {
+            let first = (now_ns as u128).saturating_sub(last_offset_ns);
+            self.window_start_unix_ns = now_ns as u128;
             u64::try_from(first).map_err(|_| {
                 LJMError::LibraryError("Initial stream timestamp overflowed u64".to_string())
             })?
         } else {
             self.next_first_sample_unix_ns
         };
+
+        if self.run_started {
+            let last_sample_ns = first_sample_unix_ns as i128 + last_offset_ns as i128;
+            let error_ns = now_ns as i128 - last_sample_ns;
+            self.window_min_error_ns = Some(match self.window_min_error_ns {
+                Some(min) => min.min(error_ns),
+                None => error_ns,
+            });
+
+            if (now_ns as u128).saturating_sub(self.window_start_unix_ns) >= CLOCK_CHECK_WINDOW_NS {
+                let correction_ns = self.window_min_error_ns.take().unwrap_or(0);
+                self.window_start_unix_ns = now_ns as u128;
+                if correction_ns.abs() >= CLOCK_REANCHOR_THRESHOLD_NS {
+                    let corrected = first_sample_unix_ns as i128 + correction_ns;
+                    first_sample_unix_ns = u64::try_from(corrected).map_err(|_| {
+                        LJMError::LibraryError(
+                            "Corrected stream timestamp overflowed u64".to_string(),
+                        )
+                    })?;
+                    let note = if correction_ns.abs() >= CLOCK_LARGE_CORRECTION_NS {
+                        " (large: system clock step or read backlog?)"
+                    } else {
+                        ""
+                    };
+                    println!(
+                        "[clock] Re-anchored stream timestamps by {:+.3} ms at sequence {}{}",
+                        correction_ns as f64 / 1e6,
+                        self.sequence,
+                        note
+                    );
+                }
+            }
+        }
 
         let batch_span_ns = (batch_samples as u128).saturating_mul(self.sample_interval_ns as u128);
         let next = (first_sample_unix_ns as u128).saturating_add(batch_span_ns);
@@ -719,6 +779,26 @@ impl StreamClock {
 
         Ok((first_sample_unix_ns, sequence))
     }
+}
+
+/// Value LJM inserts for scans lost to a stream buffer overflow when it
+/// auto-recovers (`LJM_DUMMY_VALUE`).
+const LJM_DUMMY_VALUE: f64 = -9999.0;
+
+/// Replaces LJM auto-recovery placeholders with NaN and returns how many.
+///
+/// LJM keeps the scan count intact when it recovers, so timestamps stay
+/// correct, but the placeholder would otherwise be archived as a real
+/// -9999 V reading.
+fn replace_dummy_samples(batch: &mut [f64]) -> usize {
+    let mut replaced = 0;
+    for v in batch.iter_mut() {
+        if *v == LJM_DUMMY_VALUE {
+            *v = f64::NAN;
+            replaced += 1;
+        }
+    }
+    replaced
 }
 
 /// Returns the current Unix timestamp in nanoseconds.
@@ -852,6 +932,22 @@ async fn sample_with_config(
 
     let mut builder = FlatBufferBuilder::new();
     let mut clock = StreamClock::new(sample_interval_ns);
+    let channel_subjects: Vec<String> = cfg
+        .channels
+        .iter()
+        .map(|ch| {
+            subjects::live_labjack_channel_subject(
+                &cfg.nats_subject,
+                cfg.asset_number,
+                *ch,
+                cfg.site_id.as_deref(),
+                cfg.box_id.as_deref(),
+                Some(&cfg.labjack_name),
+                cfg.source_type.as_deref(),
+                cfg.source_id.as_deref(),
+            )
+        })
+        .collect();
 
     loop {
         tokio::select! {
@@ -896,6 +992,14 @@ async fn sample_with_config(
 
                 let batch_samples = batch.len() / num_channels;
                 let (first_sample_unix_ns, sequence) = clock.next_batch(batch_samples)?;
+                let mut batch = batch;
+                let skipped = replace_dummy_samples(&mut batch);
+                if skipped > 0 {
+                    eprintln!(
+                        "[run #{run_id}] LabJack skipped {} sample(s) in sequence {}; stored as NaN",
+                        skipped, sequence
+                    );
+                }
                 let scans = batch.chunks(num_channels);
                 let mut per_channel: Vec<Vec<f64>> = (0..num_channels)
                     .map(|_| Vec::with_capacity(scans.len()))
@@ -907,6 +1011,7 @@ async fn sample_with_config(
                     }
                 }
 
+                let mut acks = Vec::with_capacity(num_channels);
                 for (i, values) in per_channel.into_iter().enumerate() {
                     builder.reset();
                     let values_fb = builder.create_vector(&values);
@@ -922,22 +1027,28 @@ async fn sample_with_config(
 
                     let data = builder.finished_data().to_vec();
 
-                    let ch_num: u8 = cfg.channels[i];
-                    let subject = subjects::live_labjack_channel_subject(
-                        &cfg.nats_subject,
-                        cfg.asset_number,
-                        ch_num,
-                        cfg.site_id.as_deref(),
-                        cfg.box_id.as_deref(),
-                        Some(&cfg.labjack_name),
-                        cfg.source_type.as_deref(),
-                        cfg.source_id.as_deref(),
-                    );
-
-                    if let Err(e) = js.publish(subject, data.into()).await {
-                        eprintln!("[run #{run_id}] Failed to publish to NATS: {}", e);
+                    match js.publish(channel_subjects[i].clone(), data.into()).await {
+                        Ok(ack) => acks.push(ack),
+                        Err(e) => eprintln!("[run #{run_id}] Failed to publish to NATS: {}", e),
                     }
                 }
+                // Confirm JetStream stored every channel's message without
+                // holding up the next LabJack read.
+                tokio::spawn(async move {
+                    let mut failed = 0usize;
+                    let mut last_error = None;
+                    for ack in acks {
+                        if let Err(e) = ack.await {
+                            failed += 1;
+                            last_error = Some(e);
+                        }
+                    }
+                    if let Some(e) = last_error {
+                        eprintln!(
+                            "[run #{run_id}] JetStream did not confirm {failed} message(s) of sequence {sequence}: {e}"
+                        );
+                    }
+                });
             }
             _ = config_rx.changed() => {
                 println!(
@@ -1203,6 +1314,62 @@ mod tests {
 
         let reset_clock = StreamClock::new(1_000);
         assert_eq!(reset_clock.sequence, 0);
+    }
+
+    #[test]
+    fn clock_ignores_latency_jitter_below_threshold() {
+        // 100 Hz, 100 scans per read: one batch per second.
+        let mut clock = StreamClock::new(10_000_000);
+        let t0 = 1_790_000_000_000_000_000_u64;
+        let (first0, _) = clock.next_batch_at(100, t0).expect("first batch");
+        let mut expected_first = first0;
+        for k in 1..=120_u64 {
+            // Each batch arrives 0-3 ms after its last sample.
+            let jitter = (k % 4) * 1_000_000;
+            let now = t0 + k * 1_000_000_000 + jitter;
+            let (first, _) = clock.next_batch_at(100, now).expect("batch");
+            expected_first += 1_000_000_000;
+            assert_eq!(first, expected_first, "no correction expected at batch {k}");
+        }
+    }
+
+    #[test]
+    fn clock_reanchors_when_drift_exceeds_threshold() {
+        // The device clock runs 200 ppm slow relative to the system clock, so
+        // each 1 s batch arrives 0.2 ms later than the nominal timeline.
+        let mut clock = StreamClock::new(10_000_000);
+        let t0 = 1_790_000_000_000_000_000_u64;
+        let (first0, _) = clock.next_batch_at(100, t0).expect("first batch");
+        let mut corrected_at = None;
+        let mut previous_first = first0;
+        for k in 1..=130_u64 {
+            let now = t0 + k * 1_000_200_000;
+            let (first, _) = clock.next_batch_at(100, now).expect("batch");
+            let step = first - previous_first;
+            if step != 1_000_000_000 {
+                corrected_at = Some((k, step));
+            }
+            previous_first = first;
+            // Corrections trail steadily growing drift by at most about two
+            // windows (12 ms per window at 200 ppm), so the error stays bounded.
+            let last_sample = first + 99 * 10_000_000;
+            assert!((now as i128 - last_sample as i128).abs() < 30_000_000);
+        }
+        let (k, step) = corrected_at.expect("drift of 12 ms per minute must be corrected");
+        assert!(k >= 60, "no correction before a full window");
+        assert!(step > 1_000_000_000, "correction moves timestamps forward");
+    }
+
+    #[test]
+    fn dummy_samples_become_nan_and_are_counted() {
+        let mut batch = vec![3.72, LJM_DUMMY_VALUE, 3.71, LJM_DUMMY_VALUE];
+        assert_eq!(replace_dummy_samples(&mut batch), 2);
+        assert_eq!(batch[0], 3.72);
+        assert!(batch[1].is_nan());
+        assert_eq!(batch[2], 3.71);
+        assert!(batch[3].is_nan());
+        let mut clean = vec![-3.25, 0.0];
+        assert_eq!(replace_dummy_samples(&mut clean), 0);
     }
 
     #[test]

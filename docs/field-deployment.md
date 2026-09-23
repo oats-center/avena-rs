@@ -74,6 +74,9 @@ getent hosts nats1.oats nats2.oats prometheus.oats
 
 `System clock synchronized: yes` is required. Starting the streamer with a bad
 clock creates correctly written files carrying incorrect event timestamps.
+Also check that `chronyc sources` shows at least one reachable source (`Reach`
+not `0`). A misspelled server name in `/etc/chrony.conf` left MU1 unsynchronized
+and 3.3 s fast until September 2026; keep a `pool` line as a fallback.
 
 Create persistent storage. `/extstore` must be the intended large filesystem,
 not an empty directory accidentally residing on a small root disk:

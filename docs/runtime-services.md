@@ -123,6 +123,14 @@ generated helper for Alloy's persistent Podman volume, not another daemon.
   restart it.
 - Network: connects to local NATS `127.0.0.1:4222`, central NATS for config,
   and the LabJack address from the selected profile.
+- Timestamps: the first batch is anchored to the system clock; later samples
+  advance by the LabJack sample interval. Every 60 s the streamer compares its
+  timeline with the system clock and, if they differ by 5 ms or more, shifts
+  later timestamps and logs `[clock] Re-anchored stream timestamps by ...`.
+  Timestamps are therefore only as good as `chronyd` (see below).
+- LJM auto-recovery placeholders (`-9999`) are stored as NaN and logged as
+  skipped samples. JetStream publish acknowledgements are checked; failures
+  are logged as `JetStream did not confirm ...`.
 
 ### `avena-archiver.service`
 
@@ -135,9 +143,19 @@ generated helper for Alloy's persistent Podman volume, not another daemon.
 - Restart behavior: restart on failure.
 - Shutdown behavior: systemd sends `SIGINT`; the service stops each channel
   task, flushes it, writes the Parquet footer, and waits for completion.
-- Active files end in `.parquet.inprogress`. A successful close atomically
-  renames them to `.parquet`. Startup quarantines unfinished or unreadable
-  files rather than exporting them.
+- Active files end in `.parquet.inprogress`. A successful close syncs the file
+  to disk and atomically renames it to `.parquet`. Startup quarantines
+  unfinished or unreadable files rather than exporting them.
+- Files cover aligned windows of sample time (`rotate_secs`, normally five
+  minutes: :00-:05, :05-:10, ...). A file is also closed after 60 s without
+  data. Each file is one zstd-compressed row group with delta-encoded
+  timestamps, roughly 14 times smaller than the earlier uncompressed layout.
+- JetStream messages are acked only after the file holding their samples is
+  closed and synced. After a crash, the unacked messages are redelivered once
+  the consumer `ack_wait` expires (about 18 minutes with five-minute files) and
+  written into a new part for the same window. On startup the archiver raises
+  `ack_wait` and `max_ack_pending` on existing durable consumers in place,
+  without moving their delivery position.
 
 ### `avena-exporter.service`
 

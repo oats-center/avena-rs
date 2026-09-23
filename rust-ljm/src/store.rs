@@ -15,16 +15,17 @@ use async_nats::jetstream::{
 use chrono::{DateTime, NaiveDate, Utc};
 use futures_util::StreamExt;
 use parquet::{
+    basic::{Compression, Encoding, ZstdLevel},
     column::writer::ColumnWriter,
     file::{metadata::KeyValue, properties::WriterProperties, writer::SerializedFileWriter},
-    schema::parser::parse_message_type,
+    schema::{parser::parse_message_type, types::ColumnPath},
 };
 use std::{
     collections::HashMap,
     fs, io,
     path::{Path, PathBuf},
     sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::{oneshot, watch};
 use tokio::time::Duration;
@@ -378,7 +379,8 @@ struct ParquetLogger {
     writer: SerializedFileWriter<fs::File>,
     inprogress_path: PathBuf,
     final_path: PathBuf,
-    buffer: Vec<(i64, f64)>,
+    timestamps: Vec<i64>,
+    values: Vec<f64>,
     max_rows: usize,
     first_timestamp_unix_ns: Option<i64>,
     row_groups_written: usize,
@@ -392,6 +394,52 @@ struct ParquetLogger {
 // large JetStream backlog is replayed faster than the wall-clock rotation
 // ticker can fire.
 const MAX_ROW_GROUPS_PER_FILE: usize = 30_000;
+
+// One row group normally holds a whole rotation period (600,000 rows for five
+// minutes at 2 kHz). Large row groups let dictionary and delta encoding work
+// across the file instead of restarting every 1,000 rows. An unfinished file
+// has no footer and is quarantined whole, so smaller row groups would not make
+// buffered rows any safer; unacked JetStream messages are what protect them.
+const ROWS_PER_ROW_GROUP: usize = 1 << 20;
+
+// Messages are acked only after the file holding their samples is closed. The
+// file is closed early if this many messages are waiting, so the consumer can
+// never reach its max_ack_pending limit and stall.
+const MAX_PENDING_ACKS_PER_FILE: usize = 20_000;
+const CONSUMER_MAX_ACK_PENDING: i64 = 50_000;
+
+// Close an open file when no data has arrived for this long, for example when
+// the streamer is stopped, so its messages are acked promptly.
+const IDLE_CLOSE_AFTER: Duration = Duration::from_secs(60);
+const IDLE_CHECK_INTERVAL: Duration = Duration::from_secs(15);
+
+/// Parquet writer settings for the two-column sample schema.
+///
+/// Timestamps are strictly regular, so delta encoding reduces them to almost
+/// nothing. Values come from a 16-bit converter and repeat heavily, so they
+/// keep dictionary encoding. zstd compresses the result. Measured on a real
+/// 2 kHz MU1 file this is about 14x smaller than uncompressed PLAIN output.
+fn writer_properties(calibration_json: String) -> WriterProperties {
+    let timestamp = ColumnPath::from("timestamp_unix_ns");
+    WriterProperties::builder()
+        .set_compression(Compression::ZSTD(ZstdLevel::default()))
+        .set_column_dictionary_enabled(timestamp.clone(), false)
+        .set_column_encoding(timestamp, Encoding::DELTA_BINARY_PACKED)
+        .set_key_value_metadata(Some(vec![KeyValue::new(
+            "calibration".to_string(),
+            calibration_json,
+        )]))
+        .build()
+}
+
+/// Returns the index of the aligned rotation window holding a timestamp.
+///
+/// Windows start at multiples of `rotate_secs` since the Unix epoch, so with a
+/// five-minute period every file covers :00-:05, :05-:10 and so on.
+fn rotation_window(timestamp_unix_ns: i64, rotate_secs: u64) -> i64 {
+    let rotate_ns = (rotate_secs.max(1) as i64).saturating_mul(1_000_000_000);
+    timestamp_unix_ns.div_euclid(rotate_ns)
+}
 
 /// Runtime state for one active channel consumer and writer task.
 ///
@@ -453,14 +501,7 @@ impl ParquetLogger {
         let schema = Arc::new(parse_message_type(message_type).unwrap());
         let calibration_json =
             serde_json::to_string(&calibration).unwrap_or_else(|_| "{}".to_string());
-        let props = Arc::new(
-            WriterProperties::builder()
-                .set_key_value_metadata(Some(vec![KeyValue::new(
-                    "calibration".to_string(),
-                    calibration_json,
-                )]))
-                .build(),
-        );
+        let props = Arc::new(writer_properties(calibration_json));
         let file = fs::File::create(&inprogress_path).unwrap();
         let writer = SerializedFileWriter::new(file, schema, props).unwrap();
 
@@ -468,8 +509,9 @@ impl ParquetLogger {
             writer,
             inprogress_path,
             final_path,
-            buffer: Vec::with_capacity(1000),
-            max_rows: 1000,
+            timestamps: Vec::new(),
+            values: Vec::new(),
+            max_rows: ROWS_PER_ROW_GROUP,
             first_timestamp_unix_ns: None,
             row_groups_written: 0,
             date,
@@ -483,15 +525,16 @@ impl ParquetLogger {
     fn write_row(&mut self, timestamp_unix_ns: i64, val: f64) {
         self.first_timestamp_unix_ns
             .get_or_insert(timestamp_unix_ns);
-        self.buffer.push((timestamp_unix_ns, val));
-        if self.buffer.len() >= self.max_rows {
+        self.timestamps.push(timestamp_unix_ns);
+        self.values.push(val);
+        if self.timestamps.len() >= self.max_rows {
             self.flush();
         }
     }
 
     /// Writes the current buffer as a Parquet row group.
     fn flush(&mut self) {
-        if self.buffer.is_empty() {
+        if self.timestamps.is_empty() {
             return;
         }
         let mut rg = self.writer.next_row_group().unwrap();
@@ -501,8 +544,7 @@ impl ParquetLogger {
             let mut scw = rg.next_column().unwrap().expect("timestamp col");
             let mut cw = scw.untyped();
             if let ColumnWriter::Int64ColumnWriter(typed) = &mut cw {
-                let values: Vec<i64> = self.buffer.iter().map(|(ts, _)| *ts).collect();
-                typed.write_batch(&values, None, None).unwrap();
+                typed.write_batch(&self.timestamps, None, None).unwrap();
             }
             scw.close().unwrap();
         }
@@ -512,21 +554,22 @@ impl ParquetLogger {
             let mut scw = rg.next_column().unwrap().expect("value col");
             let mut cw = scw.untyped();
             if let ColumnWriter::DoubleColumnWriter(typed) = &mut cw {
-                let values: Vec<f64> = self.buffer.iter().map(|(_, v)| *v).collect();
-                typed.write_batch(&values, None, None).unwrap();
+                typed.write_batch(&self.values, None, None).unwrap();
             }
             scw.close().unwrap();
         }
 
         rg.close().unwrap();
         self.row_groups_written += 1;
-        self.buffer.clear();
+        self.timestamps.clear();
+        self.values.clear();
     }
 
     /// Returns whether the next source sample belongs in a new file.
     ///
-    /// Source-time rotation is important during backlog replay: several hours
-    /// of samples can be consumed in under one wall-clock rotation interval.
+    /// Files cover aligned windows of source time (see [`rotation_window`]).
+    /// Using source time rather than wall-clock time keeps backlog replay
+    /// correct: several hours of samples can be consumed in a few seconds.
     fn should_rotate_before(&self, timestamp_unix_ns: i64, rotate_secs: u64) -> bool {
         if self.row_groups_written >= MAX_ROW_GROUPS_PER_FILE {
             return true;
@@ -539,16 +582,24 @@ impl ParquetLogger {
             return true;
         }
 
-        let elapsed_ns = i128::from(timestamp_unix_ns) - i128::from(first_timestamp_unix_ns);
-        let rotate_ns = i128::from(rotate_secs) * 1_000_000_000;
-        elapsed_ns >= rotate_ns
+        rotation_window(timestamp_unix_ns, rotate_secs)
+            != rotation_window(first_timestamp_unix_ns, rotate_secs)
     }
 
-    /// Flushes buffered rows and closes the Parquet writer.
+    /// Flushes buffered rows, writes the footer, syncs, and publishes the file.
+    ///
+    /// The data and the rename are both flushed to disk before returning, so a
+    /// caller that acks JetStream messages afterwards cannot lose them to a
+    /// power cut.
     fn close(mut self) -> Result<PathBuf, DynError> {
         self.flush();
-        self.writer.close()?;
+        let file = self.writer.into_inner()?;
+        file.sync_all()?;
+        drop(file);
         fs::rename(&self.inprogress_path, &self.final_path)?;
+        if let Some(dir) = self.final_path.parent() {
+            fs::File::open(dir)?.sync_all()?;
+        }
         Ok(self.final_path)
     }
 }
@@ -656,11 +707,36 @@ fn archiver_consumer_name(cfg: &SampleConfig, channel: u8) -> String {
     )
 }
 
+/// Files closed while handling one payload.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct CloseOutcome {
+    closed: usize,
+    failed: usize,
+}
+
+impl CloseOutcome {
+    fn record(&mut self, result: Result<PathBuf, DynError>, channel: u8, file_index: usize) {
+        match result {
+            Ok(path) => {
+                self.closed += 1;
+                println!("[logger] Closed {}", path.display());
+            }
+            Err(err) => {
+                self.failed += 1;
+                eprintln!(
+                    "[logger] Failed to finalize channel {channel:02} part {file_index}: {err}"
+                );
+            }
+        }
+    }
+}
+
 /// Decodes one FlatBuffer scan payload and writes its samples to Parquet.
 ///
 /// The payload contains the first sample timestamp plus a fixed interval, so
-/// this function reconstructs each sample timestamp and rotates files when the
-/// UTC date changes.
+/// this function reconstructs each sample timestamp and rotates files at
+/// aligned source-time windows and UTC date changes. The returned outcome tells
+/// the caller which buffered JetStream messages are now safe to ack.
 fn process_scan_payload(
     payload: &[u8],
     channel: u8,
@@ -671,7 +747,8 @@ fn process_scan_payload(
     logger: &mut Option<ParquetLogger>,
     file_index: &mut usize,
     last_sequence: &mut Option<u64>,
-) {
+) -> CloseOutcome {
+    let mut outcome = CloseOutcome::default();
     if let Ok(scan) = flatbuffers::root::<sampler::Scan>(payload) {
         let sequence = scan.sequence();
         match *last_sequence {
@@ -723,13 +800,7 @@ fn process_scan_payload(
                     .unwrap_or(true)
                 {
                     if let Some(l) = logger.take() {
-                        match l.close() {
-                            Ok(path) => println!("[logger] Closed {}", path.display()),
-                            Err(err) => eprintln!(
-                                "[logger] Failed to finalize channel {channel:02} part {}: {err}",
-                                *file_index
-                            ),
-                        }
+                        outcome.record(l.close(), channel, *file_index);
                     }
                     *file_index = next_file_index(parquet_root, asset, channel, sample_date);
                     *logger = Some(ParquetLogger::new(
@@ -750,6 +821,65 @@ fn process_scan_payload(
     } else {
         eprintln!("[logger] Channel {channel:02} received invalid FlatBuffer payload");
     }
+    outcome
+}
+
+/// Acks messages whose samples are all inside closed, synced Parquet files.
+async fn ack_messages(pending: &mut Vec<jetstream::Message>, channel: u8) {
+    let mut failures = 0usize;
+    for msg in pending.drain(..) {
+        if msg.ack().await.is_err() {
+            failures += 1;
+        }
+    }
+    if failures > 0 {
+        eprintln!(
+            "[logger] Failed to ack {failures} JetStream message(s) for channel {channel:02}; they will be redelivered"
+        );
+    }
+}
+
+/// Closes the open file (if any) and settles the messages it holds.
+///
+/// On success the pending messages are acked. On failure they are dropped
+/// without an ack, so JetStream redelivers them after `ack_wait` and they are
+/// written again into a new file.
+async fn close_and_settle(
+    logger: &mut Option<ParquetLogger>,
+    pending: &mut Vec<jetstream::Message>,
+    channel: u8,
+    file_index: usize,
+) {
+    let mut outcome = CloseOutcome::default();
+    if let Some(l) = logger.take() {
+        outcome.record(l.close(), channel, file_index);
+    }
+    if outcome.failed > 0 {
+        eprintln!(
+            "[logger] Leaving {} message(s) for channel {channel:02} unacked for redelivery",
+            pending.len()
+        );
+        pending.clear();
+    } else {
+        ack_messages(pending, channel).await;
+    }
+}
+
+/// Consumer settings that let acks wait until a file is closed.
+///
+/// `ack_wait` must outlast one full rotation window plus the idle-close delay,
+/// or JetStream would redeliver messages that are still waiting in an open file.
+fn archiver_consumer_config(consumer_name: &str, subject: &str, rotate_secs: u64) -> pull::Config {
+    pull::Config {
+        durable_name: Some(consumer_name.to_string()),
+        filter_subject: subject.to_string(),
+        ack_policy: jetstream::consumer::AckPolicy::Explicit,
+        ack_wait: Duration::from_secs(rotate_secs.saturating_mul(3))
+            + IDLE_CLOSE_AFTER
+            + Duration::from_secs(120),
+        max_ack_pending: CONSUMER_MAX_ACK_PENDING,
+        ..Default::default()
+    }
 }
 
 /// Starts the durable pull consumer and writer task for one channel.
@@ -768,18 +898,26 @@ async fn spawn_channel_logger(
     parquet_root: PathBuf,
 ) -> Result<ChannelLogger, DynError> {
     let stream = js.get_stream(stream_name.as_str()).await?;
-    let consumer = stream
-        .get_or_create_consumer(
-            consumer_name.as_str(),
-            pull::Config {
-                durable_name: Some(consumer_name.clone()),
-                filter_subject: subject.clone(),
-                ack_policy: jetstream::consumer::AckPolicy::Explicit,
-                ack_wait: Duration::from_secs(30),
-                ..Default::default()
-            },
-        )
+    let desired = archiver_consumer_config(&consumer_name, &subject, rotate_secs);
+    let mut consumer = stream
+        .get_or_create_consumer(consumer_name.as_str(), desired.clone())
         .await?;
+    // Durable consumers created by earlier versions keep their old ack_wait
+    // and max_ack_pending. Both are editable in place, and the delivery
+    // position is untouched, so no data is replayed or skipped.
+    let existing = consumer.cached_info().config.clone();
+    if existing.ack_wait != desired.ack_wait || existing.max_ack_pending != desired.max_ack_pending
+    {
+        consumer = stream.update_consumer(desired.clone()).await?;
+        println!(
+            "[logger] Updated consumer '{}': ack_wait {:?} -> {:?}, max_ack_pending {} -> {}",
+            consumer_name,
+            existing.ack_wait,
+            desired.ack_wait,
+            existing.max_ack_pending,
+            desired.max_ack_pending
+        );
+    }
 
     let logger_subject = subject.clone();
     let logger_consumer_name = consumer_name.clone();
@@ -802,22 +940,26 @@ async fn spawn_channel_logger(
             logger_consumer_name, logger_subject
         );
 
-        let mut ticker = tokio::time::interval(Duration::from_secs(rotate_secs));
-        // `interval` ticks immediately; consume that tick so the first part is
-        // created only by data or after a full rotation interval.
-        ticker.tick().await;
+        // Files are opened by data and rotated by source time. This ticker only
+        // closes a file that has stopped receiving data; it never opens one,
+        // so it cannot race the source-time rotation or leave empty parts.
+        let mut idle_check = tokio::time::interval(IDLE_CHECK_INTERVAL);
+        idle_check.tick().await;
         let mut logger: Option<ParquetLogger> = None;
         let mut file_index =
             next_file_index(&parquet_root, asset, channel, Utc::now().date_naive());
         let mut active_calibration = calibration_for_task;
         let mut last_sequence: Option<u64> = None;
+        let mut pending: Vec<jetstream::Message> = Vec::new();
+        let mut last_data = Instant::now();
 
         loop {
             tokio::select! {
                 maybe = messages.next() => {
                     match maybe {
                         Some(Ok(msg)) => {
-                            process_scan_payload(
+                            last_data = Instant::now();
+                            let outcome = process_scan_payload(
                                 &msg.payload,
                                 channel,
                                 asset,
@@ -828,11 +970,25 @@ async fn spawn_channel_logger(
                                 &mut file_index,
                                 &mut last_sequence,
                             );
-                            if let Err(err) = msg.ack().await {
+                            if outcome.failed > 0 {
+                                // Let JetStream redeliver everything that was in
+                                // the failed file, including this message.
                                 eprintln!(
-                                    "[logger] Failed to ack JetStream message for channel {channel:02}: {}",
-                                    err
+                                    "[logger] Leaving {} message(s) for channel {channel:02} unacked for redelivery",
+                                    pending.len() + 1
                                 );
+                                pending.clear();
+                            } else {
+                                if outcome.closed > 0 {
+                                    // Earlier messages are entirely inside the
+                                    // closed file. This one may have samples in
+                                    // the new file too, so it waits.
+                                    ack_messages(&mut pending, channel).await;
+                                }
+                                pending.push(msg);
+                            }
+                            if pending.len() >= MAX_PENDING_ACKS_PER_FILE {
+                                close_and_settle(&mut logger, &mut pending, channel, file_index).await;
                             }
                         }
                         Some(Err(err)) => {
@@ -851,25 +1007,14 @@ async fn spawn_channel_logger(
                         }
                     }
                 }
-                _ = ticker.tick() => {
-                    let today = Utc::now().date_naive();
-                    if let Some(l) = logger.take() {
-                        match l.close() {
-                            Ok(path) => println!("[logger] Closed {}", path.display()),
-                            Err(err) => eprintln!(
-                                "[logger] Failed to finalize channel {channel:02} part {file_index}: {err}"
-                            ),
-                        }
+                _ = idle_check.tick() => {
+                    if logger.is_some() && last_data.elapsed() >= IDLE_CLOSE_AFTER {
+                        println!(
+                            "[logger] No data on channel {channel:02} for {}s; closing the open file.",
+                            IDLE_CLOSE_AFTER.as_secs()
+                        );
+                        close_and_settle(&mut logger, &mut pending, channel, file_index).await;
                     }
-                    file_index = next_file_index(&parquet_root, asset, channel, today);
-                    logger = Some(ParquetLogger::new(
-                        asset,
-                        channel,
-                        file_index,
-                        today,
-                        active_calibration.clone(),
-                        &parquet_root,
-                    ));
                 }
                 changed = calibration_rx.changed() => {
                     if changed.is_err() {
@@ -877,27 +1022,12 @@ async fn spawn_channel_logger(
                     }
                     let updated = calibration_rx.borrow().clone();
                     if updated != active_calibration {
-                        let today = Utc::now().date_naive();
-                        if let Some(l) = logger.take() {
-                            match l.close() {
-                                Ok(path) => println!("[logger] Closed {}", path.display()),
-                                Err(err) => eprintln!(
-                                    "[logger] Failed to finalize channel {channel:02} part {file_index}: {err}"
-                                ),
-                            }
-                        }
-                        file_index = next_file_index(&parquet_root, asset, channel, today);
+                        // The next sample opens a new file carrying the new
+                        // calibration metadata.
+                        close_and_settle(&mut logger, &mut pending, channel, file_index).await;
                         println!(
                             "[logger] Calibration updated for channel {channel:02}; rotating file."
                         );
-                        logger = Some(ParquetLogger::new(
-                            asset,
-                            channel,
-                            file_index,
-                            today,
-                            updated.clone(),
-                            &parquet_root,
-                        ));
                         active_calibration = updated;
                     }
                 }
@@ -908,14 +1038,7 @@ async fn spawn_channel_logger(
             }
         }
 
-        if let Some(logger) = logger.take() {
-            match logger.close() {
-                Ok(path) => println!("[logger] Closed {}", path.display()),
-                Err(err) => eprintln!(
-                    "[logger] Failed to finalize channel {channel:02} during shutdown: {err}"
-                ),
-            }
-        }
+        close_and_settle(&mut logger, &mut pending, channel, file_index).await;
     });
 
     Ok(ChannelLogger {
@@ -1254,15 +1377,21 @@ mod tests {
     }
 
     #[test]
-    fn writer_rotates_by_source_time_and_before_parquet_row_group_limit() {
+    fn writer_rotates_at_aligned_source_windows_and_before_row_group_limit() {
         let root = temporary_parquet_root("source-rotation");
         let date = NaiveDate::from_ymd_opt(2026, 8, 18).expect("valid date");
-        let start = 1_787_020_000_000_000_000_i64;
+        // 2026-08-18 00:05:00 UTC is a five-minute boundary.
+        let window_start = 1_787_011_500_000_000_000_i64;
+        assert_eq!(window_start % 300_000_000_000, 0);
+        let start = window_start + 10_000_000_000;
         let mut logger = ParquetLogger::new(1001, 0, 1, date, CalibrationSpec::default(), &root);
         logger.write_row(start, 1.0);
 
-        assert!(!logger.should_rotate_before(start + 299_000_000_000, 300));
-        assert!(logger.should_rotate_before(start + 300_000_000_000, 300));
+        // Same window: no rotation, even 289.999 s after the first sample.
+        assert!(!logger.should_rotate_before(window_start + 299_999_999_999, 300));
+        // Next aligned window starts only 290 s after the first sample.
+        assert!(logger.should_rotate_before(window_start + 300_000_000_000, 300));
+        // Time going backwards always starts a new file.
         assert!(logger.should_rotate_before(start - 1, 300));
 
         logger.row_groups_written = MAX_ROW_GROUPS_PER_FILE;
@@ -1270,6 +1399,245 @@ mod tests {
 
         let _ = logger.close().expect("writer should finalize");
         fs::remove_dir_all(root).expect("temporary directory should be removable");
+    }
+
+    #[test]
+    fn rotation_windows_align_to_epoch_multiples() {
+        assert_eq!(rotation_window(0, 300), 0);
+        assert_eq!(rotation_window(299_999_999_999, 300), 0);
+        assert_eq!(rotation_window(300_000_000_000, 300), 1);
+        assert_eq!(rotation_window(-1, 300), -1);
+        // A zero period must not divide by zero.
+        assert_eq!(rotation_window(5_000_000_000, 0), 5);
+    }
+
+    #[test]
+    fn compressed_file_round_trips_exactly_through_the_exporter_reader() {
+        use parquet::basic::{Compression, Encoding};
+        use parquet::record::RowAccessor;
+
+        let root = temporary_parquet_root("round-trip");
+        let date = NaiveDate::from_ymd_opt(2026, 9, 14).expect("valid date");
+        let mut logger = ParquetLogger::new(1001, 8, 1, date, CalibrationSpec::default(), &root);
+        let start = 1_789_401_600_000_000_000_i64;
+        let rows = 60_000; // 30 s at 2 kHz
+        let expected: Vec<(i64, f64)> = (0..rows)
+            .map(|i| {
+                // 16-bit ADC steps around 3.72 V, like the live pressure channels.
+                let counts = (i * 7919 % 97) as f64;
+                (start + i as i64 * 500_000, 3.70 + counts * 0.000_315_6)
+            })
+            .collect();
+        for (ts, v) in &expected {
+            logger.write_row(*ts, *v);
+        }
+        let path = logger.close().expect("writer should finalize");
+
+        let reader = SerializedFileReader::new(fs::File::open(&path).expect("open"))
+            .expect("compressed file should be readable");
+        let meta = reader.metadata();
+        assert_eq!(meta.num_row_groups(), 1);
+        let rg = meta.row_group(0);
+        assert!(matches!(rg.column(0).compression(), Compression::ZSTD(_)));
+        assert!(
+            rg.column(0)
+                .encodings()
+                .contains(&Encoding::DELTA_BINARY_PACKED)
+        );
+        assert!(rg.column(1).encodings().contains(&Encoding::RLE_DICTIONARY));
+
+        // Read back exactly as the exporter does.
+        let actual: Vec<(i64, f64)> = reader
+            .get_row_iter(None)
+            .expect("row iterator")
+            .map(|row| {
+                let row = row.expect("row");
+                (
+                    row.get_long(0).expect("ts"),
+                    row.get_double(1).expect("value"),
+                )
+            })
+            .collect();
+        assert_eq!(actual, expected);
+        fs::remove_dir_all(root).expect("temporary directory should be removable");
+    }
+
+    /// Builds a FlatBuffer scan payload like the streamer publishes.
+    fn scan_payload(first_ns: u64, interval_ns: u64, sequence: u64, values: &[f64]) -> Vec<u8> {
+        let mut builder = flatbuffers::FlatBufferBuilder::new();
+        let values = builder.create_vector(values);
+        let scan = sampler::Scan::create(
+            &mut builder,
+            &sampler::ScanArgs {
+                first_sample_unix_ns: first_ns,
+                sample_interval_ns: interval_ns,
+                actual_scan_rate_hz: 1e9 / interval_ns as f64,
+                sequence,
+                values: Some(values),
+            },
+        );
+        builder.finish(scan, None);
+        builder.finished_data().to_vec()
+    }
+
+    /// End-to-end check against a real NATS server:
+    /// an existing consumer with the old settings is updated in place, messages
+    /// stay unacked until their file is closed, and files split at aligned
+    /// windows. Run with `AVENA_TEST_NATS_URL=nats://127.0.0.1:4222`.
+    #[tokio::test]
+    #[ignore = "needs a JetStream-enabled nats-server; set AVENA_TEST_NATS_URL"]
+    async fn archiver_defers_acks_until_file_close_on_real_nats() {
+        let Ok(url) = std::env::var("AVENA_TEST_NATS_URL") else {
+            return;
+        };
+        let client = async_nats::connect(url)
+            .await
+            .expect("connect to test NATS");
+        let js = jetstream::new(client);
+        let stream_name = format!("test-{}", Uuid::new_v4().simple());
+        let subject = format!("{stream_name}.ch08");
+        let stream = js
+            .create_stream(jetstream::stream::Config {
+                name: stream_name.clone(),
+                subjects: vec![format!("{stream_name}.>")],
+                ..Default::default()
+            })
+            .await
+            .expect("create stream");
+
+        // A durable consumer as created by the currently deployed archiver.
+        let consumer_name = "archiver-test-current".to_string();
+        stream
+            .create_consumer(pull::Config {
+                durable_name: Some(consumer_name.clone()),
+                filter_subject: subject.clone(),
+                ack_policy: jetstream::consumer::AckPolicy::Explicit,
+                ack_wait: Duration::from_secs(30),
+                ..Default::default()
+            })
+            .await
+            .expect("create old-style consumer");
+
+        let root = temporary_parquet_root("nats-integration");
+        let logger = spawn_channel_logger(
+            js.clone(),
+            stream_name.clone(),
+            consumer_name.clone(),
+            subject.clone(),
+            1001,
+            8,
+            300,
+            CalibrationSpec::default(),
+            root.clone(),
+        )
+        .await
+        .expect("spawn channel logger");
+
+        let mut info_stream = js.get_stream(&stream_name).await.expect("stream");
+        let info = info_stream
+            .consumer_info(&consumer_name)
+            .await
+            .expect("consumer info");
+        let expected = archiver_consumer_config(&consumer_name, &subject, 300);
+        assert_eq!(
+            info.config.ack_wait, expected.ack_wait,
+            "ack_wait updated in place"
+        );
+        assert_eq!(info.config.max_ack_pending, CONSUMER_MAX_ACK_PENDING);
+
+        // Five 1 s messages at 100 Hz, all inside one aligned window.
+        let interval = 10_000_000_u64;
+        let window = 1_790_000_100_u64 / 300 * 300; // an aligned five-minute boundary, in seconds
+        let base = (window + 100) * 1_000_000_000;
+        let values = vec![3.72; 100];
+        for k in 0..5_u64 {
+            js.publish(
+                subject.clone(),
+                scan_payload(base + k * 1_000_000_000, interval, k, &values).into(),
+            )
+            .await
+            .expect("publish")
+            .await
+            .expect("stored");
+        }
+
+        async fn pending_of(s: &mut jetstream::stream::Stream, name: &str) -> (usize, u64) {
+            let info = s.consumer_info(name).await.expect("consumer info");
+            (info.num_ack_pending, info.num_pending)
+        }
+        let mut waited = 0;
+        while pending_of(&mut info_stream, &consumer_name).await != (5, 0) && waited < 50 {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            waited += 1;
+        }
+        assert_eq!(
+            pending_of(&mut info_stream, &consumer_name).await,
+            (5, 0),
+            "open file holds its acks"
+        );
+
+        // A message in the next window closes the first file and acks its five
+        // messages; the new message waits for its own file.
+        let next = (window + 300) * 1_000_000_000;
+        js.publish(
+            subject.clone(),
+            scan_payload(next, interval, 5, &values).into(),
+        )
+        .await
+        .expect("publish")
+        .await
+        .expect("stored");
+        waited = 0;
+        while pending_of(&mut info_stream, &consumer_name).await != (1, 0) && waited < 50 {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            waited += 1;
+        }
+        assert_eq!(
+            pending_of(&mut info_stream, &consumer_name).await,
+            (1, 0),
+            "closed file's messages acked"
+        );
+
+        // Graceful stop closes the second file and acks the rest.
+        logger.stop().await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert_eq!(
+            pending_of(&mut info_stream, &consumer_name).await,
+            (0, 0),
+            "stop settles every message"
+        );
+
+        let mut files: Vec<PathBuf> = Vec::new();
+        for day in fs::read_dir(root.join("asset1001")).expect("asset dir") {
+            for f in fs::read_dir(day.expect("day").path().join("ch08")).expect("channel dir") {
+                files.push(f.expect("file").path());
+            }
+        }
+        files.sort();
+        assert_eq!(files.len(), 2, "one file per aligned window: {files:?}");
+        let rows: Vec<i64> = files
+            .iter()
+            .map(|p| {
+                SerializedFileReader::new(fs::File::open(p).expect("open"))
+                    .expect("readable")
+                    .metadata()
+                    .file_metadata()
+                    .num_rows()
+            })
+            .collect();
+        assert_eq!(rows.iter().sum::<i64>(), 600);
+
+        js.delete_stream(&stream_name).await.expect("delete stream");
+        fs::remove_dir_all(root).expect("temporary directory should be removable");
+    }
+
+    #[test]
+    fn consumer_ack_wait_outlasts_a_file_and_pending_limit_has_headroom() {
+        let cfg = archiver_consumer_config("archiver-test", "avenars.test.ch08", 300);
+        assert_eq!(cfg.durable_name.as_deref(), Some("archiver-test"));
+        assert_eq!(cfg.filter_subject, "avenars.test.ch08");
+        assert!(cfg.ack_wait > Duration::from_secs(300) + IDLE_CLOSE_AFTER + IDLE_CHECK_INTERVAL);
+        assert!(cfg.max_ack_pending > MAX_PENDING_ACKS_PER_FILE as i64);
     }
 
     #[test]
