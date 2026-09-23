@@ -31,9 +31,10 @@
 //! is synced, so every file is at all times either the complete old version or
 //! the verified new one. A failed file keeps its original.
 //!
-//! Unfinished (`.inprogress`) and quarantined files are never touched, and the
-//! tool can be interrupted and rerun: finished files are skipped, and temporary
-//! copies left by an interrupted run are deleted on the next scan.
+//! Unfinished (`.inprogress`) and quarantined files are never touched, and files
+//! with no row groups are counted as empty and left alone. The tool can be
+//! interrupted and rerun: finished files are skipped, and temporary copies left by
+//! an interrupted run are deleted on the next scan.
 
 use std::{
     fs,
@@ -94,6 +95,10 @@ enum Outcome {
     },
     /// The file already uses the current format and was left untouched.
     AlreadyCurrent,
+    /// The file has no row groups, so there is nothing to compress. It is left
+    /// untouched. The previous archiver wrote such files when a rotation fired while
+    /// no data was arriving.
+    Empty,
 }
 
 /// Returns whether a file already uses the current archive format.
@@ -103,8 +108,8 @@ enum Outcome {
 /// using `DELTA_BINARY_PACKED` encoding. Only the footer metadata is inspected; no data
 /// pages are read.
 ///
-/// A file with no row groups is never current. Rewriting it also produces no row
-/// groups, so [`recompress_file`] reports such a file as failed on every run.
+/// A file with no row groups is never current; [`recompress_file`] reports it as
+/// [`Outcome::Empty`] before calling this.
 ///
 /// # Arguments
 ///
@@ -297,8 +302,8 @@ fn verify_identical(original: &Archive, rewritten: &Archive) -> Result<()> {
 ///
 /// Steps, in order:
 ///
-/// 1. If the file is already current, return [`Outcome::AlreadyCurrent`] without
-///    touching it.
+/// 1. If the file has no row groups, return [`Outcome::Empty`]. If it is already
+///    current, return [`Outcome::AlreadyCurrent`]. Neither touches the file.
 /// 2. Read all rows and metadata into memory.
 /// 3. Write them to `<path>.recompress-tmp` with [`write_archive`] (which syncs it).
 /// 4. Reopen the copy, check it is in the current format, and compare it with the
@@ -317,7 +322,7 @@ fn verify_identical(original: &Archive, rewritten: &Archive) -> Result<()> {
 /// # Returns
 ///
 /// [`Outcome::Rewritten`] with the before and after sizes and row count (also in a dry
-/// run), or [`Outcome::AlreadyCurrent`].
+/// run), [`Outcome::AlreadyCurrent`] or [`Outcome::Empty`].
 ///
 /// # Errors
 ///
@@ -326,6 +331,9 @@ fn verify_identical(original: &Archive, rewritten: &Archive) -> Result<()> {
 /// fails.
 fn recompress_file(path: &Path, dry_run: bool) -> Result<Outcome> {
     let reader = SerializedFileReader::new(fs::File::open(path)?)?;
+    if reader.num_row_groups() == 0 {
+        return Ok(Outcome::Empty);
+    }
     if is_current_format(&reader) {
         return Ok(Outcome::AlreadyCurrent);
     }
@@ -431,7 +439,7 @@ fn main() -> Result<()> {
         if dry_run { " (dry run)" } else { "" }
     );
 
-    let (mut rewritten, mut current, mut failed) = (0usize, 0usize, 0usize);
+    let (mut rewritten, mut current, mut empty, mut failed) = (0usize, 0usize, 0usize, 0usize);
     let (mut before, mut after, mut rows) = (0u64, 0u64, 0usize);
     for (i, path) in files.iter().enumerate() {
         match recompress_file(path, dry_run) {
@@ -446,6 +454,7 @@ fn main() -> Result<()> {
                 rows += n;
             }
             Ok(Outcome::AlreadyCurrent) => current += 1,
+            Ok(Outcome::Empty) => empty += 1,
             Err(err) => {
                 failed += 1;
                 eprintln!("FAILED {}: {err:#}", path.display());
@@ -462,7 +471,7 @@ fn main() -> Result<()> {
         }
     }
     println!(
-        "done: rewritten {rewritten} ({rows} rows, {:.2} GB -> {:.2} GB), already current {current}, failed {failed}",
+        "done: rewritten {rewritten} ({rows} rows, {:.2} GB -> {:.2} GB), already current {current}, empty {empty}, failed {failed}",
         before as f64 / 1e9,
         after as f64 / 1e9
     );
@@ -572,6 +581,20 @@ mod tests {
     }
 
     /// Verification rejects any change to timestamps, values or metadata.
+    /// Checks that a file with no row groups is reported as empty and left untouched.
+    #[test]
+    fn empty_file_is_skipped_and_untouched() {
+        let dir = std::env::temp_dir().join(format!("recompress-empty-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("part-0001.parquet");
+        write_old_format(&path, &[], r#"{"type":"identity"}"#);
+        let before = fs::read(&path).unwrap();
+        assert_eq!(recompress_file(&path, false).unwrap(), Outcome::Empty);
+        assert_eq!(fs::read(&path).unwrap(), before);
+        assert!(!PathBuf::from(format!("{}{TMP_SUFFIX}", path.display())).exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn verification_detects_any_difference() {
         let a = Archive {
