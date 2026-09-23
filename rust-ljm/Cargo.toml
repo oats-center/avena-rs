@@ -52,5 +52,9 @@ path = "src/subscriber.rs"
 name = "exporter"
 path = "src/exporter.rs"
 
+[[bin]]
+name = "recompress"
+path = "src/recompress.rs"
+
 [dev-dependencies]
 tokio-tungstenite = "0.21"

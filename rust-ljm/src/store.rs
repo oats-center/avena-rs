@@ -15,10 +15,8 @@ use async_nats::jetstream::{
 use chrono::{DateTime, NaiveDate, Utc};
 use futures_util::StreamExt;
 use parquet::{
-    basic::{Compression, Encoding, ZstdLevel},
-    column::writer::ColumnWriter,
-    file::{metadata::KeyValue, properties::WriterProperties, writer::SerializedFileWriter},
-    schema::{parser::parse_message_type, types::ColumnPath},
+    column::writer::ColumnWriter, file::writer::SerializedFileWriter,
+    schema::parser::parse_message_type,
 };
 use std::{
     collections::HashMap,
@@ -30,6 +28,7 @@ use std::{
 use tokio::sync::{oneshot, watch};
 use tokio::time::Duration;
 
+mod archive_format;
 mod calibration;
 mod nats_config;
 mod subjects;
@@ -39,6 +38,7 @@ mod sample_data_generated {
 }
 use sample_data_generated::sampler;
 
+use archive_format::{SAMPLE_SCHEMA, writer_properties_for_calibration};
 use calibration::CalibrationSpec;
 use serde::{Deserialize, Serialize};
 
@@ -413,25 +413,6 @@ const CONSUMER_MAX_ACK_PENDING: i64 = 50_000;
 const IDLE_CLOSE_AFTER: Duration = Duration::from_secs(60);
 const IDLE_CHECK_INTERVAL: Duration = Duration::from_secs(15);
 
-/// Parquet writer settings for the two-column sample schema.
-///
-/// Timestamps are strictly regular, so delta encoding reduces them to almost
-/// nothing. Values come from a 16-bit converter and repeat heavily, so they
-/// keep dictionary encoding. zstd compresses the result. Measured on a real
-/// 2 kHz MU1 file this is about 14x smaller than uncompressed PLAIN output.
-fn writer_properties(calibration_json: String) -> WriterProperties {
-    let timestamp = ColumnPath::from("timestamp_unix_ns");
-    WriterProperties::builder()
-        .set_compression(Compression::ZSTD(ZstdLevel::default()))
-        .set_column_dictionary_enabled(timestamp.clone(), false)
-        .set_column_encoding(timestamp, Encoding::DELTA_BINARY_PACKED)
-        .set_key_value_metadata(Some(vec![KeyValue::new(
-            "calibration".to_string(),
-            calibration_json,
-        )]))
-        .build()
-}
-
 /// Returns the index of the aligned rotation window holding a timestamp.
 ///
 /// Windows start at multiples of `rotate_secs` since the Unix epoch, so with a
@@ -492,16 +473,10 @@ impl ParquetLogger {
         let final_path = dir.join(format!("part-{:04}.parquet", file_index));
         let inprogress_path = dir.join(format!("part-{:04}.parquet.inprogress", file_index));
 
-        let message_type = "
-            message schema {
-                REQUIRED INT64 timestamp_unix_ns;
-                REQUIRED DOUBLE value;
-            }
-        ";
-        let schema = Arc::new(parse_message_type(message_type).unwrap());
+        let schema = Arc::new(parse_message_type(SAMPLE_SCHEMA).unwrap());
         let calibration_json =
             serde_json::to_string(&calibration).unwrap_or_else(|_| "{}".to_string());
-        let props = Arc::new(writer_properties(calibration_json));
+        let props = Arc::new(writer_properties_for_calibration(calibration_json));
         let file = fs::File::create(&inprogress_path).unwrap();
         let writer = SerializedFileWriter::new(file, schema, props).unwrap();
 
