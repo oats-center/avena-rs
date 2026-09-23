@@ -1,0 +1,20 @@
+[book]
+title = "Avena"
+description = "Field data acquisition for instrumented pavement: LabJack streaming, NATS, Parquet archives and exports."
+authors = ["OATS Center"]
+language = "en"
+src = "src"
+
+[build]
+build-dir = "../target/docs-site"
+create-missing = false
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/oats-center/avena-rs"
+edit-url-template = "https://github.com/oats-center/avena-rs/edit/main/docs/{path}"
+site-url = "/avena-rs/"
+
+[output.html.fold]
+enable = false

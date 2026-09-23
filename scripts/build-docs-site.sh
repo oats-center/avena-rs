@@ -1,31 +1,30 @@
 #!/usr/bin/env bash
+# Builds the documentation site into target/docs-site.
+#
+# The guides are an mdBook under docs/. The API reference is generated from the
+# code: rustdoc for rust-ljm and TypeDoc for the webapp library. Both are copied
+# under api/ in the book output, which is what GitHub Pages publishes.
+#
+# Requires: mdbook, cargo, and pnpm with webapp dependencies installed.
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-SITE_DIR="${ROOT}/target/docs-site"
-RUST_TARGET="${ROOT}/target/docs-rust"
-FRONTEND_DOCS="${ROOT}/target/docs-frontend"
+SITE="${ROOT}/target/docs-site"
 
-rm -rf "${SITE_DIR}" "${FRONTEND_DOCS}"
-mkdir -p "${SITE_DIR}/api"
+rm -rf "${SITE}"
+mdbook build "${ROOT}/docs"
 
-(
-  cd "${ROOT}/rust-ljm"
-  cargo doc \
-    --target-dir "${RUST_TARGET}" \
-    --no-deps \
-    --document-private-items
-)
-
-cp -a "${RUST_TARGET}/doc" "${SITE_DIR}/api/rust"
+cargo doc \
+  --manifest-path "${ROOT}/rust-ljm/Cargo.toml" \
+  --target-dir "${ROOT}/target/docs-rust" \
+  --no-deps \
+  --document-private-items
+mkdir -p "${SITE}/api"
+cp -a "${ROOT}/target/docs-rust/doc" "${SITE}/api/rust"
 
 (
   cd "${ROOT}/webapp"
-  pnpm exec typedoc --options typedoc.json --out "${FRONTEND_DOCS}"
+  pnpm exec typedoc --options typedoc.json --out "${SITE}/api/webapp"
 )
 
-cp -a "${FRONTEND_DOCS}" "${SITE_DIR}/api/frontend"
-
-python3 "${ROOT}/scripts/build-docs-site.py" --root "${ROOT}" --site "${SITE_DIR}"
-
-printf 'Docs site built at %s\n' "${SITE_DIR}"
+printf 'Docs site built at %s\n' "${SITE}"

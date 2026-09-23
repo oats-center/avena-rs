@@ -256,8 +256,5 @@ names match the actual LabJack stream semantics.
 
 ## Full Edge Setup
 
-For the reproducible NATS leaf, Alloy, Rust service, webapp, validation, and
-shutdown workflow, use [../docs/setup-guide.md](../docs/setup-guide.md).
-
-For the complete edge process inventory and expected systemd states, use
-[../docs/runtime-services.md](../docs/runtime-services.md).
+Setup, operation and reference documentation is published at
+<https://oats-center.github.io/avena-rs/>; the source is under `../docs`.
