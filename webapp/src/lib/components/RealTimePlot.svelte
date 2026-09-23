@@ -1,31 +1,55 @@
 <script lang="ts">
     import { onMount } from "svelte";
     
+    /** One sample of one channel, as the plot page hands it over. */
     interface DataPoint {
+        /** Sample time, Unix epoch in milliseconds. Positions the point on the time axis. */
         timestamp: number;
+        /** Sample value in `unit` (already calibrated by the caller). */
         value: number;
+        /** Source clock time of the sample, Unix epoch ms, or `null` if unknown. */
         sourceTimestamp?: number | null;
+        /** Browser time the containing message arrived, Unix epoch ms. Used for the lag badge. */
         receivedAt?: number;
     }
     
+    /** Component props. See the `@component` block below for each one. */
     interface Props {
+        /** Live buffer of samples for this channel. */
         data: DataPoint[];
+        /** Unit label for the y axis, badges and threshold. */
         unit: string;
+        /** Width of the continuous time axis, in seconds. */
         timeWindow: number;
+        /** Whether a trigger has fired. */
         isTriggered: boolean;
+        /** Time the trigger fired, Unix epoch ms. `0` means none. */
         triggerTime: number;
+        /** `continuous` scrolls with the live buffer; `frozen` shows the captured trigger window. */
         mode: 'continuous' | 'frozen';
+        /** Samples captured around the trigger, shown instead of `data` in frozen mode. */
         frozenData?: DataPoint[];
+        /** Seconds shown before the trigger in frozen mode. */
         frozenPreWindowSec?: number;
+        /** Seconds shown after the trigger in frozen mode. */
         frozenPostWindowSec?: number;
+        /** True while post-trigger samples are still being collected. */
         frozenCollecting?: boolean;
+        /** Draws the trigger threshold line and LEVEL badge. */
         showTriggerThreshold?: boolean;
+        /** Trigger level, in `unit`. */
         triggerThreshold?: number;
+        /** Shows the PREBUFFERING badge. */
         prebuffering?: boolean;
+        /** Fits the y axis to the data when true; otherwise uses `yMin`/`yMax`. */
         yAutoScale?: boolean;
+        /** Lower y limit when `yAutoScale` is false. */
         yMin?: number;
+        /** Upper y limit when `yAutoScale` is false. */
         yMax?: number;
+        /** Mirrors the time axis. */
         invertX?: boolean;
+        /** Mirrors the value axis. */
         invertY?: boolean;
     }
     
@@ -51,21 +75,33 @@
     }: Props = $props();
     
     let canvas: HTMLCanvasElement;
+    /** 2D context, scaled by `devicePixelRatio` so drawing uses CSS pixels. Plain `let`, not reactive. */
     let ctx: CanvasRenderingContext2D;
+    /** Id of the pending `requestAnimationFrame`, cancelled on unmount. */
     let animationFrame = 0;
+    /** True while a render is queued, so many prop changes in one frame draw once. */
     let renderQueued = false;
+    /** Canvas size in CSS pixels, set by {@link resizeCanvas}. */
     let plotWidth = 0;
     let plotHeight = 0;
+    /** Space around the plot area for tick labels and axis titles, in CSS pixels. */
     let margin = { top: 30, right: 40, bottom: 50, left: 80 };
+    /** Value extrema captured once when a trigger freezes the plot, so the y axis holds still. */
     let frozenRange: { min: number; max: number } | null = null;
+    /** Trigger time that `frozenRange` was captured for; a new trigger recaptures it. */
     let frozenRangeTriggerTime = 0;
+    /** Running min/max of every value seen in continuous autoscale. Only grows until reset. */
     let stickyAutoExtrema: { min: number; max: number } | null = null;
+    /** Number of horizontal grid intervals on the y axis. */
     const Y_GRID_DIVISIONS = 8;
+    /** Smallest autoscale grid step, in `unit`. Keeps a flat signal from collapsing the axis. */
     const MIN_AUTO_Y_INTERVAL = 0.01;
+    /** Fraction of `timeWindow` the newest sample may lag `Date.now()` before the axis anchors to it. */
     const MAX_VISIBLE_LIVE_LAG_FRACTION = 0.1;
+    /** Lower bound on that allowed lag, in milliseconds. */
     const MAX_VISIBLE_LIVE_LAG_MS = 75;
     
-    // Color palette for different channels
+    // Color palette for different channels. Only index 0 is used today (one trace per plot).
     const colors = [
         '#3B82F6', // Blue
         '#EF4444', // Red
@@ -77,10 +113,23 @@
         '#84CC16'  // Lime
     ];
     
+    /**
+     * Returns the trace color for a channel index, cycling through the palette.
+     *
+     * @param channelIndex - Zero-based index; wraps modulo the palette length.
+     * @returns A CSS hex color.
+     */
     function getChannelColor(channelIndex: number): string {
         return colors[channelIndex % colors.length];
     }
     
+    /**
+     * Matches the canvas backing store to its on-screen size and the device pixel ratio.
+     *
+     * Sets `plotWidth`/`plotHeight` in CSS pixels and scales the context by
+     * `devicePixelRatio`, so all later drawing uses CSS pixels and stays sharp on
+     * high-DPI screens. Does nothing before the canvas is bound.
+     */
     function resizeCanvas() {
         if (!canvas) return;
         
@@ -101,6 +150,10 @@
         canvas.style.height = rect.height + 'px';
     }
     
+    /**
+     * Draws the background grid: 11 vertical lines (10 time intervals) and 9 horizontal
+     * lines (8 value intervals) across the plot area.
+     */
     function drawGrid() {
         if (!ctx) return;
         
@@ -127,6 +180,7 @@
         }
     }
     
+    /** Draws the x axis along the bottom and the y axis along the left of the plot area. */
     function drawAxes() {
         if (!ctx) return;
         
@@ -146,6 +200,12 @@
         ctx.stroke();
     }
     
+    /**
+     * Returns the smallest and largest finite `value` in a list of points.
+     *
+     * @param points - Samples to scan. Non-finite values are skipped.
+     * @returns `{ min, max }`, or `null` if there are no finite values.
+     */
     function computeValueRange(points: DataPoint[]): { min: number; max: number } | null {
         if (!points || points.length === 0) return null;
         let minValue = Number.POSITIVE_INFINITY;
@@ -159,6 +219,13 @@
         return { min: minValue, max: maxValue };
     }
 
+    /**
+     * Rounds a raw grid step up to 1, 2, 5 or 10 times a power of ten.
+     *
+     * @param value - Raw step, in `unit`.
+     * @returns The rounded step, never below `MIN_AUTO_Y_INTERVAL`. Non-finite or
+     *   non-positive input returns `MIN_AUTO_Y_INTERVAL`.
+     */
     function niceStep(value: number): number {
         if (!Number.isFinite(value) || value <= 0) return MIN_AUTO_Y_INTERVAL;
         const exponent = Math.floor(Math.log10(value));
@@ -172,7 +239,21 @@
         return Math.max(MIN_AUTO_Y_INTERVAL, niceFraction * Math.pow(10, exponent));
     }
 
+    /**
+     * Turns data extrema into a y range with round grid lines.
+     *
+     * Pads the observed span by 20% (at least `MIN_AUTO_Y_INTERVAL` per division),
+     * picks a {@link niceStep} for `Y_GRID_DIVISIONS` divisions, and snaps the lower
+     * edge to a multiple of that step around the midpoint. Values are rounded to six
+     * decimals to hide floating point noise in the labels.
+     *
+     * @param extrema - Data min and max, in `unit`.
+     * @returns `low` and `high` edges of the axis and the grid `step`.
+     */
     function normalizeAutoDisplayRange(extrema: { min: number; max: number }): { low: number; high: number; step: number } {
+        // Fixed number of divisions: choose a round step that covers the padded span, then
+        // center that span on the data and snap its lower edge to the step so ticks land
+        // on round values.
         const midpoint = (extrema.min + extrema.max) / 2;
         const observedSpan = Math.max(extrema.max - extrema.min, MIN_AUTO_Y_INTERVAL * Y_GRID_DIVISIONS);
         const paddedSpan = Math.max(
@@ -187,6 +268,14 @@
         return { low, high, step };
     }
 
+    /**
+     * Formats a y tick label with enough decimals to tell neighboring ticks apart.
+     *
+     * @param value - Tick value, in `unit`.
+     * @param step - Distance between ticks. Steps of 1 or more get 2 decimals; smaller
+     *   steps get between 2 and 6.
+     * @returns The formatted number, without unit.
+     */
     function formatAxisValue(value: number, step: number): string {
         const decimals = step >= 1
             ? 2
@@ -194,6 +283,22 @@
         return value.toFixed(decimals);
     }
 
+    /**
+     * Returns the y range to draw.
+     *
+     * - `yAutoScale` off: `yMin`/`yMax` (falling back to -1 and 1), with `high` forced
+     *   above `low`.
+     * - Frozen mode: `frozenRange` if captured, otherwise the extrema of `points`.
+     * - Continuous mode: the union of `points` and every earlier call, kept in
+     *   `stickyAutoExtrema`, so the axis grows but does not shrink or jitter.
+     *
+     * Autoscaled ranges go through {@link normalizeAutoDisplayRange}.
+     *
+     * @param points - Samples the range should cover.
+     * @returns `{ low, high }` in `unit`, or `null` if autoscaling has no data yet.
+     *
+     * @remarks Side effect: in continuous autoscale this widens `stickyAutoExtrema`.
+     */
     function getDisplayRange(points: DataPoint[]): { low: number; high: number } | null {
         if (!yAutoScale) {
             const low = Number.isFinite(yMin) ? yMin : -1;
@@ -216,6 +321,8 @@
             return { low, high };
         }
 
+        // Merge into the running extrema so the axis only widens; otherwise every new
+        // batch would rescale the axis and the trace would jump.
         stickyAutoExtrema = stickyAutoExtrema
             ? {
                 min: Math.min(stickyAutoExtrema.min, currentExtrema.min),
@@ -227,6 +334,14 @@
         return { low, high };
     }
 
+    /**
+     * Converts a value to a canvas y coordinate inside the plot area.
+     *
+     * @param value - Value in `unit`.
+     * @param range - Axis edges from {@link getDisplayRange}.
+     * @returns Y in CSS pixels. `range.high` maps to the top unless `invertY`. Values
+     *   outside the range map outside the plot area and are not clamped.
+     */
     function mapValueToY(value: number, range: { low: number; high: number }): number {
         const span = range.high - range.low;
         if (span <= 0) return margin.top;
@@ -235,28 +350,56 @@
         return margin.top + vertical * (plotHeight - margin.top - margin.bottom);
     }
 
+    /**
+     * Returns the frozen-mode window around the trigger, in seconds.
+     *
+     * @returns `pre` and `post` seconds, each at least 0.01. Missing or zero props
+     *   become 0.01.
+     */
     function getFrozenWindow() {
         const pre = Math.max(0.01, frozenPreWindowSec || 0.01);
         const post = Math.max(0.01, frozenPostWindowSec || 0.01);
         return { pre, post };
     }
 
+    /**
+     * Converts a time offset to a canvas x coordinate inside the plot area.
+     *
+     * The meaning of `timeSincePoint` depends on the mode:
+     * - Frozen and triggered: seconds relative to the trigger (negative before it).
+     *   `-pre` maps to the left edge and `+post` to the right, or mirrored with `invertX`.
+     * - Otherwise: seconds before the reference time (the sample's age). Age 0 maps to
+     *   the right edge and `timeWindow` to the left, or mirrored with `invertX`.
+     *
+     * @param timeSincePoint - Offset in seconds, as described above.
+     * @returns X in CSS pixels. Not clamped to the plot area.
+     */
     function mapTimeToX(timeSincePoint: number): number {
         const width = plotWidth - margin.left - margin.right;
         if (mode === 'frozen' && isTriggered) {
             const { pre, post } = getFrozenWindow();
+            // Shift [-pre, +post] to [0, pre + post], then scale to [0, 1].
             const normalizedTime = (timeSincePoint + pre) / (pre + post);
             return invertX
                 ? (plotWidth - margin.right) - normalizedTime * width
                 : margin.left + normalizedTime * width;
         }
 
+        // Age 0 (newest) sits at the right edge by default; older samples move left.
         const normalizedTime = timeSincePoint / timeWindow;
         return invertX
             ? margin.left + normalizedTime * width
             : (plotWidth - margin.right) - normalizedTime * width;
     }
 
+    /**
+     * Draws the time tick labels, value tick labels and both axis titles.
+     *
+     * Time labels match {@link mapTimeToX}: in continuous mode they run from
+     * `-timeWindow` to 0 s, in frozen mode from `-pre` to `+post` around the trigger.
+     * Offsets under 0.1 s are shown in milliseconds. Value labels use
+     * {@link getDisplayRange}; with no data they show a fixed -10 to 10 scale.
+     */
     function drawLabels() {
         if (!ctx) return;
         
@@ -329,6 +472,13 @@
         ctx.restore();
     }
     
+    /**
+     * Draws a dashed red vertical line at the trigger time.
+     *
+     * In frozen mode the trigger is always at offset 0. In continuous mode its x
+     * position moves left as the reference time advances. Skipped when not triggered,
+     * when `triggerTime` is 0, or when the line falls outside the plot area.
+     */
     function drawTriggerLine() {
         if (!ctx || !isTriggered || triggerTime === 0) return;
         
@@ -354,6 +504,12 @@
         }
     }
 
+    /**
+     * Draws a dashed amber horizontal line at `triggerThreshold` with a `Trig` label.
+     *
+     * Skipped unless `showTriggerThreshold` is set and the threshold is a number inside
+     * the current y range.
+     */
     function drawThresholdLine() {
         if (!ctx || !showTriggerThreshold || typeof triggerThreshold !== 'number' || Number.isNaN(triggerThreshold)) {
             return;
@@ -381,6 +537,15 @@
         ctx.fillText(`Trig ${triggerThreshold.toFixed(3)}`, margin.left + 6, y - 4);
     }
 
+    /**
+     * Draws a small rounded label, right-aligned to `x`.
+     *
+     * @param text - Label text.
+     * @param x - Right edge of the badge, CSS pixels.
+     * @param y - Top edge of the badge, CSS pixels. The badge is 18 px tall.
+     * @param fill - CSS fill color.
+     * @param stroke - CSS border color.
+     */
     function drawBadge(text: string, x: number, y: number, fill: string, stroke: string) {
         if (!ctx) return;
         ctx.save();
@@ -401,6 +566,10 @@
         ctx.restore();
     }
 
+    /**
+     * Stacks status badges in the top right corner of the plot area: LEVEL (threshold
+     * shown), PREBUFFERING, and FROZEN or COLLECTING (frozen mode after a trigger).
+     */
     function drawCanvasBadges() {
         if (!ctx) return;
 
@@ -422,6 +591,18 @@
         }
     }
 
+    /**
+     * Returns the time, in Unix epoch ms, that sits at the "0 s" edge in continuous mode.
+     *
+     * Uses `Date.now()` so the trace scrolls smoothly. If the newest sample is further
+     * from now than the larger of `MAX_VISIBLE_LIVE_LAG_MS` and
+     * `MAX_VISIBLE_LIVE_LAG_FRACTION * timeWindow`, uses the newest sample's timestamp
+     * instead, so a lagging or clock-skewed source still fills the window rather than
+     * sliding off the left edge.
+     *
+     * @param dataToPlot - Samples in arrival order; the last one is taken as newest.
+     * @returns Reference time in Unix epoch ms.
+     */
     function getContinuousReferenceTime(dataToPlot: DataPoint[]): number {
         const latestPoint = dataToPlot[dataToPlot.length - 1];
         const latestTimestamp = latestPoint?.timestamp;
@@ -443,10 +624,21 @@
         return now;
     }
 
+    /**
+     * Returns the samples being shown: `frozenData` in frozen mode when set, else `data`.
+     */
     function getDisplayData(): DataPoint[] {
         return mode === 'frozen' && frozenData ? frozenData : data;
     }
 
+    /**
+     * Returns the sample at the plot's "t = 0" position, used for the source clock and
+     * lag badges under the plot.
+     *
+     * @param points - Samples being shown.
+     * @returns In frozen mode after a trigger, the sample closest to `triggerTime`;
+     *   otherwise the last sample. `null` for an empty list.
+     */
     function getZeroTimePoint(points: DataPoint[]): DataPoint | null {
         if (!points || points.length === 0) return null;
         if (!(mode === 'frozen' && isTriggered && triggerTime > 0)) {
@@ -466,10 +658,22 @@
         return nearest;
     }
 
+    /**
+     * Formats a Unix epoch ms time as a local wall-clock time string.
+     *
+     * @param timestampMs - Unix epoch milliseconds.
+     * @returns The browser's `toLocaleTimeString()` output.
+     */
     function formatSourceClock(timestampMs: number): string {
         return new Date(timestampMs).toLocaleTimeString();
     }
 
+    /**
+     * Formats a delay for the lag badge, picking ms, s, m or h by size.
+     *
+     * @param ms - Delay in milliseconds.
+     * @returns The formatted delay, or `--` for negative or non-finite input.
+     */
     function formatLag(ms: number): string {
         if (!Number.isFinite(ms) || ms < 0) return '--';
         if (ms < 1000) return `${Math.round(ms)}ms`;
@@ -479,9 +683,24 @@
     }
     
     
+    /**
+     * Reduces a sorted series to about two points per horizontal pixel, keeping peaks.
+     *
+     * Splits the series into one bucket per pixel of plot width (at least 16) and keeps
+     * each bucket's minimum and maximum sample, in time order. Unlike taking every Nth
+     * sample, this never hides a spike, and it bounds the work per frame regardless of
+     * sample rate. Series that already fit (two points per bucket or fewer) are returned
+     * unchanged.
+     *
+     * @param data - Samples sorted by `timestamp`.
+     * @returns The reduced series, or `data` itself if no reduction was needed or
+     *   possible.
+     */
     function downsampleMinMax(data: DataPoint[]): DataPoint[] {
         if (data.length <= 2 || plotWidth <= 0) return data;
 
+        // One bucket per CSS pixel of plot width. Two points per bucket is as much detail
+        // as the screen can show.
         const bucketCount = Math.max(16, Math.floor(plotWidth - margin.left - margin.right));
         if (data.length <= bucketCount * 2) return data;
 
@@ -501,6 +720,7 @@
 
             if (!minPoint || !maxPoint) continue;
 
+            // Emit min and max in time order so the path does not zigzag backward in x.
             if (minPoint.timestamp <= maxPoint.timestamp) {
                 reduced.push(minPoint);
                 if (maxPoint !== minPoint) reduced.push(maxPoint);
@@ -513,6 +733,17 @@
         return reduced.length > 1 ? reduced : data;
     }
 
+    /**
+     * Returns the samples that fall inside the visible time window.
+     *
+     * Frozen mode after a trigger keeps `[triggerTime - pre, triggerTime + post]`;
+     * otherwise keeps the `timeWindow` seconds ending at `referenceTime`. Both bounds
+     * are inclusive.
+     *
+     * @param dataToPlot - Candidate samples.
+     * @param referenceTime - Right edge of the continuous window, Unix epoch ms.
+     * @returns A new filtered array (or the input if it is empty).
+     */
     function getVisiblePoints(dataToPlot: DataPoint[], referenceTime: number): DataPoint[] {
         if (dataToPlot.length === 0) return dataToPlot;
 
@@ -529,6 +760,19 @@
     }
     
     
+    /**
+     * Draws the trace for the visible samples.
+     *
+     * Steps: pick frozen or live data, keep the visible window, sort by time if needed,
+     * downsample with {@link downsampleMinMax}, then draw one path. The path is broken
+     * (a new `moveTo`) where time goes backward, where two neighboring points are more
+     * than a quarter of the plot width apart (a gap in the data), and around points
+     * outside the plot area.
+     *
+     * @param data - Live samples. Shadows the `data` prop; in frozen mode `frozenData` is
+     *   used instead when set.
+     * @param color - CSS stroke color.
+     */
     function drawDataLine(data: DataPoint[], color: string) {
         if (!ctx || data.length < 1) return;
         
@@ -569,6 +813,8 @@
         let hasActiveSegment = false;
         let previousTimestamp = Number.NaN;
         let previousX = Number.NaN;
+        // A jump wider than this between neighboring points is treated as a data gap and
+        // left undrawn instead of bridged with a straight line.
         const reconnectThreshold = (plotWidth - margin.left - margin.right) * 0.25;
         
         for (const point of sampledData) {
@@ -593,6 +839,8 @@
             
             
             if (x >= margin.left && x <= plotWidth - margin.right) {
+                // Start a new subpath after an off-screen point, a repeated or backward timestamp,
+                // or a gap; otherwise extend the current one.
                 const nonMonotonicTime = Number.isFinite(previousTimestamp) && point.timestamp <= previousTimestamp;
                 const largeJump = Number.isFinite(previousX) && Math.abs(x - previousX) > reconnectThreshold;
 
@@ -613,6 +861,11 @@
         ctx.stroke();
     }
     
+    /**
+     * Redraws the whole canvas: background, grid, axes, trace, threshold line, trigger
+     * line, labels and badges, or "No Data Available" when there are no samples.
+     * Does nothing until the canvas and context exist.
+     */
     function render() {
         if (!ctx || !canvas) {
             return;
@@ -658,6 +911,10 @@
         }
     }
 
+    /**
+     * Queues one {@link render} on the next animation frame. Further calls before that
+     * frame are ignored, so a burst of prop changes costs one draw.
+     */
     function scheduleRender() {
         if (renderQueued) return;
         renderQueued = true;
@@ -667,6 +924,10 @@
         });
     }
     
+    /**
+     * Sizes the canvas, draws the first frame, and redraws on window resize. The
+     * cleanup removes the listener and cancels any queued frame.
+     */
     onMount(() => {
         resizeCanvas();
         scheduleRender();
@@ -684,7 +945,10 @@
         };
     });
     
-    // Re-render when data changes using effect
+    /**
+     * Schedules a redraw when `data`, `mode` or `frozenData` change. In frozen mode it
+     * waits until `frozenData` is set.
+     */
     $effect(() => {
         if (ctx && data) {
             if (mode === 'frozen' && !frozenData) return;
@@ -692,6 +956,10 @@
         }
     });
 
+    /**
+     * Resets the continuous autoscale extrema when autoscale is turned off or the live
+     * buffer is cleared, so the axis can shrink again, then schedules a redraw.
+     */
     $effect(() => {
         if (!yAutoScale) {
             stickyAutoExtrema = null;
@@ -701,6 +969,11 @@
         scheduleRender();
     });
 
+    /**
+     * Captures `frozenRange` once per trigger (from `frozenData` if it has samples, else
+     * from `data`) and clears it when the plot leaves frozen mode. Later samples added
+     * while COLLECTING do not widen it.
+     */
     $effect(() => {
         if (mode === 'frozen' && isTriggered && triggerTime > 0) {
             const shouldInitialize =
@@ -718,6 +991,53 @@
         scheduleRender();
     });
 </script>
+
+<!--
+@component
+Live line plot of one LabJack channel, drawn on a `<canvas>`. Used by the plot page
+`/labjacks/plots/[asset_number]`, which subscribes to the channel, calibrates the
+samples and passes them in. This component does no NATS I/O.
+
+Modes:
+- `continuous`: the x axis shows the last `timeWindow` seconds, newest at the right
+  (left with `invertX`). The right edge is `Date.now()`, or the newest sample's time
+  when that lags by more than max(75 ms, 10% of the window).
+- `frozen`: after a trigger, shows `frozenData` from `frozenPreWindowSec` before to
+  `frozenPostWindowSec` after `triggerTime`, with the trigger at 0 s. With autoscale,
+  the y range is captured once per trigger so the plot holds still. Badges read COLLECTING while
+  post-trigger samples are still arriving, then FROZEN.
+
+Rendering: redraws are batched to one per animation frame. Each frame keeps only
+samples inside the window, sorts them if needed, and downsamples to a min/max pair per
+pixel column so spikes stay visible at any sample rate. The path breaks at data gaps
+wider than a quarter of the plot. With autoscale the y axis snaps to round 1/2/5 grid
+steps and only widens in continuous mode until autoscale is turned off or `data` is
+emptied. Below the canvas: sample count, source clock and lag at t = 0 (the newest
+sample, or the one nearest the trigger when frozen), and the latest value.
+
+Props:
+- `data: DataPoint[]`: live samples. `timestamp` is Unix epoch ms; `sourceTimestamp`
+  and `receivedAt` (both epoch ms, optional) feed the source clock and lag badges.
+- `unit: string`: unit label for the value axis, threshold and badges.
+- `timeWindow: number`: continuous window width, seconds.
+- `isTriggered: boolean`: a trigger has fired.
+- `triggerTime: number`: trigger time, Unix epoch ms; `0` means none.
+- `mode: 'continuous' | 'frozen'`: see above.
+- `frozenData?: DataPoint[]`: samples around the trigger, shown in frozen mode.
+- `frozenPreWindowSec?: number`: seconds before the trigger. Default `timeWindow`.
+- `frozenPostWindowSec?: number`: seconds after the trigger. Default `timeWindow`.
+- `frozenCollecting?: boolean`: shows COLLECTING instead of FROZEN. Default `false`.
+- `showTriggerThreshold?: boolean`: draws the threshold line and LEVEL badge.
+  Default `false`.
+- `triggerThreshold?: number`: trigger level, in `unit`. No default.
+- `prebuffering?: boolean`: shows the PREBUFFERING badge. Default `false`.
+- `yAutoScale?: boolean`: fit the y axis to the data. Default `true`.
+- `yMin?: number`, `yMax?: number`: fixed y limits when autoscale is off. Defaults
+  `-1` and `1`.
+- `invertX?: boolean`, `invertY?: boolean`: mirror an axis. Default `false`.
+
+Events: none. The component only reads its props.
+-->
 
 <div class="w-full h-80 bg-base-200 rounded-lg overflow-hidden flex-shrink-0">
     <canvas

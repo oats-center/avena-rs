@@ -1,31 +1,65 @@
+/**
+ * Decoder for the FlatBuffer `Scan` messages on live LabJack subjects.
+ *
+ * The streamer publishes one `Scan` per channel per read on
+ * `avenars.<site>.<box>.<source>.live.chNN` (schema in `rust-ljm/src/data.fbs`,
+ * bindings generated into `sampler/`). Each holds raw volts for one channel plus
+ * the time of the first value and the interval between values. This module turns a
+ * payload into {@link ScanData} and computes per-sample times.
+ *
+ * @module
+ */
 import * as flatbuffers from 'flatbuffers';
 import { Scan } from './sampler.js';
 
-/** Decoded LabJack scan batch from the generated FlatBuffer schema. */
+/** One decoded FlatBuffer `Scan`: a batch of samples from one channel. */
 export interface ScanData {
-    /** Unix nanosecond timestamp for the first sample in the batch. */
+    /** Time of `values[0]`, Unix epoch, in nanoseconds. */
     firstSampleUnixNs: bigint;
-    /** Fixed interval between samples in the batch, in nanoseconds. */
+    /** Time between consecutive values, in nanoseconds. */
     sampleIntervalNs: bigint;
-    /** Actual scan rate reported by the LabJack stream. */
+    /** Scan rate the LabJack reported, in Hz. */
     actualScanRateHz: number;
-    /** Monotonic per-run sequence number assigned by the streamer. */
+    /** Batch counter; starts at 0 when the stream starts. A gap means lost messages. */
     sequence: bigint;
-    /** Channel values contained in this scan batch. */
+    /** Raw readings for one channel, in volts. `NaN` marks a skipped sample. */
     values: Float64Array;
 }
 
-/** Converts a Unix nanosecond timestamp to JavaScript milliseconds. */
+/**
+ * Converts a Unix nanosecond timestamp to JavaScript milliseconds.
+ *
+ * @param timestampNs - Unix epoch time in nanoseconds.
+ * @returns Unix epoch time in milliseconds, with the sub-millisecond part kept as a
+ *   fraction. Converting to a `number` first limits precision to about 256 ns for
+ *   current dates.
+ */
 function nsToMs(timestampNs: bigint): number {
     return Number(timestampNs) / 1_000_000;
 }
 
-/** Parser for streamer FlatBuffer scan payloads received over NATS. */
+/** Stateless decoder for FlatBuffer `Scan` payloads received over NATS. */
 export class FlatBufferParser {
     /**
-     * Decodes a FlatBuffer scan payload into plot-ready sample data.
+     * Decodes a FlatBuffer `Scan` payload.
      *
-     * Returns `null` when the payload cannot be decoded or has no values.
+     * When the input is a view onto part of a larger buffer, as NATS WebSocket
+     * payloads can be, the bytes are copied first so the decoder gets a buffer that
+     * starts at offset 0. Values are read one at a time with the scalar accessor,
+     * not the generated `Float64Array` view, and a missing value becomes `NaN`.
+     *
+     * The payload is not verified against the schema. Errors are logged to the
+     * console.
+     *
+     * @param buffer - Message payload bytes.
+     * @returns The decoded scan, or `null` if it has no values or decoding throws.
+     *
+     * @example
+     * ```ts
+     * const parser = new FlatBufferParser();
+     * const scan = parser.parse(msg.data);
+     * if (scan) console.log(scan.values.length, scan.firstSampleUnixNs);
+     * ```
      */
     parse(buffer: ArrayBuffer | Uint8Array): ScanData | null {
         try {
@@ -64,8 +98,19 @@ export class FlatBufferParser {
 /**
  * Extracts sample values from a generated `Scan` object.
  *
- * The generated vector view is fast but can fail on misaligned websocket
- * buffers, so this falls back to scalar access when needed.
+ * Tries the generated `Float64Array` view first. That view fails on payloads whose
+ * byte offset is not 8-byte aligned, so on an error or an empty result this falls
+ * back to reading values one at a time.
+ *
+ * @remarks
+ * Not called anywhere at present; {@link FlatBufferParser.parse} reads values
+ * itself. The scalar fallback returns `null` on any non-finite value, so a batch
+ * containing a skipped (`NaN`) sample yields `null` there, while the direct view
+ * returns it as is.
+ *
+ * @param scan - Decoded `Scan` table.
+ * @returns The values, or `null` if there are none or the fallback finds a
+ *   non-finite value.
  */
 function extractValues(scan: Scan): Float64Array | null {
     try {
@@ -95,7 +140,22 @@ function extractValues(scan: Scan): Float64Array | null {
 }
 
 /**
- * Calculates JavaScript millisecond timestamps for every value in a scan batch.
+ * Calculates the time of every value in a scan batch.
+ *
+ * The time of `values[i]` is `firstSampleUnixNs + i * sampleIntervalNs`, computed
+ * in `bigint` and then converted to milliseconds.
+ *
+ * @param firstSampleUnixNs - Time of `values[0]`, Unix epoch, in nanoseconds.
+ * @param sampleIntervalNs - Time between consecutive values, in nanoseconds.
+ * @param valueCount - Number of values in the batch.
+ * @returns Unix epoch times in milliseconds (with fractions), one per value, or an
+ *   empty array if `valueCount` is not a positive finite number.
+ *
+ * @example
+ * ```ts
+ * const times = calculateSourceSampleTimestamps(
+ *   scan.firstSampleUnixNs, scan.sampleIntervalNs, scan.values.length);
+ * ```
  */
 export function calculateSourceSampleTimestamps(
     firstSampleUnixNs: bigint,
