@@ -1,15 +1,39 @@
-//! Rewrites older archived Parquet files in the current archive format.
+//! Offline tool that rewrites older archived Parquet files in the current archive format.
 //!
-//! Usage: `recompress <parquet_root> [--dry-run]`
+//! The archiver writes one Parquet file per channel and rotation window under its
+//! Parquet root. Files written before the archiver switched to zstd with
+//! delta-encoded timestamps (see `archive_format::writer_properties`) are much larger
+//! than they need to be. This tool walks an archive tree and rewrites those files in
+//! place without changing a single stored value. It does not talk to NATS.
+//!
+//! # Usage
+//!
+//! ```text
+//! recompress <parquet_root> [--dry-run]
+//! ```
+//!
+//! * `<parquet_root>` - Directory to scan recursively. The first argument that does
+//!   not start with `--` is used. Required.
+//! * `--dry-run` - Write and verify each rewritten copy, then delete it and leave the
+//!   original in place. Reports the sizes a real run would produce.
+//!
+//! Other `--` arguments are ignored. No environment variables are read. The tool
+//! prints a progress line every 1000 files and a summary at the end, and exits with an
+//! error if any file failed.
+//!
+//! # Design
 //!
 //! Each `part-*.parquet` file that is not already zstd with delta-encoded
 //! timestamps is rewritten next to itself as `*.parquet.recompress-tmp`,
 //! synced, read back and compared value by value (bit for bit, so NaN counts
 //! as equal only to the identical NaN) together with its key-value metadata.
-//! Only then is the original replaced by an atomic rename, so every file is
-//! at all times either the complete old version or the verified new one.
+//! Only then is the original replaced by an atomic rename, and the directory
+//! is synced, so every file is at all times either the complete old version or
+//! the verified new one. A failed file keeps its original.
+//!
 //! Unfinished (`.inprogress`) and quarantined files are never touched, and the
-//! tool can be interrupted and rerun: finished files are skipped.
+//! tool can be interrupted and rerun: finished files are skipped, and temporary
+//! copies left by an interrupted run are deleted on the next scan.
 
 use std::{
     fs,
@@ -34,28 +58,57 @@ mod archive_format;
 
 use archive_format::{SAMPLE_SCHEMA, writer_properties};
 
-/// Rows per row group in rewritten files; matches the archiver.
+/// Rows per row group in rewritten files (1,048,576); matches the archiver.
+///
+/// Old files may have many small row groups. Merging them into large groups gives
+/// zstd and delta encoding longer runs to work on.
 const ROWS_PER_ROW_GROUP: usize = 1 << 20;
+/// Suffix appended to a file's full name for its temporary rewritten copy.
+///
+/// Any file with this suffix found during the scan is left over from an interrupted
+/// run and is deleted by [`collect_files`].
 const TMP_SUFFIX: &str = ".recompress-tmp";
 
-/// Contents of one archived file.
+/// Contents of one archived file, held fully in memory.
 struct Archive {
+    /// `timestamp_unix_ns` column, in file order (Unix nanoseconds).
     timestamps: Vec<i64>,
+    /// `value` column, in file order, one per timestamp.
     values: Vec<f64>,
+    /// File-level key-value metadata, such as the `calibration` JSON document.
     metadata: Vec<KeyValue>,
 }
 
+/// Result of processing one file with [`recompress_file`].
 #[derive(Debug, PartialEq, Eq)]
 enum Outcome {
+    /// The file was rewritten and verified (or, in a dry run, a verified copy was
+    /// written and then deleted).
     Rewritten {
+        /// Size of the original file, in bytes.
         bytes_before: u64,
+        /// Size of the verified rewritten copy, in bytes.
         bytes_after: u64,
+        /// Number of rows in the file.
         rows: usize,
     },
+    /// The file already uses the current format and was left untouched.
     AlreadyCurrent,
 }
 
 /// Returns whether a file already uses the current archive format.
+///
+/// A file is current when it has at least one row group and every row group has
+/// exactly two columns, both zstd-compressed, with the timestamp column (column 0)
+/// using `DELTA_BINARY_PACKED` encoding. Only the footer metadata is inspected; no data
+/// pages are read.
+///
+/// A file with no row groups is never current. Rewriting it also produces no row
+/// groups, so [`recompress_file`] reports such a file as failed on every run.
+///
+/// # Arguments
+///
+/// * `reader` - Open reader for the file.
 fn is_current_format(reader: &SerializedFileReader<fs::File>) -> bool {
     let meta = reader.metadata();
     meta.num_row_groups() > 0
@@ -70,6 +123,29 @@ fn is_current_format(reader: &SerializedFileReader<fs::File>) -> bool {
         })
 }
 
+/// Reads every value of one column in a row group.
+///
+/// Records are read in batches of up to the row group's row count until the reader
+/// returns none. The columns are `REQUIRED`, so no definition or repetition levels are
+/// requested.
+///
+/// # Arguments
+///
+/// * `row_group` - Row group to read from.
+/// * `index` - Column index (0 for `timestamp_unix_ns`, 1 for `value`).
+///
+/// # Returns
+///
+/// The column's values in file order.
+///
+/// # Errors
+///
+/// Returns an error if the column reader cannot be created or a page cannot be read
+/// or decoded.
+///
+/// # Panics
+///
+/// Panics if the physical type of column `index` does not match `T`.
 fn read_column<T: DataType>(row_group: &dyn RowGroupReader, index: usize) -> Result<Vec<T::T>> {
     let rows = usize::try_from(row_group.metadata().num_rows()).unwrap_or(0);
     let mut reader = get_typed_column_reader::<T>(row_group.get_column_reader(index)?);
@@ -84,6 +160,19 @@ fn read_column<T: DataType>(row_group: &dyn RowGroupReader, index: usize) -> Res
 }
 
 /// Reads every row and the key-value metadata of an archived file.
+///
+/// Row groups are concatenated in order. A file without key-value metadata gives an
+/// empty `metadata` list.
+///
+/// # Arguments
+///
+/// * `reader` - Open reader for the file.
+///
+/// # Errors
+///
+/// Returns an error if the columns are not exactly `timestamp_unix_ns` and `value`, if
+/// a row group cannot be read, or if a row group's timestamp count, value count and
+/// row count disagree.
 fn read_archive(reader: &SerializedFileReader<fs::File>) -> Result<Archive> {
     let schema = reader.metadata().file_metadata().schema_descr();
     let names: Vec<&str> = schema.columns().iter().map(|c| c.name()).collect();
@@ -120,6 +209,20 @@ fn read_archive(reader: &SerializedFileReader<fs::File>) -> Result<Archive> {
 }
 
 /// Writes rows in the current archive format and syncs the file to disk.
+///
+/// Uses [`SAMPLE_SCHEMA`] and [`writer_properties`] (the same settings as the
+/// archiver) with the archive's original key-value metadata. Rows are split into row
+/// groups of [`ROWS_PER_ROW_GROUP`]. An existing file at `path` is truncated.
+///
+/// # Arguments
+///
+/// * `path` - Destination file, normally the temporary `*.recompress-tmp` path.
+/// * `archive` - Rows and metadata to write.
+///
+/// # Errors
+///
+/// Returns an error if the schema cannot be parsed, or if creating, writing, closing
+/// or syncing the file fails.
 fn write_archive(path: &Path, archive: &Archive) -> Result<()> {
     let schema = Arc::new(parse_message_type(SAMPLE_SCHEMA)?);
     let props = Arc::new(writer_properties(archive.metadata.clone()));
@@ -151,6 +254,20 @@ fn write_archive(path: &Path, archive: &Archive) -> Result<()> {
 }
 
 /// Checks that two archives hold exactly the same rows and metadata.
+///
+/// Timestamps must be equal in order. Values are compared by their bit patterns
+/// (`f64::to_bits`), so a NaN matches only an identical NaN and `0.0` does not match
+/// `-0.0`. Key-value metadata must match key by key and value by value, in order.
+///
+/// # Arguments
+///
+/// * `original` - Archive read from the original file.
+/// * `rewritten` - Archive read back from the rewritten copy.
+///
+/// # Errors
+///
+/// Returns an error naming the first part that differs: timestamps, values or
+/// key-value metadata.
 fn verify_identical(original: &Archive, rewritten: &Archive) -> Result<()> {
     if original.timestamps != rewritten.timestamps {
         bail!("timestamps differ");
@@ -177,6 +294,36 @@ fn verify_identical(original: &Archive, rewritten: &Archive) -> Result<()> {
 }
 
 /// Rewrites one file in the current format after verifying the copy.
+///
+/// Steps, in order:
+///
+/// 1. If the file is already current, return [`Outcome::AlreadyCurrent`] without
+///    touching it.
+/// 2. Read all rows and metadata into memory.
+/// 3. Write them to `<path>.recompress-tmp` with [`write_archive`] (which syncs it).
+/// 4. Reopen the copy, check it is in the current format, and compare it with the
+///    original using [`verify_identical`].
+/// 5. In a dry run, delete the copy. Otherwise rename it over the original and sync
+///    the parent directory so the rename is durable.
+///
+/// If any step from 3 to 4 fails, the temporary copy is deleted (best effort) and the
+/// original is left as it was.
+///
+/// # Arguments
+///
+/// * `path` - Path of a finished `part-*.parquet` file.
+/// * `dry_run` - When `true`, verify the rewrite but keep the original file.
+///
+/// # Returns
+///
+/// [`Outcome::Rewritten`] with the before and after sizes and row count (also in a dry
+/// run), or [`Outcome::AlreadyCurrent`].
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be opened or read, if writing or verifying the
+/// copy fails, or if deleting the copy (dry run), renaming it or syncing the directory
+/// fails.
 fn recompress_file(path: &Path, dry_run: bool) -> Result<Outcome> {
     let reader = SerializedFileReader::new(fs::File::open(path)?)?;
     if is_current_format(&reader) {
@@ -220,6 +367,22 @@ fn recompress_file(path: &Path, dry_run: bool) -> Result<Outcome> {
 }
 
 /// Lists archived `part-*.parquet` files and removes stale temporary copies.
+///
+/// Walks `root` recursively. Files ending in [`TMP_SUFFIX`] are deleted and reported,
+/// since they can only be left over from an interrupted run. Files whose names start
+/// with `part-` and end with `.parquet` are appended to `files`. Everything else,
+/// including `.inprogress` and quarantined files, is ignored. Symbolic links to
+/// directories are not followed, and names that are not valid UTF-8 are skipped.
+///
+/// # Arguments
+///
+/// * `root` - Directory to scan.
+/// * `files` - Output list; matching paths are appended in directory order.
+///
+/// # Errors
+///
+/// Returns an error if a directory cannot be read, a file type cannot be determined,
+/// or a stale temporary file cannot be deleted.
 fn collect_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
     for entry in fs::read_dir(root).with_context(|| format!("reading {}", root.display()))? {
         let entry = entry?;
@@ -241,6 +404,16 @@ fn collect_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
     Ok(())
 }
 
+/// Parses the command line, recompresses every archived file under the root and
+/// prints a summary.
+///
+/// Files are processed one at a time in sorted path order. A failure on one file is
+/// printed to stderr and does not stop the run.
+///
+/// # Errors
+///
+/// Returns an error if no `<parquet_root>` argument is given, if scanning the tree
+/// fails, or if any file failed (the originals of failed files are left untouched).
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let root = args
@@ -336,6 +509,8 @@ mod tests {
         writer.close().unwrap();
     }
 
+    /// An old-format file survives a dry run unchanged, is then rewritten into one
+    /// row group with identical contents, and is skipped on the next run.
     #[test]
     fn old_file_is_rewritten_identically_then_skipped() {
         let dir = std::env::temp_dir().join(format!("recompress-test-{}", uuid::Uuid::new_v4()));
@@ -396,6 +571,7 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 
+    /// Verification rejects any change to timestamps, values or metadata.
     #[test]
     fn verification_detects_any_difference() {
         let a = Archive {
@@ -422,6 +598,7 @@ mod tests {
         assert!(verify_identical(&a, &b).is_err());
     }
 
+    /// The scan deletes stale temporary copies and returns only finished part files.
     #[test]
     fn stale_temporary_files_are_removed_and_others_ignored() {
         let dir = std::env::temp_dir().join(format!("recompress-walk-{}", uuid::Uuid::new_v4()));
