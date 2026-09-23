@@ -1,31 +1,53 @@
 <script lang="ts">
     import { normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
 
+    /** `sensor_settings` of a LabJack config document. See `docs/src/reference/kv-config.md`. */
     interface SensorSettings {
+        /** Scans per read, and so samples per published message on each channel. */
         scans_per_read: number;
+        /** Scans per second, per channel. */
         scan_rate_hz: number;
+        /** Analog inputs to stream (`AIN<n>`), kept sorted ascending by this form. */
         channels_enabled: number[];
+        /** Edited here but not used by the streamer. */
         gains: number;
+        /** What each enabled channel measures, same order as `channels_enabled`. Label only. */
         data_formats: string[];
+        /** Unit of each enabled channel after calibration, same order. Label only. */
         measurement_units: string[];
+        /** `false` stops streaming. */
         labjack_on_off: boolean;
+        /** Volts-to-units conversion per channel, keyed by channel number as a string. */
         calibrations?: Record<string, CalibrationSpec>;
     }
     
+    /** One LabJack config document, stored in KV bucket `avenabox`. */
     interface LabJackConfig {
+        /** Display name; must be unique (case-insensitive) when adding. */
         labjack_name: string;
+        /** Asset number, > 0; must be unique when adding. Used in the archive path. */
         asset_number: number;
+        /** Number of inputs offered as channel toggles, 1 to 16. Not used by the streamer. */
         max_channels: number;
+        /** Site name, first subject token. */
         site_id?: string;
+        /** Edge node name, second subject token. */
         box_id?: string;
+        /** Kind of source, normally `labjack`. */
         source_type?: string;
+        /** Name of this LabJack in subjects, third token. */
         source_id?: string;
+        /** Subject root, normally `avenars`. Labeled "NATS Root" in the form. */
         nats_subject: string;
+        /** JetStream stream for live samples, normally `labjacks`. */
         nats_stream: string;
+        /** Archive file window, seconds. */
         rotate_secs: number;
+        /** What to record. */
         sensor_settings: SensorSettings;
     }
     
+    /** Component props. See the `@component` block below. */
     interface Props {
         config: LabJackConfig;
         isAddingNew: boolean;
@@ -46,20 +68,32 @@
         onClose
     }: Props = $props();
     
+    /** Working copy being edited. Shallow copy of `config`, taken once at mount. */
     let formData = $state<LabJackConfig>({ ...config });
+    /** Validation messages keyed by field name (`labjack_name`, `gains`, ...). */
     let errors = $state<Record<string, string>>({});
     let saving = $state<boolean>(false);
+    /** Result of the last Save Preset per channel, keyed by channel number as a string. */
     let calibrationStatus = $state<Record<string, string>>({});
+    /** Text of the "Save as preset" id box per channel. */
     let presetIdInputs = $state<Record<string, string>>({});
+    /**
+     * Raw text of the polynomial coefficient box per channel, kept so partial input such
+     * as `1, ` is not overwritten by the parsed coefficients while typing.
+     */
     let coeffInputs = $state<Record<string, string>>({});
 
+    /** Makes sure `sensor_settings.calibrations` exists so per-channel edits can write to it. */
     $effect(() => {
         if (!formData.sensor_settings.calibrations) {
             formData.sensor_settings.calibrations = {};
         }
     });
     
-    // Reactive validation for name and asset number
+    /**
+     * Live duplicate check while adding: flags a `labjack_name` already used by another
+     * LabJack (case-insensitive) and clears only that message when it no longer applies.
+     */
     $effect(() => {
         if (isAddingNew && formData.labjack_name.trim()) {
             const existingNames = Array.from(existingLabJacks.values()).map(lj => lj.labjack_name.toLowerCase());
@@ -71,6 +105,7 @@
         }
     });
     
+    /** Same live duplicate check for `asset_number` while adding. */
     $effect(() => {
         if (isAddingNew && formData.asset_number > 0) {
             const existingAssetNumbers = Array.from(existingLabJacks.values()).map(lj => lj.asset_number);
@@ -82,21 +117,45 @@
         }
     });
     
+    /** Choices for each channel's data format label. */
     const dataFormats = ["voltage", "temperature", "pressure", "current", "resistance"];
+    /** Choices for each channel's unit label. */
     const measurementUnits = ["V", "°C", "PSI", "A", "Ω", "Pa", "kPa", "bar"];
 
+    /**
+     * Returns the calibration for a channel, normalized to a valid spec.
+     *
+     * @param channel - Channel number.
+     * @returns The stored spec passed through `normalizeCalibration`, which gives identity
+     *   when none is stored or it is malformed.
+     */
     function getCalibration(channel: number): CalibrationSpec {
         const calibrations = formData.sensor_settings.calibrations ?? {};
         const raw = calibrations[String(channel)] as CalibrationSpec | undefined;
         return normalizeCalibration(raw);
     }
 
+    /**
+     * Stores a calibration for a channel in `formData`, replacing the calibrations object
+     * so Svelte sees the change.
+     *
+     * @param channel - Channel number.
+     * @param spec - New calibration.
+     */
     function setCalibration(channel: number, spec: CalibrationSpec) {
         const calibrations = { ...(formData.sensor_settings.calibrations ?? {}) };
         calibrations[String(channel)] = spec;
         formData.sensor_settings.calibrations = calibrations;
     }
 
+    /**
+     * Applies a choice from the Preset dropdown to a channel.
+     *
+     * @param channel - Channel number.
+     * @param presetId - `custom` (no change), `identity`, or the id of a saved preset in
+     *   `availableCalibrations`, which is copied including its `id`. Unknown ids do
+     *   nothing.
+     */
     function applyPreset(channel: number, presetId: string) {
         if (presetId === "custom") {
             return;
@@ -116,6 +175,13 @@
         }
     }
 
+    /**
+     * Returns the Preset dropdown value that matches a channel's current calibration.
+     *
+     * @param channel - Channel number.
+     * @returns `identity` for an identity spec without an id, the spec's `id` when that
+     *   preset exists, otherwise `custom`.
+     */
     function getPresetSelection(channel: number): string {
         const current = getCalibration(channel);
         if (current.type === "identity" && !current.id) {
@@ -127,6 +193,13 @@
         return "custom";
     }
 
+    /**
+     * Switches a channel's calibration type and resets it to that type's neutral values:
+     * linear `a = 1, b = 0`, polynomial `[0, 1]`, or identity. Drops any preset id.
+     *
+     * @param channel - Channel number.
+     * @param type - New calibration type.
+     */
     function setCalibrationType(channel: number, type: CalibrationSpec["type"]) {
         if (type === "linear") {
             setCalibration(channel, { type: "linear", a: 1, b: 0 });
@@ -140,6 +213,14 @@
         }
     }
 
+    /**
+     * Sets the slope or offset of a channel's linear calibration and drops its preset id,
+     * since the values no longer match the preset.
+     *
+     * @param channel - Channel number.
+     * @param field - `a` (slope) or `b` (offset).
+     * @param value - New value; non-finite input is stored as 0.
+     */
     function updateLinearField(channel: number, field: "a" | "b", value: number) {
         const current = getCalibration(channel);
         if (current.type !== "linear") {
@@ -153,6 +234,16 @@
         setCalibration(channel, next);
     }
 
+    /**
+     * Parses the coefficient box and stores a polynomial calibration for a channel.
+     *
+     * Coefficients are comma-separated, lowest order first (`c0, c1, c2, ...`). Parts that
+     * are not finite numbers are skipped; if none are left the spec falls back to `[0, 1]`.
+     * The raw text is kept in `coeffInputs`. Drops any preset id.
+     *
+     * @param channel - Channel number.
+     * @param value - Raw text from the input.
+     */
     function updatePolynomialCoeffs(channel: number, value: string) {
         coeffInputs[String(channel)] = value;
         const coeffs = value
@@ -166,6 +257,17 @@
         setCalibration(channel, next);
     }
 
+    /**
+     * Saves a channel's current calibration as a named preset.
+     *
+     * Sanitizes the typed id with {@link sanitizeCalibrationId} (and writes the sanitized
+     * form back to the input), then calls `onSaveCalibration`. On success the channel's
+     * calibration is tagged with the new id. The outcome is shown under the channel.
+     *
+     * @param channel - Channel number.
+     * @returns A promise that resolves when the save attempt finishes. Does not reject
+     *   unless `onSaveCalibration` does.
+     */
     async function handleSavePreset(channel: number) {
         const raw = presetIdInputs[String(channel)] ?? "";
         const sanitized = sanitizeCalibrationId(raw);
@@ -187,6 +289,18 @@
         }
     }
 
+    /**
+     * Turns free text into a preset id: trimmed, lowercased, whitespace runs replaced by
+     * `-`, and everything except `a-z`, `0-9`, `.`, `_` and `-` removed.
+     *
+     * @param raw - Text typed by the user.
+     * @returns The id, possibly empty.
+     *
+     * @example
+     * ```ts
+     * sanitizeCalibrationId(" TP 3505 (new) "); // "tp-3505-new"
+     * ```
+     */
     function sanitizeCalibrationId(raw: string): string {
         return raw
             .trim()
@@ -195,6 +309,17 @@
             .replace(/[^a-z0-9._-]/g, "");
     }
     
+    /**
+     * Checks the whole form and replaces `errors` with the problems found.
+     *
+     * Requires a name and, when adding, a name and asset number not used by another
+     * LabJack; asset number, rotate interval, scans per read, scan rate and gains above 0;
+     * max channels from 1 to 16; non-empty NATS root and stream; at least one enabled
+     * channel; and one data format and one unit per enabled channel. Site, box, source
+     * and calibrations are not checked.
+     *
+     * @returns `true` if the form is valid.
+     */
     function validateForm(): boolean {
         errors = {};
         
@@ -261,6 +386,13 @@
         return Object.keys(errors).length === 0;
     }
     
+    /**
+     * Validates the form and, if valid, passes `formData` to `onSave`, showing the
+     * spinner until it settles. Validation errors are shown inline and nothing is sent.
+     *
+     * @returns A promise that resolves when `onSave` finishes. Rejects if `onSave`
+     *   rejects.
+     */
     async function handleSave() {
         if (!validateForm()) {
             return;
@@ -274,6 +406,14 @@
         }
     }
     
+    /**
+     * Enables or disables a channel.
+     *
+     * Disabling removes the channel's data format, unit and calibration. Enabling appends
+     * `voltage`, `V` and an identity calibration. `channels_enabled` is then sorted.
+     *
+     * @param channel - Channel number, 0 to `max_channels - 1`.
+     */
     function handleChannelToggle(channel: number) {
         const channels = [...formData.sensor_settings.channels_enabled];
         const index = channels.indexOf(channel);
@@ -295,7 +435,10 @@
         
         formData.sensor_settings.channels_enabled = channels.sort((a, b) => a - b);
         
-        // Reorder data formats and measurement units to match the sorted channels
+        // Meant to reorder data formats and units to match the sorted channels, but
+        // `originalIndex` is looked up in the already sorted list, so it equals the loop
+        // index and the arrays keep their order. Enabling a channel below an existing one
+        // therefore leaves its `voltage`/`V` defaults at the end, shifting labels by one.
         const sortedDataFormats = [];
         const sortedMeasurementUnits = [];
         
@@ -311,12 +454,57 @@
     }
     
     
+    /**
+     * Closes the modal on Escape, from anywhere in the window.
+     *
+     * @param event - Window keydown event.
+     */
     function handleKeyPress(event: KeyboardEvent) {
         if (event.key === 'Escape') {
             onClose();
         }
     }
 </script>
+
+<!--
+@component
+Modal form to add or edit one LabJack config document. The document lives in KV bucket
+`avenabox` under `<site_id>.<box_id>.<source_id>.config` (see
+`docs/src/reference/kv-config.md`). This component does no NATS I/O itself: it edits
+a local copy and hands it to `onSave`; the `/labjacks` page writes it to KV. When
+adding, the page builds the key from `site_id`, `box_id` and `source_id` (or
+`labjack_name`); when editing, it keeps the existing key.
+
+Fields edited:
+- Top level: `labjack_name`, `asset_number`, `max_channels`, `rotate_secs`,
+  `nats_subject` (labeled "NATS Root"), `nats_stream`, `site_id`, `box_id`,
+  `source_type`, `source_id`.
+- `sensor_settings`: `scans_per_read`, `scan_rate_hz`, `gains`, `labjack_on_off`
+  (Online/Offline), `channels_enabled` (toggles 0 to `max_channels - 1`), and per
+  enabled channel `data_formats`, `measurement_units` and `calibrations`
+  (identity, linear `a`/`b`, or polynomial coefficients).
+
+A channel's calibration can be picked from saved presets or saved as a new preset
+through `onSaveCalibration` (the page stores presets in `avenabox` under
+`calibration.<id>`). Saving runs full validation first; name and asset number
+duplicates are also flagged live while adding. Escape, the close button, Cancel, or a
+click on the backdrop close the modal without saving.
+
+Props:
+- `config: LabJackConfig`: document to edit, or the defaults for a new one. Copied
+  once at mount.
+- `isAddingNew: boolean`: new LabJack (enables duplicate checks, changes titles).
+- `existingLabJacks: Map<string, LabJackConfig>`: all loaded configs by KV key, used
+  for the duplicate name and asset number checks.
+- `availableCalibrations: Map<string, CalibrationSpec>`: saved presets by id.
+- `onSaveCalibration: (spec: CalibrationSpec) => Promise<boolean>`: saves `spec` (with
+  its sanitized `id`) as a preset; resolves `true` on success.
+- `onSave: (config: LabJackConfig) => void`: called with the edited document after
+  validation passes. Awaited, so it may return a promise.
+- `onClose: () => void`: called to close the modal.
+
+No props have defaults.
+-->
 
 <svelte:window on:keydown={handleKeyPress} />
 

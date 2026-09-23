@@ -1,8 +1,37 @@
-//! Debug subscriber that writes live NATS LabJack samples to CSV files.
+//! Diagnostic subscriber that writes live NATS LabJack samples to CSV files.
 //!
-//! This binary is useful for inspecting the live FlatBuffer stream without
-//! running the Parquet archiver. It subscribes to the configured live subject
-//! wildcard and appends one CSV file per channel.
+//! The streamer publishes each channel's scans as FlatBuffer `sampler::Scan` messages
+//! on NATS, and the archiver normally turns them into Parquet. This binary is for
+//! inspecting that live stream without running the archiver. It makes a plain
+//! (non-JetStream) core NATS subscription to the live subject wildcard from
+//! [`subjects::live_labjack_stream_subject`], decodes each scan, and appends one CSV
+//! file per channel. It only sees messages published while it is running.
+//!
+//! Each CSV file is named `labjack_<asset>_<channel>.csv` (for example
+//! `labjack_001_ch03.csv`) and has the header `sequence,timestamp,raw_value`. Every
+//! sample becomes one row: the scan's sequence number, the sample time as RFC 3339
+//! UTC, and the value as published.
+//!
+//! # Configuration
+//!
+//! * `NATS_SUBJECT` - Subject root. Default: `avenabox`.
+//! * `ASSET_NUMBER` - Asset number used in CSV file names. Unparseable values fall
+//!   back to the default. Default: `1`.
+//! * `SITE_ID` - Site ID for the structured subject layout.
+//! * `BOX_ID` - Box ID for the structured subject layout.
+//! * `LABJACK_NAME` - LabJack name, used as the source when `SOURCE_ID` is unset.
+//! * `SOURCE_TYPE` - Read and passed on, but does not affect the subject.
+//! * `SOURCE_ID` - Source ID for the structured subject layout.
+//! * `OUTPUT_DIR` - Directory for the CSV files, created if missing. Default:
+//!   `outputs`.
+//! * `NATS_SERVERS` - Comma-separated NATS server URLs. Default:
+//!   `nats://127.0.0.1:4222`.
+//! * `NATS_CREDS_FILE` - NATS credentials file. Default: `apt.creds`.
+//!
+//! With the defaults the subscription is the legacy wildcard `avenabox.*.data.*`,
+//! which matches every asset, while the file names always use `ASSET_NUMBER`.
+//! Setting any of `SITE_ID`, `BOX_ID` or `SOURCE_ID`, or `NATS_SUBJECT=avenars`,
+//! switches to `<root>.<site>.<box>.<source>.live.*`.
 
 use async_nats::{self, ConnectOptions};
 use flatbuffers::root;
@@ -22,11 +51,43 @@ mod subjects;
 use sample_data_generated::sampler;
 
 /// Extracts the final subject token, which is expected to be the channel name.
+///
+/// # Arguments
+///
+/// * `subject` - Subject of a received message.
+///
+/// # Returns
+///
+/// The text after the last `.` (the whole subject if it has no `.`). With
+/// [`str::split`] this is always `Some`, so the `None` case in [`main`] is not reached
+/// in practice.
+///
+/// # Examples
+///
+/// ```text
+/// extract_channel_token("avenars.i69.i69-mu1.i69-lj2.live.ch11") -> Some("ch11")
+/// extract_channel_token("avenabox.1456.data.ch03")              -> Some("ch03")
+/// ```
 fn extract_channel_token(subject: &str) -> Option<String> {
     subject.split('.').last().map(|s| s.to_string())
 }
 
 /// Opens or creates the per-channel CSV file and writes its header if needed.
+///
+/// The file is `<out_dir>/labjack_<asset>_<ch_token>.csv`, with the asset formatted by
+/// [`subjects::pad_asset`], and is opened for appending. The header
+/// `sequence,timestamp,raw_value` is written when the file did not exist or is empty.
+///
+/// # Arguments
+///
+/// * `out_dir` - Output directory; must already exist.
+/// * `asset` - Asset number used in the file name.
+/// * `ch_token` - Channel token from the subject, for example `ch03`.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be opened or created, its metadata cannot be
+/// read, or the header cannot be written.
 fn open_csv_for_channel(out_dir: &Path, asset: u32, ch_token: &str) -> std::io::Result<File> {
     let fname = format!("labjack_{}_{}.csv", subjects::pad_asset(asset), ch_token);
     let path = out_dir.join(fname);
@@ -39,13 +100,45 @@ fn open_csv_for_channel(out_dir: &Path, asset: u32, ch_token: &str) -> std::io::
     Ok(file)
 }
 
-/// Converts a Unix nanosecond timestamp into RFC 3339 text.
+/// Converts a Unix nanosecond timestamp into RFC 3339 text in UTC.
+///
+/// # Arguments
+///
+/// * `timestamp_unix_ns` - Time since the Unix epoch, in nanoseconds.
+///
+/// # Returns
+///
+/// The formatted time, for example `2026-09-01T00:00:00.000500+00:00`. Every `i64`
+/// value is representable, so this always returns `Some`.
 fn timestamp_unix_ns_to_rfc3339(timestamp_unix_ns: i64) -> Option<String> {
     Some(chrono::DateTime::<chrono::Utc>::from_timestamp_nanos(timestamp_unix_ns).to_rfc3339())
 }
 
 #[tokio::main]
 /// Starts the live NATS subscriber and appends decoded samples to CSV.
+///
+/// Reads the configuration listed in the module docs, creates the output directory,
+/// connects to NATS with the credentials file, and subscribes to the live wildcard.
+/// For each message it decodes a `sampler::Scan` and writes one row per value, with
+/// sample `i` timestamped `first_sample_unix_ns + i * sample_interval_ns`. CSV files are
+/// opened on first use per channel token and kept open. The file is flushed after each
+/// scan.
+///
+/// Messages that fail FlatBuffer decoding are logged to stderr and skipped. Scans
+/// without a `values` vector are skipped silently. If a timestamp does not fit in
+/// `i64`, the rest of that scan is dropped with a message on stderr.
+///
+/// Runs until the subscription ends.
+///
+/// # Errors
+///
+/// Returns an error if the output directory cannot be created, `NATS_SERVERS` is
+/// invalid, the credentials file cannot be loaded, the connection or subscription
+/// fails, or writing or flushing a CSV file fails.
+///
+/// # Panics
+///
+/// Panics if a per-channel CSV file cannot be opened or its header written.
 async fn main() -> Result<(), Box<dyn Error>> {
     // match JSON config keys
     let subject_prefix = std::env::var("NATS_SUBJECT").unwrap_or_else(|_| "avenabox".to_string());

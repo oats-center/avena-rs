@@ -5,6 +5,7 @@
     import { labjackConfigKey } from "$lib/subjects";
     import LabJackConfigModal from "$lib/components/LabJackConfigModal.svelte";
     
+    /** `sensor_settings` object of a LabJack config in KV. See the KV config reference. */
     interface SensorSettings {
         scans_per_read: number;
         scan_rate_hz: number;
@@ -16,6 +17,10 @@
         calibrations?: Record<string, CalibrationSpec>;
     }
     
+    /**
+     * LabJack config document stored in KV bucket `avenabox` under
+     * `<site>.<box>.<source>.config`.
+     */
     interface LabJackConfig {
         labjack_name: string;
         asset_number: number;
@@ -30,6 +35,10 @@
         sensor_settings: SensorSettings;
     }
 
+    /**
+     * Fallback values used by {@link normalizeSensorSettings} for missing or invalid
+     * fields.
+     */
     const DEFAULT_SENSOR_SETTINGS: SensorSettings = {
         scans_per_read: 200,
         scan_rate_hz: 1000,
@@ -41,6 +50,19 @@
         calibrations: {}
     };
 
+    /**
+     * Builds a complete sensor settings object from a raw `sensor_settings` value.
+     *
+     * Reads the older field names `scan_rate` (for `scans_per_read`) and `sampling_rate`
+     * (for `scan_rate_hz`) when the new ones are absent. Missing or non-finite numbers take
+     * the values in {@link DEFAULT_SENSOR_SETTINGS}. `data_formats` and `measurement_units`
+     * are padded with `"voltage"` and `"V"` to one entry per enabled channel. Arrays and
+     * `calibrations` are shallow copies.
+     *
+     * @param rawSensor - Parsed `sensor_settings` from KV or from the edit modal. May be
+     *   `undefined` or partial.
+     * @returns A new settings object with every field set.
+     */
     function normalizeSensorSettings(rawSensor: any): SensorSettings {
         const sensor: SensorSettings = {
             scans_per_read: Number(
@@ -69,6 +91,16 @@
         return sensor;
     }
 
+    /**
+     * Copies a config from the edit modal into the shape written to KV.
+     *
+     * Converts the numeric top-level fields with `Number()` and normalizes the sensor
+     * settings with {@link normalizeSensorSettings}. Only the fields listed in
+     * `LabJackConfig` are kept; any other field on `raw` is dropped.
+     *
+     * @param raw - Config returned by `LabJackConfigModal`.
+     * @returns A new config object.
+     */
     function sanitizeLabJackConfig(raw: LabJackConfig): LabJackConfig {
         return {
             labjack_name: raw.labjack_name,
@@ -85,6 +117,17 @@
         };
     }
 
+    /**
+     * Fills in defaults for a config read from KV.
+     *
+     * Defaults: `labjack_name` `"unknown"`, `asset_number` 0, `max_channels` 8, empty
+     * `site_id` and `box_id`, `source_type` `"labjack"`, `source_id` falls back to
+     * `labjack_name`, `nats_subject` `"avenars"`, `nats_stream` `"labjacks"`, `rotate_secs`
+     * 60.
+     *
+     * @param raw - Parsed JSON value of a `*.*.*.config` key.
+     * @returns The normalized config, or `null` when `raw` is not an object.
+     */
     function normalizeLabJackConfig(raw: any): LabJackConfig | null {
         if (!raw || typeof raw !== "object") return null;
         const sensor = normalizeSensorSettings(raw.sensor_settings ?? {});
@@ -104,20 +147,55 @@
         };
     }
     
+    /**
+     * Configs shown as cards, keyed by their KV key in `avenabox`. Replaced, not mutated,
+     * on change.
+     */
     let labjacks = $state<Map<string, LabJackConfig>>(new Map());
     let loading = $state<boolean>(true);
     let error = $state<string>("");
     let showModal = $state<boolean>(false);
+    /**
+     * Config passed to the modal. The modal is shown only while this is set and
+     * `showModal` is true.
+     */
     let editingConfig = $state<LabJackConfig | null>(null);
+    /** KV key of the config being edited. Empty while adding a new config. */
     let editingKey = $state<string>("");
+    /**
+     * True when the modal was opened with "Add New LabJack"; the save key is then built
+     * from the config.
+     */
     let isAddingNew = $state<boolean>(false);
+    /**
+     * Connection opened by {@link loadLabJacks} and used for KV reads. Not closed by this
+     * page.
+     */
     let natsService: any = null;
+    /**
+     * Calibration presets from `calibration.*` keys, keyed by preset id, offered in the
+     * modal.
+     */
     let availableCalibrations = $state<Map<string, CalibrationSpec>>(new Map());
     
     onMount(async () => {
         await loadLabJacks();
     });
     
+    /**
+     * Connects to central NATS and loads all LabJack configs and calibration presets.
+     *
+     * Reads `serverName` and `credentialsContent` from sessionStorage and opens a new
+     * connection. Loads presets with {@link loadCalibrations}, then lists keys matching
+     * `*.*.*.config` in bucket `avenabox` and parses each one with
+     * {@link normalizeLabJackConfig}. A key that fails to parse is logged and skipped.
+     * Replaces {@link labjacks} with the result. Sets `error` when login data is missing,
+     * the connection fails or listing fails; the promise does not reject.
+     *
+     * @remarks
+     * Also used by the Retry button. Each call opens a new connection and does not close
+     * the previous one.
+     */
     async function loadLabJacks() {
         loading = true;
         error = "";
@@ -167,6 +245,13 @@
         }
     }
 
+    /**
+     * Loads calibration presets from keys matching `calibration.*` in bucket `avenabox`.
+     *
+     * Each value is passed through `normalizeCalibration`. The preset id is the value's `id`
+     * field, or the key without the `calibration.` prefix. Errors are logged; a failure to
+     * list keys leaves {@link availableCalibrations} unchanged.
+     */
     async function loadCalibrations() {
         try {
             const keys = await getKeys(natsService, "avenabox", "calibration.*");
@@ -187,6 +272,13 @@
         }
     }
     
+    /**
+     * Opens the modal to edit an existing config.
+     *
+     * @param key - KV key of the config. Saves go back to this key.
+     * @param config - Config to edit. The modal receives a shallow copy, so
+     *   `sensor_settings` is still shared with the card's object.
+     */
     function handleEdit(key: string, config: LabJackConfig) {
         editingKey = key;
         editingConfig = { ...config };
@@ -194,6 +286,12 @@
         showModal = true;
     }
     
+    /**
+     * Opens the modal with a starter config for a new LabJack.
+     *
+     * The starter config uses site `i69`, subject `avenars`, 1000 Hz, 200 scans per read
+     * and channels 0 to 2.
+     */
     function handleAddNew() {
         editingKey = "";
         editingConfig = {
@@ -222,6 +320,15 @@
         showModal = true;
     }
     
+    /**
+     * Deletes a config from KV after the user confirms.
+     *
+     * Calls `deleteKey`, which opens its own short-lived connection with the sessionStorage
+     * credentials. On success the card is removed from {@link labjacks}; on failure `error`
+     * is set.
+     *
+     * @param key - KV key in `avenabox` to delete.
+     */
     async function handleDelete(key: string) {
         if (!confirm(`Are you sure you want to delete LabJack "${key}"?`)) {
             return;
@@ -253,6 +360,17 @@
         }
     }
     
+    /**
+     * Writes a config from the modal to KV and updates the card list.
+     *
+     * The config is cleaned with {@link sanitizeLabJackConfig}. A new config is stored
+     * under `labjackConfigKey(config)`, i.e. `<site>.<box>.<source>.config`. An edited
+     * config is stored under its original key, even if its site, box or source changed.
+     * `updateConfig` opens its own short-lived connection. On success the modal closes; on
+     * failure `error` is set and the modal stays open.
+     *
+     * @param config - Config returned by `LabJackConfigModal`.
+     */
     async function handleSave(config: LabJackConfig) {
         try {
             const serverName = sessionStorage.getItem("serverName");
@@ -286,6 +404,16 @@
         }
     }
 
+    /**
+     * Saves a calibration preset to KV key `calibration.<id>` in bucket `avenabox`.
+     *
+     * The id is cleaned with {@link sanitizeCalibrationId} and written back into the stored
+     * value. On success the preset is added to {@link availableCalibrations}.
+     *
+     * @param spec - Preset from the modal. Its `id` becomes part of the key.
+     * @returns Resolves to `true` when the write succeeded, `false` when login data is
+     *   missing, the cleaned id is empty or the write failed.
+     */
     async function handleSaveCalibration(spec: CalibrationSpec): Promise<boolean> {
         try {
             const serverName = sessionStorage.getItem("serverName");
@@ -313,6 +441,20 @@
         }
     }
 
+    /**
+     * Turns a preset name into a KV key token.
+     *
+     * Trims, lowercases, replaces whitespace runs with `-` and drops any character outside
+     * `a-z`, `0-9`, `.`, `_` and `-`.
+     *
+     * @param raw - Preset id typed by the user.
+     * @returns The cleaned id. May be empty.
+     *
+     * @example
+     * ```ts
+     * sanitizeCalibrationId("  PT100 Probe #2 "); // "pt100-probe-2"
+     * ```
+     */
     function sanitizeCalibrationId(raw: string): string {
         return raw
             .trim()
@@ -321,6 +463,7 @@
             .replace(/[^a-z0-9._-]/g, "");
     }
     
+    /** Closes the modal without saving and clears the edit state. */
     function handleModalClose() {
         showModal = false;
         editingConfig = null;
@@ -328,6 +471,7 @@
         isAddingNew = false;
     }
     
+    /** Removes the login data from sessionStorage and does a full page load of `/`. */
     function logout() {
         sessionStorage.removeItem("serverName");
         sessionStorage.removeItem("credentialsContent");
@@ -335,6 +479,28 @@
     }
 </script>
 
+<!--
+@component
+LabJack config list at `/labjacks`. It takes no URL parameters.
+
+Reads `serverName` and `credentialsContent` from sessionStorage (written by the login
+page) and opens a connection to central NATS. If either item is missing it shows an
+error with a link back to `/`.
+
+KV bucket `avenabox`:
+- Reads every key matching `*.*.*.config` (one LabJack config each, shown as a card)
+  and every key matching `calibration.*` (calibration presets).
+- Writes a config to `<site>.<box>.<source>.config` on save, deletes a config key on
+  delete, and writes `calibration.<id>` when a preset is saved from the modal. Writes
+  and deletes go through `updateConfig` and `deleteKey`, which each open their own
+  short-lived connection.
+
+The page subscribes to no subjects. Editing and adding are done in
+`LabJackConfigModal`, which gets the config, `isAddingNew`, all loaded configs, the
+calibration presets and the `onSave`, `onSaveCalibration` and `onClose` callbacks. The
+plot button on each card does a full page load of
+`/labjacks/plots/<asset_number>?key=<kv key>`.
+-->
 <svelte:head>
     <title>LabJack Management - Avena-OTR</title>
 </svelte:head>

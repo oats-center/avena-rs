@@ -2,15 +2,30 @@
     import { goto } from "$app/navigation";
     import { connect } from "$lib/nats.svelte";
     
+    /**
+     * WebSocket URL of central NATS as typed by the user. `connect` also accepts a bare
+     * host.
+     */
     let serverName = $state<string>("ws://nats1.oats:8080");
+    /** File chosen in the credentials input, kept to show its name. */
     let credentialsFile = $state<File | null>(null);
+    /** Text of the chosen `.creds` file. This, not the file, is sent to `connect`. */
     let credentialsContent = $state<string>("");
     let loading = $state<boolean>(false);
+    /** Error message shown above the form. Empty hides the alert. */
     let alert = $state<string>("");
     
     // Debug log
     console.log("Login page loaded");
 
+    /**
+     * Reads the chosen credentials file into {@link credentialsContent}.
+     *
+     * Clears any earlier alert on success. On a read error it sets an alert and leaves the
+     * previous content in place. Does nothing when no file was chosen.
+     *
+     * @param event - `change` event from the file input.
+     */
     async function handleFileUpload(event: Event) {
         const target = event.target as HTMLInputElement;
         const file = target.files?.[0];
@@ -27,6 +42,19 @@
         }
     }
 
+    /**
+     * Tests the server URL and credentials, then moves on to `/labjacks`.
+     *
+     * Opens a connection with `connect` and closes it right away; the connection is only a
+     * check. On success it stores `serverName` and `credentialsContent` in sessionStorage,
+     * where the other pages read them to open their own connections, then navigates with
+     * `goto`, falling back to a full page load if client-side navigation fails. On failure
+     * it sets an alert. Errors are caught, so the returned promise does not reject.
+     *
+     * @remarks
+     * The credentials are stored as plain text in sessionStorage, so they last for this
+     * browser tab only and are visible to any script on the origin.
+     */
     async function connectToNats() {
         if (!serverName.trim()) {
             alert = "Please enter a server URL";
@@ -59,6 +87,15 @@
         }
     }
 
+    /**
+     * Calls {@link connectToNats} when Enter is pressed in the server URL field.
+     *
+     * @param event - `keypress` event from the server URL input.
+     *
+     * @remarks
+     * The input is inside the form, so Enter also submits the form, whose handler calls
+     * {@link connectToNats} too. One Enter can start two connection attempts.
+     */
     function handleKeyPress(event: KeyboardEvent) {
         if (event.key === 'Enter') {
             connectToNats();
@@ -66,6 +103,22 @@
     }
 </script>
 
+<!--
+@component
+Login page at `/`. It takes no URL parameters.
+
+The user enters the WebSocket URL of central NATS (default `ws://nats1.oats:8080`) and
+picks a `.creds` file. On submit the page opens a test connection with `connect` from
+`$lib/nats.svelte`, closes it, and writes two sessionStorage items that the other pages
+read to open their own connections:
+
+- `serverName`: the server URL as typed.
+- `credentialsContent`: the full text of the `.creds` file.
+
+It then navigates to `/labjacks`. The page subscribes to no subjects and reads or writes
+no KV keys. It does not read sessionStorage, so an earlier login in the same tab does not
+skip this page.
+-->
 <svelte:head>
     <title>Login - Avena-OTR LabJack Management</title>
 </svelte:head>

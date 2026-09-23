@@ -11,6 +11,7 @@
     } from "$lib/flatbuffer-parser";
 
     
+    /** `sensor_settings` object of a LabJack config in KV. See the KV config reference. */
     interface SensorSettings {
         scans_per_read: number;
         scan_rate_hz: number;
@@ -22,6 +23,10 @@
         calibrations?: Record<string, CalibrationSpec>;
     }
     
+    /**
+     * LabJack config document stored in KV bucket `avenabox` under
+     * `<site>.<box>.<source>.config`.
+     */
     interface LabJackConfig {
         labjack_name: string;
         asset_number: number;
@@ -36,6 +41,10 @@
         sensor_settings: SensorSettings;
     }
 
+    /**
+     * Fallback values used by {@link normalizeSensorSettings} for missing or invalid
+     * fields.
+     */
     const DEFAULT_SENSOR_SETTINGS: SensorSettings = {
         scans_per_read: 200,
         scan_rate_hz: 1000,
@@ -47,6 +56,18 @@
         calibrations: {}
     };
 
+    /**
+     * Builds a complete sensor settings object from a raw `sensor_settings` value.
+     *
+     * Reads the older field names `scan_rate` (for `scans_per_read`) and `sampling_rate`
+     * (for `scan_rate_hz`) when the new ones are absent. Missing or non-finite numbers take
+     * the values in {@link DEFAULT_SENSOR_SETTINGS}. `data_formats` and `measurement_units`
+     * are padded with `"voltage"` and `"V"` to one entry per enabled channel. Arrays and
+     * `calibrations` are shallow copies.
+     *
+     * @param rawSensor - Parsed `sensor_settings` from KV. May be `undefined` or partial.
+     * @returns A new settings object with every field set.
+     */
     function normalizeSensorSettings(rawSensor: any): SensorSettings {
         const sensor: SensorSettings = {
             scans_per_read: Number(
@@ -75,6 +96,17 @@
         return sensor;
     }
 
+    /**
+     * Fills in defaults for a config read from KV.
+     *
+     * Defaults: `labjack_name` `"unknown"`, `asset_number` 0, `max_channels` 8, empty
+     * `site_id` and `box_id`, `source_type` `"labjack"`, `source_id` falls back to
+     * `labjack_name`, `nats_subject` `"avenars"`, `nats_stream` `"labjacks"`, `rotate_secs`
+     * 60.
+     *
+     * @param raw - Parsed JSON value of a `*.*.*.config` key.
+     * @returns The normalized config, or `null` when `raw` is not an object.
+     */
     function normalizeLabJackConfig(raw: any): LabJackConfig | null {
         if (!raw || typeof raw !== "object") return null;
         const sensor = normalizeSensorSettings(raw.sensor_settings ?? {});
@@ -94,88 +126,218 @@
         };
     }
     
+    /**
+     * One decoded, calibrated sample as stored in the rolling buffers and passed to
+     * `RealTimePlot`.
+     */
     interface DataPoint {
+        /**
+         * Sample time in Unix milliseconds, from the `Scan` start time plus the sample
+         * interval.
+         */
         timestamp: number;
+        /** Sample value after the channel's calibration. */
         value: number;
+        /**
+         * Source sample time in Unix milliseconds. This page sets it equal to
+         * `timestamp`.
+         */
         sourceTimestamp?: number | null;
+        /**
+         * Browser time in Unix milliseconds when the NATS message arrived. Used for the
+         * lag readout.
+         */
         receivedAt?: number;
     }
 
+    /**
+     * Plot mode of one channel.
+     *
+     * `free_run` scrolls continuously. `trigger_normal` freezes a capture on each threshold
+     * crossing and re-arms after the post-trigger window. `trigger_single` keeps the first
+     * capture until the user presses Re-arm.
+     */
     type ChannelPlotMode = 'free_run' | 'trigger_normal' | 'trigger_single';
 
+    /** Trigger settings of one channel, edited in the Trigger Settings panel. */
     interface TriggerSettings {
+        /** Edge that fires the trigger. */
         type: 'rising' | 'falling';
+        /**
+         * Level compared with calibrated sample values, in the channel's calibrated unit.
+         */
         threshold: number;
+        /** Share of the capture window before the trigger, in percent, 0 to 95. */
         preTriggerPercent: number;
+        /** Length of the capture after the trigger, in seconds. */
         postTriggerWindowSec: number;
     }
 
+    /** Axis settings of one channel, edited in the Mode & Axis panel. */
     interface AxisSettings {
+        /** When true the plot scales Y to the data and ignores `yMin` and `yMax`. */
         autoY: boolean;
+        /** Lower Y limit when `autoY` is false. */
         yMin: number;
+        /**
+         * Upper Y limit when `autoY` is false. Kept above `yMin` by {@link
+         * updateAxisSettings}.
+         */
         yMax: number;
+        /** Width of the X axis in seconds. At least 0.1. */
         xWindowSec: number;
+        /** Mirrors the X axis. */
         invertX: boolean;
+        /** Mirrors the Y axis. */
         invertY: boolean;
     }
 
+    /**
+     * Frozen capture around one trigger, grown as new samples arrive until it is
+     * complete.
+     */
     interface TriggerCaptureState {
+        /** Samples from `triggerTime - preWindowSec` to `captureEndTime`. */
         data: DataPoint[];
+        /** Time of the first sample past the threshold, in Unix milliseconds. */
         triggerTime: number;
+        /**
+         * End of the capture window, `triggerTime + postWindowSec`, in Unix milliseconds.
+         */
         captureEndTime: number;
+        /** Timestamp of the newest sample in `data`, in Unix milliseconds. */
         lastCapturedTimestamp: number;
+        /** Pre-trigger window in seconds, fixed when the trigger fired. */
         preWindowSec: number;
+        /** Post-trigger window in seconds, fixed when the trigger fired. */
         postWindowSec: number;
+        /** True once samples up to `captureEndTime` have been captured. */
         complete: boolean;
     }
 
+    /** Newest undecoded live message for one channel, waiting for the next UI tick. */
     interface PendingScanBatch {
+        /** Raw FlatBuffer `Scan` bytes from the NATS message. */
         payload: ArrayBuffer | Uint8Array;
+        /** Browser time in Unix milliseconds when the message arrived. */
         receivedAt: number;
     }
 
+    /**
+     * Samples the automatic X window aims to show; the window is this count divided by
+     * the scan rate.
+     */
     const TARGET_SAMPLES_PER_WINDOW = 1000;
+    /**
+     * Period of the timer that decodes pending messages and copies buffers into reactive
+     * state, in ms.
+     */
     const UI_SNAPSHOT_INTERVAL_MS = 100;
+    /**
+     * Live snapshots cover this multiple of the channel's X window, so the plot edge is
+     * never empty.
+     */
     const SNAPSHOT_OVERSCAN_FACTOR = 1.25;
     
+    /** `asset_number` route parameter. 0 when missing; a non-number gives `NaN`. */
     let assetNumber = $state<number>(0);
     let labjackConfig = $state<LabJackConfig | null>(null);
     let loading = $state<boolean>(true);
     let error = $state<string>("");
+    /**
+     * Connection used for live subscriptions and export requests. Closed in `onDestroy`.
+     */
     let natsService: any = null;
+    /** One live-data subscription per enabled channel. */
     let subscriptions: any[] = [];
+    /**
+     * Copy of the live buffers the template reads, refreshed by {@link flushUiSnapshots}.
+     */
     let channelData = $state<Map<number, DataPoint[]>>(new Map());
+    /**
+     * Copy of the frozen trigger buffers the template reads, refreshed by {@link
+     * flushUiSnapshots}.
+     */
     let frozenChannelData = $state<Map<number, DataPoint[]>>(new Map());
     let channelModes = $state<Map<number, ChannelPlotMode>>(new Map());
     let axisSettings = $state<Map<number, AxisSettings>>(new Map());
+    /**
+     * True after the live subscriptions were created. Does not track later connection
+     * loss.
+     */
     let isConnected = $state<boolean>(false);
     let flatBufferParser = new FlatBufferParser();
     let triggerSettings = $state<Map<number, TriggerSettings>>(new Map());
+    /** Per channel, true while a trigger capture is held. */
     let channelTriggered = $state<Map<number, boolean>>(new Map());
+    /**
+     * Per channel, time of the last trigger in Unix milliseconds, or 0 when not
+     * triggered.
+     */
     let channelTriggerTime = $state<Map<number, number>>(new Map());
+    /**
+     * Per channel, true when the buffer spans the pre-trigger window. Set true in free
+     * run.
+     */
     let channelPrebufferReady = $state<Map<number, boolean>>(new Map());
+    /** Per channel, the current trigger capture, if any. */
     let channelTriggerCaptures = $state<Map<number, TriggerCaptureState>>(new Map());
+    /**
+     * Browser time updated every tick; used in {@link getPlotConfig} when no capture
+     * state exists.
+     */
     let uiNow = $state<number>(Date.now());
     let uiNowTimer: ReturnType<typeof setInterval> | null = null;
+    /**
+     * Automatic X window in seconds, from {@link deriveAutoTimeWindowSec}; the default
+     * for new channels.
+     */
     let timeWindow = $state<number>(1); // seconds
+    /** Maximum points kept in each live buffer. Set by {@link updateMaxDataPoints}. */
     let maxDataPoints = $state<number>(10000);
     let showExportModal = $state<boolean>(false);
+    /** Export start as a `datetime-local` value (`YYYY-MM-DDTHH:mm`, local time). */
     let exportStart = $state<string>("");
+    /** Export end as a `datetime-local` value (`YYYY-MM-DDTHH:mm`, local time). */
     let exportEnd = $state<string>("");
     let exportChannels = $state<Set<number>>(new Set());
     let exportError = $state<string>("");
+    /** Exporter's missing-channel notice. Cleared when the download finishes. */
     let exportWarning = $state<string>("");
     let exporting = $state<boolean>(false);
+    /** Bytes of CSV received so far. */
     let exportProgress = $state<number>(0);
+    /** Final size in bytes. Set only after the download completes; `null` while it runs. */
     let exportTotal = $state<number | null>(null);
+    /**
+     * Rolling live buffers, one per channel. Not reactive: they are changed in place on
+     * every message and copied into {@link channelData} once per tick.
+     */
     let channelBuffers = new Map<number, DataPoint[]>();
+    /**
+     * Frozen trigger captures, one per channel. Not reactive; copied into {@link
+     * frozenChannelData}.
+     */
     let frozenChannelBuffers = new Map<number, DataPoint[]>();
+    /**
+     * Newest undecoded message per channel. A message that arrives before the previous one
+     * was decoded replaces it, so at most one message per channel is plotted per tick.
+     */
     let pendingScanBatches = new Map<number, PendingScanBatch>();
+    /** Channels chosen for plotting, at most two. Only these are decoded. */
     let selectedPlotChannels = $state<Set<number>>(new Set());
+    /**
+     * Channels whose card is on or near the screen. Kept by {@link
+     * observeChannelVisibility}; not read elsewhere.
+     */
     let visibleChannels = $state<Set<number>>(new Set());
+    /** True when buffers changed since the last {@link flushUiSnapshots}. */
     let uiSnapshotDirty = false;
     
-    // Get asset number from URL params
+    /**
+     * Reads `asset_number` and `key` from the URL and loads the config when the asset number
+     * is positive. Runs again when the page store changes.
+     */
     $effect(() => {
         const nextAssetNumber = parseInt($page.params.asset_number || '0');
         const nextConfigKey = $page.url.searchParams.get('key')?.trim() || "";
@@ -186,6 +348,10 @@
         }
     });
 
+    /**
+     * Sets the automatic X window from the scan rate and resizes the buffers when the config
+     * loads. It also reruns on axis or trigger changes, which `updateMaxDataPoints` reads.
+     */
     $effect(() => {
         if (labjackConfig) {
             timeWindow = deriveAutoTimeWindowSec(labjackConfig.sensor_settings.scan_rate_hz);
@@ -193,13 +359,23 @@
         }
     });
 
+    /** Resizes the buffers when any channel's axis or trigger settings change. */
     $effect(() => {
         if (!labjackConfig) return;
+        // Bare reads register the two maps as dependencies of this effect.
         axisSettings;
         triggerSettings;
         updateMaxDataPoints();
     });
 
+    /**
+     * Sets {@link maxDataPoints} to the number of samples the longest needed window holds.
+     *
+     * The window is the largest of: twice {@link timeWindow}, twice each channel's X window
+     * (at least 0.1 s), and each channel's pre plus post trigger window. It is multiplied by
+     * the scan rate. Then trims the live buffers and marks the snapshot dirty. Does nothing
+     * before the config is loaded.
+     */
     function updateMaxDataPoints() {
         if (!labjackConfig) return;
         const sr = labjackConfig.sensor_settings.scan_rate_hz;
@@ -220,6 +396,19 @@
         console.log(`Max data points in rolling buffer: ${maxDataPoints}`);
     }
 
+    /**
+     * Returns the automatic X window for a scan rate.
+     *
+     * @param scanRateHz - Scans per second per channel.
+     * @returns {@link TARGET_SAMPLES_PER_WINDOW} divided by the rate, in seconds, at least
+     *   0.05. Returns 1 when the rate is not a positive finite number.
+     *
+     * @example
+     * ```ts
+     * deriveAutoTimeWindowSec(1000);  // 1
+     * deriveAutoTimeWindowSec(50000); // 0.05 (0.02 raised to the minimum)
+     * ```
+     */
     function deriveAutoTimeWindowSec(scanRateHz: number): number {
         if (!Number.isFinite(scanRateHz) || scanRateHz <= 0) {
             return 1;
@@ -227,15 +416,26 @@
         return Math.max(0.05, TARGET_SAMPLES_PER_WINDOW / scanRateHz);
     }
 
+    /**
+     * Returns the points to plot. Currently returns `data` unchanged.
+     *
+     * @param data - Snapshot of one channel.
+     * @returns The same array.
+     */
     function downsampleForDisplay(data: DataPoint[]): DataPoint[] {
         // Preserve all points so the plotted shape matches what was received.
         return data;
     }
 
+    /** Marks the buffers as changed so the next tick copies them into reactive state. */
     function markUiSnapshotDirty() {
         uiSnapshotDirty = true;
     }
 
+    /**
+     * Drops the oldest points from each live buffer so none is longer than {@link
+     * maxDataPoints}.
+     */
     function trimAllChannelBuffers() {
         for (const data of channelBuffers.values()) {
             const excess = data.length - maxDataPoints;
@@ -245,6 +445,13 @@
         }
     }
 
+    /**
+     * Finds the first point at or after a time by binary search.
+     *
+     * @param data - Points sorted by `timestamp`, oldest first.
+     * @param startTime - Time in Unix milliseconds.
+     * @returns Index of the first point with `timestamp >= startTime`, or `data.length`.
+     */
     function findFirstTimestampIndex(data: DataPoint[], startTime: number): number {
         let low = 0;
         let high = data.length;
@@ -261,6 +468,16 @@
         return low;
     }
 
+    /**
+     * Copies the newest part of a channel's live buffer for the plot.
+     *
+     * Keeps the X window times {@link SNAPSHOT_OVERSCAN_FACTOR}, at least 0.25 s. In the
+     * trigger modes it keeps at least the pre-trigger window plus 0.25 s. The span is
+     * measured back from the newest point's timestamp, not from the clock.
+     *
+     * @param channel - LabJack channel number.
+     * @returns A new array, empty when the buffer is empty.
+     */
     function snapshotLiveChannelData(channel: number): DataPoint[] {
         const data = channelBuffers.get(channel) || [];
         if (data.length === 0) return [];
@@ -283,6 +500,12 @@
         return data.slice(startIndex);
     }
 
+    /**
+     * Copies the live and frozen buffers of every enabled channel into {@link channelData}
+     * and {@link frozenChannelData}, which triggers a redraw.
+     *
+     * @param force - Copy even when nothing is marked dirty.
+     */
     function flushUiSnapshots(force: boolean = false) {
         if (!force && !uiSnapshotDirty) return;
 
@@ -299,6 +522,16 @@
         uiSnapshotDirty = false;
     }
 
+    /**
+     * Chooses up to two channels to plot after a config load.
+     *
+     * Keeps channels from the previous selection that are still enabled, then fills up to
+     * two from `enabledChannels` in config order.
+     *
+     * @param enabledChannels - `channels_enabled` from the config.
+     * @param existingSelection - Selection before the reload, if any.
+     * @returns A new set with at most two channels.
+     */
     function pickInitialPlotChannels(enabledChannels: number[], existingSelection?: Set<number>): Set<number> {
         const selected = new Set<number>();
 
@@ -319,6 +552,11 @@
         return selected;
     }
 
+    /**
+     * Returns the selected channels in config order.
+     *
+     * @returns Channel numbers to render as plot cards. Empty before the config loads.
+     */
     function getRenderablePlotChannels(): number[] {
         if (!labjackConfig) return [];
         return labjackConfig.sensor_settings.channels_enabled.filter((channel) =>
@@ -326,10 +564,25 @@
         );
     }
 
+    /**
+     * Returns a channel's position in `channels_enabled`, which is also its index into
+     * `data_formats` and `measurement_units`.
+     *
+     * @param channel - LabJack channel number.
+     * @returns The index, or -1 when the channel is not enabled or no config is loaded.
+     */
     function getChannelConfigIndex(channel: number): number {
         return labjackConfig?.sensor_settings.channels_enabled.indexOf(channel) ?? -1;
     }
 
+    /**
+     * Adds or removes a channel from the plot selection.
+     *
+     * Adding is ignored when two channels are already selected.
+     *
+     * @param channel - LabJack channel number.
+     * @param checked - New checkbox state.
+     */
     function togglePlotChannel(channel: number, checked: boolean) {
         const next = new Set(selectedPlotChannels);
 
@@ -344,6 +597,15 @@
         markUiSnapshotDirty();
     }
 
+    /**
+     * Decodes the pending message of each selected channel and appends it to the buffer.
+     *
+     * For each selected channel with a pending message: parses the FlatBuffer `Scan`, gives
+     * sample `i` the time `firstSampleUnixNs + i * sampleIntervalNs` (converted to ms),
+     * applies the channel's calibration from `sensor_settings.calibrations`, and passes the
+     * points to {@link addDataChunk}. Pending messages of unselected channels stay in
+     * {@link pendingScanBatches} and are not decoded. Called once per tick.
+     */
     function processPendingVisualizationBatches() {
         if (!labjackConfig) return;
 
@@ -368,6 +630,9 @@
                 const newPoints: DataPoint[] = [];
                 let timestamp = firstSampleMs;
                 for (let i = 0; i < scanData.values.length; i++) {
+                    // Drop non-finite values and raw values with magnitude 100 or more,
+                    // checked before calibration. The timestamp still advances so later
+                    // samples keep their times.
                     const rawValue = scanData.values[i];
 
                     if (
@@ -397,6 +662,7 @@
         }
     }
 
+    /** {@link channelData} passed through {@link downsampleForDisplay}. */
     let channelDisplayData = $derived(
         new Map(
             Array.from(channelData.entries()).map(([channel, data]) => {
@@ -405,6 +671,7 @@
         )
     );
 
+    /** {@link frozenChannelData} passed through {@link downsampleForDisplay}. */
     let frozenDisplayData = $derived(
         new Map(
             Array.from(frozenChannelData.entries()).map(([channel, data]) => {
@@ -414,6 +681,20 @@
     );
 
     
+    /**
+     * Loads the config for {@link assetNumber} and starts the live subscriptions.
+     *
+     * Steps: unsubscribes old subscriptions; reads `serverName` and `credentialsContent` from
+     * sessionStorage and opens a new connection; reads the `key` query parameter from bucket
+     * `avenabox` and uses it if its `asset_number` matches; otherwise reads every
+     * `*.*.*.config` key in turn and takes the first match. Then resets channel state,
+     * pushes a first snapshot and calls {@link startDataSubscription}. Sets `error` on
+     * missing login data, connection failure or no match; the promise does not reject.
+     *
+     * @remarks
+     * Also used by the Retry button. It lists all config keys even when the `key` config
+     * matches. Each call opens a new connection and does not close the previous one.
+     */
     async function loadLabJackConfig() {
         loading = true;
         error = "";
@@ -496,6 +777,14 @@
         }
     }
     
+    /**
+     * Resets per-channel state for the loaded config.
+     *
+     * Every enabled channel gets empty buffers, free-run mode, auto Y with limits -1 to 1,
+     * the automatic X window, and a rising trigger at 0 with 40 % pre-trigger and a
+     * post-trigger window equal to the automatic X window. Pending messages are dropped.
+     * The plot selection is kept where possible (see {@link pickInitialPlotChannels}).
+     */
     function initializeChannelData() {
         if (!labjackConfig) return;
         const autoTimeWindow = deriveAutoTimeWindowSec(labjackConfig.sensor_settings.scan_rate_hz);
@@ -556,6 +845,17 @@
         uiSnapshotDirty = false;
     }
 
+    /**
+     * Svelte action that tracks whether a channel card is on or near the screen.
+     *
+     * Adds the channel to {@link visibleChannels} at once, then updates it from an
+     * `IntersectionObserver` with a 300 px margin above and below the viewport. On destroy
+     * it disconnects the observer and removes the channel.
+     *
+     * @param node - The channel card element.
+     * @param channel - LabJack channel number.
+     * @returns The action object with `destroy`.
+     */
     function observeChannelVisibility(node: HTMLElement, channel: number) {
         const initiallyVisible = new Set(visibleChannels);
         initiallyVisible.add(channel);
@@ -591,6 +891,15 @@
         };
     }
     
+    /**
+     * Subscribes to the live subject of every enabled channel.
+     *
+     * The subject comes from `liveLabJackChannelSubject`:
+     * `avenars.<site>.<box>.<source>.live.chNN` for structured configs, or
+     * `<root>.<asset>.data.chNN` for legacy ones. All enabled channels are subscribed, not
+     * only the selected ones. Sets {@link isConnected} when all subscriptions exist, or
+     * `error` if subscribing throws.
+     */
     async function startDataSubscription() {
         if (!natsService || !labjackConfig) return;
         
@@ -600,6 +909,9 @@
                 const subscription = natsService.connection.subscribe(subject);
                 subscriptions.push(subscription);
                 
+                // One reader loop per subscription, not awaited. It ends when the
+                // subscription is unsubscribed. It only stores the newest payload;
+                // decoding waits for the UI tick.
                 (async () => {
                     for await (const msg of subscription) {
                         try {
@@ -622,6 +934,15 @@
         }
     }
     
+    /**
+     * Appends decoded points to a channel's live buffer and runs the trigger logic.
+     *
+     * Trims the buffer to {@link maxDataPoints}. In a trigger mode it calls
+     * {@link processTriggerMode}; in free run it marks the pre-buffer as ready.
+     *
+     * @param channel - LabJack channel number.
+     * @param chunk - Points from one `Scan`, oldest first.
+     */
     function addDataChunk(channel: number, chunk: DataPoint[]) {
         const currentData = channelBuffers.get(channel) || [];
         for (const point of chunk) {
@@ -646,6 +967,20 @@
         markUiSnapshotDirty();
     }
 
+    /**
+     * Advances the trigger state of one channel after a new chunk.
+     *
+     * While not triggered, waits until the buffer spans the pre-trigger window, then looks
+     * for a crossing with {@link checkTriggerCondition}. While triggered, extends the
+     * capture. In `trigger_single` the capture is held until Re-arm. In `trigger_normal`,
+     * once the chunk's last sample passes the post-trigger window, the trigger is cleared
+     * (the frozen plot stays) and the same chunk is checked for the next crossing.
+     *
+     * @param channel - LabJack channel number.
+     * @param mode - `trigger_normal` or `trigger_single`.
+     * @param fullData - The channel's live buffer, already including `newChunk`.
+     * @param newChunk - Points just appended.
+     */
     function processTriggerMode(
         channel: number,
         mode: ChannelPlotMode,
@@ -693,6 +1028,13 @@
         checkTriggerCondition(channel, fullData, newChunk);
     }
 
+    /**
+     * Arms the channel again by clearing its trigger flag, time and capture.
+     *
+     * @param channel - LabJack channel number.
+     * @param clearFrozen - Also empty the frozen plot. `trigger_normal` passes `false` so
+     *   the last capture stays on screen until the next trigger.
+     */
     function clearTriggerState(channel: number, clearFrozen: boolean = true) {
         channelTriggered.set(channel, false);
         channelTriggerTime.set(channel, 0);
@@ -708,6 +1050,18 @@
         channelTriggerCaptures = new Map(channelTriggerCaptures);
     }
     
+    /**
+     * Looks for the first threshold crossing in a new chunk and starts a capture there.
+     *
+     * Compares each point with the one before it, starting from the last point before the
+     * chunk. Rising fires when the previous value is at or below the threshold and the
+     * current one is above it; falling is the mirror. Does nothing if there is no point
+     * before the chunk.
+     *
+     * @param channel - LabJack channel number.
+     * @param fullData - The channel's live buffer, already including `newChunk`.
+     * @param newChunk - Points just appended.
+     */
     function checkTriggerCondition(channel: number, fullData: DataPoint[], newChunk: DataPoint[]) {
         const channelTriggerSetting = triggerSettings.get(channel);
         if (!channelTriggerSetting) return;
@@ -747,6 +1101,18 @@
         }
     }
 
+    /**
+     * Starts a capture with the buffered points around a trigger.
+     *
+     * Copies points from `triggerTime - preWindowSec` to `triggerTime + postWindowSec`
+     * into the capture and the frozen buffer. The capture is complete at once if the buffer
+     * already reaches the end of the window.
+     *
+     * @param channel - LabJack channel number.
+     * @param data - The channel's live buffer.
+     * @param triggerTime - Time of the crossing sample, in Unix milliseconds.
+     * @param settings - The channel's trigger settings.
+     */
     function initializeTriggerCapture(
         channel: number,
         data: DataPoint[],
@@ -778,6 +1144,14 @@
         markUiSnapshotDirty();
     }
 
+    /**
+     * Adds new points to an open capture and marks it complete at the end of the window.
+     *
+     * Only points newer than the last captured one and not past `captureEndTime` are added.
+     *
+     * @param channel - LabJack channel number.
+     * @param chunk - Points just appended to the live buffer.
+     */
     function appendToTriggerCapture(channel: number, chunk: DataPoint[]) {
         const capture = channelTriggerCaptures.get(channel);
         if (!capture || capture.complete) return;
@@ -813,14 +1187,35 @@
     }
     
     
+    /**
+     * Handles the Re-arm button: clears the trigger and the frozen plot.
+     *
+     * @param channel - LabJack channel number.
+     */
     function resetChannelTrigger(channel: number) {
         clearTriggerState(channel, true);
     }
 
+    /**
+     * Tells whether a mode uses the trigger.
+     *
+     * @param mode - Plot mode.
+     * @returns `true` for `trigger_normal` and `trigger_single`.
+     */
     function isTriggerMode(mode: ChannelPlotMode): boolean {
         return mode === "trigger_normal" || mode === "trigger_single";
     }
 
+    /**
+     * Changes a channel's plot mode.
+     *
+     * Switching between the two trigger modes keeps the current capture; any other change
+     * clears it. The pre-buffer flag is recomputed from the last snapshot in
+     * {@link channelData}, not from the live buffer.
+     *
+     * @param channel - LabJack channel number.
+     * @param nextMode - Mode chosen in the Plot Mode select.
+     */
     function setChannelMode(channel: number, nextMode: ChannelPlotMode) {
         const currentMode = channelModes.get(channel) ?? "free_run";
         if (currentMode === nextMode) return;
@@ -843,6 +1238,15 @@
         channelModes = new Map(channelModes);
     }
 
+    /**
+     * Merges changes into a channel's axis settings.
+     *
+     * A missing or non-positive X window is replaced by {@link timeWindow}, and the window
+     * is raised to at least 0.1 s. If `yMax` is not above `yMin` it is set to `yMin + 0.001`.
+     *
+     * @param channel - LabJack channel number.
+     * @param updates - Fields to change.
+     */
     function updateAxisSettings(channel: number, updates: Partial<AxisSettings>) {
         const current = axisSettings.get(channel);
         if (!current) return;
@@ -861,6 +1265,21 @@
         markUiSnapshotDirty();
     }
 
+    /**
+     * Converts trigger settings into pre and post window lengths.
+     *
+     * The post window is at least 0.01 s. The pre-trigger percent is clamped to 0 to 95 and
+     * taken as a share of the whole window, so `pre = post * p / (1 - p)`.
+     *
+     * @param settings - The channel's trigger settings, or `undefined` for the minimums.
+     * @returns `preWindowSec` and `postWindowSec`, in seconds.
+     *
+     * @example
+     * ```ts
+     * getTriggerWindows({ type: "rising", threshold: 0, preTriggerPercent: 40, postTriggerWindowSec: 1 });
+     * // { preWindowSec: 0.667, postWindowSec: 1 } (approximately)
+     * ```
+     */
     function getTriggerWindows(settings: TriggerSettings | undefined) {
         const postWindowSec = Math.max(0.01, settings?.postTriggerWindowSec || 0.01);
         const preFraction = Math.min(0.95, Math.max(0, (settings?.preTriggerPercent || 0) / 100));
@@ -868,6 +1287,14 @@
         return { preWindowSec, postWindowSec };
     }
 
+    /**
+     * Tells whether a buffer spans the pre-trigger window.
+     *
+     * @param data - Points sorted by time, oldest first.
+     * @param settings - The channel's trigger settings.
+     * @returns `true` when there are at least two points and the newest is at least
+     *   `preWindowSec` after the oldest.
+     */
     function hasRequiredPreBuffer(data: DataPoint[], settings: TriggerSettings): boolean {
         if (data.length < 2) return false;
         const { preWindowSec } = getTriggerWindows(settings);
@@ -878,6 +1305,18 @@
         return (latest - oldest) >= requiredMs;
     }
 
+    /**
+     * Builds the data and trigger props for one channel's `RealTimePlot`.
+     *
+     * In a trigger mode with a held trigger it returns mode `"frozen"` with the capture as
+     * `frozenData`; otherwise mode `"continuous"`. `frozenCollecting` is true while the
+     * capture is still filling. If no capture state exists it falls back to comparing
+     * {@link uiNow} with the end of the post-trigger window.
+     *
+     * @param channel - LabJack channel number.
+     * @returns `mode`, `data` (live snapshot), `frozenData`, `isTriggered`, `triggerTime`
+     *   (Unix ms), `frozenPreWindowSec`, `frozenPostWindowSec` and `frozenCollecting`.
+     */
     function getPlotConfig(channel: number) {
         const mode = channelModes.get(channel) ?? "free_run";
         const liveData = channelDisplayData.get(channel) || [];
@@ -917,15 +1356,29 @@
         };
     }
     
+    /** Does a full page load of `/labjacks`. */
     function goBack() {
         window.location.href = "/labjacks";
     }
 
+    /**
+     * Formats a date for a `datetime-local` input, in local time.
+     *
+     * @param date - Date to format.
+     * @returns `YYYY-MM-DDTHH:mm`.
+     */
     function toLocalInputValue(date: Date): string {
         const pad = (value: number) => value.toString().padStart(2, "0");
         return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
     }
 
+    /**
+     * Converts a `datetime-local` value, read as local time, to an RFC 3339 UTC string.
+     *
+     * @param value - Value such as `2025-01-31T14:05`.
+     * @returns The time from `Date.toISOString()`, e.g. `2025-01-31T19:05:00.000Z` in UTC-5.
+     * @throws Error if the value is not a valid date.
+     */
     function toRfc3339(value: string): string {
         const date = new Date(value);
         if (isNaN(date.getTime())) {
@@ -934,6 +1387,9 @@
         return date.toISOString();
     }
 
+    /**
+     * Opens the export form with all enabled channels and the last five minutes selected.
+     */
     function openExportModal() {
         if (!labjackConfig) return;
         const defaults = new Set(labjackConfig.sensor_settings.channels_enabled);
@@ -950,12 +1406,25 @@
         showExportModal = true;
     }
 
+    /**
+     * Hides the export form.
+     *
+     * It does not cancel a running download. The Cancel button is disabled during a
+     * download, but the backdrop still calls this, and the file is still saved when the
+     * download finishes.
+     */
     function closeExportModal() {
         showExportModal = false;
         exporting = false;
         exportWarning = "";
     }
 
+    /**
+     * Adds or removes a channel from the export selection.
+     *
+     * @param channel - LabJack channel number.
+     * @param checked - New checkbox state.
+     */
     function toggleExportChannel(channel: number, checked: boolean) {
         const updated = new Set(exportChannels);
         if (checked) {
@@ -966,6 +1435,12 @@
         exportChannels = updated;
     }
 
+    /**
+     * Formats a byte count with 1024-based units.
+     *
+     * @param value - Size in bytes.
+     * @returns E.g. `512 B`, `1.5 KB`, `12.0 MB`. Stops at GB.
+     */
     function formatBytes(value: number): string {
         const units = ["B", "KB", "MB", "GB"];
         let size = value;
@@ -977,6 +1452,18 @@
         return `${size.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
     }
 
+    /**
+     * Validates the export form, downloads the CSV over NATS and saves it.
+     *
+     * Checks that times and at least one channel are set and that start is not after end.
+     * Sends an `ExportRequestPayload` (asset, sorted channels, RFC 3339 start and end,
+     * `box_id`, and a file name made from `labjack_name`) through `downloadExportViaNats`
+     * to `<root>.<site>.<box>.<source>.export.request`. That helper handles the streamed
+     * chunks and the acknowledgement of each chunk; this function updates the progress bar
+     * and the missing-channel warning from its callbacks. Errors are shown in the form.
+     *
+     * @param event - Form `submit` event. Its default action is prevented.
+     */
     async function handleExportSubmit(event: Event) {
         event.preventDefault();
         if (!labjackConfig) {
@@ -1046,6 +1533,7 @@
             exportTotal = result.size;
             exportProgress = result.size;
 
+            // Save the Blob through a temporary download link, then release the object URL.
             const url = URL.createObjectURL(result.blob);
             const link = document.createElement("a");
             link.href = url;
@@ -1065,6 +1553,8 @@
         }
     }
 
+    // One timer drives both decoding and redraws, so the plots update at most every
+    // UI_SNAPSHOT_INTERVAL_MS no matter how fast messages arrive.
     onMount(() => {
         uiNowTimer = setInterval(() => {
             uiNow = Date.now();
@@ -1073,6 +1563,7 @@
         }, UI_SNAPSHOT_INTERVAL_MS);
     });
     
+    // Stop the timer, unsubscribe and close this page's connection when leaving the page.
     onDestroy(() => {
         if (uiNowTimer) {
             clearInterval(uiNowTimer);
@@ -1098,6 +1589,37 @@
     });
 </script>
 
+<!--
+@component
+Live plot page for one LabJack, with a form to download archived data as CSV.
+
+URL: `/labjacks/plots/[asset_number]?key=<kv key>`
+- `asset_number`: the config's `asset_number`. If it is not a positive number the page
+  loads nothing and keeps showing the loading spinner.
+- `key` (optional): KV key of the config in bucket `avenabox`, such as
+  `<site>.<box>.<source>.config`. It is used only when that config's `asset_number`
+  matches. Otherwise the page reads every `*.*.*.config` key and takes the first config
+  with a matching `asset_number`. The page writes nothing to KV.
+
+Reads `serverName` and `credentialsContent` from sessionStorage (written by the login
+page) and opens its own connection to central NATS. Shows an error if either is missing.
+
+Live data: subscribes to one subject per enabled channel, built by
+`liveLabJackChannelSubject`: `avenars.<site>.<box>.<source>.live.chNN` for structured
+configs or `<root>.<asset>.data.chNN` for legacy ones. Each message is a FlatBuffer
+`Scan`. Only the newest undecoded message per channel is kept. Every 100 ms a timer
+decodes it for the channels selected for plotting (at most two), applies the channel's
+calibration, appends to a rolling buffer, runs the trigger logic and copies the buffers
+into reactive state. Each channel can run in Free Run, Trigger Normal or Trigger Single.
+
+Hands off to one `RealTimePlot` per selected channel, passing the live snapshot, the
+frozen trigger capture, axis settings and trigger state.
+
+Export: builds an `ExportRequestPayload` and calls `downloadExportViaNats` with subject
+`<root>.<site>.<box>.<source>.export.request` (from `archiveExportRequestSubject`).
+That helper streams the CSV in chunks and acknowledges each one; this page shows the
+progress and saves the result through a temporary download link.
+-->
 <svelte:head>
     <title>Real-time Plots - LabJack {assetNumber} - Avena-OTR</title>
 </svelte:head>
@@ -1137,7 +1659,10 @@
             </div>
         </div>
         <div class="flex-none">
-            <!-- Connection Status -->
+            <!--
+                Connection Status. "Connected" means the live subscriptions were created;
+                it does not follow later connection loss.
+            -->
             <div class="flex items-center mr-4">
                 <div class="w-2 h-2 rounded-full mr-2 {isConnected ? 'bg-success' : 'bg-error'}"></div>
                 <span class="text-base-content text-sm">
@@ -1206,6 +1731,10 @@
                         <div class="flex justify-between">
                             <span>Channel Data Status:</span>
                             <div class="flex flex-wrap gap-1">
+                                <!--
+                                    Rate is the average sample rate of the current
+                                    snapshot: points divided by its time span.
+                                -->
                                 {#each Array.from(channelData.entries()) as [ch, data]}
                                     {@const latest = data[data.length - 1]}
                                     {@const rate = data.length > 1 ? Math.round(1000 / ((latest?.timestamp - data[0]?.timestamp) / data.length)) : 0}
@@ -1452,6 +1981,11 @@
 
                             {#if isTriggerMode(channelMode)}
                                 <div class="mb-6 p-4 bg-base-200 rounded-lg">
+                                    <!--
+                                        The threshold is compared with calibrated values,
+                                        so its unit is the channel's unit, not always
+                                        volts.
+                                    -->
                                     <h4 class="text-md font-medium text-base-content mb-4">Trigger Settings</h4>
                                     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
                                         <div class="form-control">

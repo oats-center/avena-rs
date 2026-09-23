@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" width="1000" height="600" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">Avena system overview</title>
+  <desc id="d">Each edge node runs a LabJack streamer, a local NATS leaf server, an archiver writing Parquet files, an exporter and Alloy. The leaf connects outbound to central NATS. Your machine reaches the edge only through central NATS, over WebSocket for the webapp or NATS for command-line tools.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#52514e"/>
+    </marker>
+  </defs>
+  <style>
+    .t { font-size: 14px; font-weight: 600; fill: #1d1d1b; }
+    .s { font-size: 12px; fill: #52514e; }
+    .l { font-size: 11px; fill: #52514e; }
+    .h { font-size: 13px; font-weight: 600; fill: #1d1d1b; }
+    .svc { fill: #ffffff; stroke: #2a78d6; stroke-width: 1.5; }
+    .hw { fill: #ffffff; stroke: #8a8984; stroke-width: 1.5; stroke-dasharray: 5 4; }
+    .ln { stroke: #52514e; stroke-width: 1.5; fill: none; }
+  </style>
+
+  <rect x="0" y="0" width="1000" height="600" rx="10" fill="#ffffff"/>
+
+  <!-- Edge nodes -->
+  <rect x="34" y="54" width="440" height="500" rx="10" fill="#eef1f5" stroke="#b8c0cc"/>
+  <rect x="20" y="40" width="440" height="500" rx="10" fill="#f6f8fb" stroke="#9aa4b2" stroke-width="1.5"/>
+  <text class="h" x="36" y="64">Edge node, one per test strip (e.g. i69-mu1)</text>
+  <text class="l" x="36" y="576">Every edge node runs the same stack with its own profile, LabJack and JetStream domain.</text>
+
+  <rect class="hw" x="40" y="90" width="170" height="56" rx="6"/>
+  <text class="t" x="52" y="114">LabJack T7</text>
+  <text class="s" x="52" y="133">analog inputs, Ethernet</text>
+
+  <rect class="svc" x="270" y="90" width="170" height="56" rx="6"/>
+  <text class="t" x="282" y="114">Alloy</text>
+  <text class="s" x="282" y="133">host and NATS metrics</text>
+
+  <rect class="svc" x="40" y="196" width="170" height="56" rx="6"/>
+  <text class="t" x="52" y="220">streamer</text>
+  <text class="s" x="52" y="239">reads LabJack, publishes</text>
+
+  <rect class="svc" x="270" y="176" width="170" height="150" rx="6"/>
+  <text class="t" x="282" y="200">NATS leaf</text>
+  <text class="s" x="282" y="220">local server on :4222</text>
+  <text class="s" x="282" y="248">JetStream stream</text>
+  <text class="s" x="282" y="265">labjacks (live samples)</text>
+  <text class="s" x="282" y="293">KV avenabox</text>
+  <text class="s" x="282" y="310">(local copy of config)</text>
+
+  <rect class="svc" x="40" y="302" width="170" height="56" rx="6"/>
+  <text class="t" x="52" y="326">archiver</text>
+  <text class="s" x="52" y="345">writes Parquet files</text>
+
+  <rect x="40" y="410" width="170" height="56" rx="6" fill="#ffffff" stroke="#52514e" stroke-width="1.5"/>
+  <line x1="40" y1="418" x2="210" y2="418" stroke="#52514e"/>
+  <text class="t" x="52" y="439">Parquet archive</text>
+  <text class="s" x="52" y="457">one file per 5 minutes</text>
+
+  <rect class="svc" x="270" y="410" width="170" height="56" rx="6"/>
+  <text class="t" x="282" y="434">exporter</text>
+  <text class="s" x="282" y="453">answers CSV requests</text>
+
+  <!-- Edge arrows -->
+  <line class="ln" x1="125" y1="146" x2="125" y2="194" marker-end="url(#a)"/>
+  <text class="l" x="133" y="174">samples</text>
+  <line class="ln" x1="210" y1="224" x2="268" y2="224" marker-end="url(#a)"/>
+  <text class="l" x="214" y="216">live.chNN</text>
+  <polyline class="ln" points="270,300 240,300 240,330 212,330" marker-end="url(#a)"/>
+  <text class="l" x="214" y="296">consume</text>
+  <line class="ln" x1="125" y1="358" x2="125" y2="408" marker-end="url(#a)"/>
+  <text class="l" x="133" y="388">write</text>
+  <line class="ln" x1="210" y1="438" x2="268" y2="438" marker-end="url(#a)"/>
+  <text class="l" x="226" y="430">read</text>
+  <line class="ln" x1="355" y1="328" x2="355" y2="408" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text class="l" x="363" y="362">request in</text>
+  <text class="l" x="363" y="377">CSV out</text>
+
+  <!-- Central -->
+  <rect x="520" y="40" width="190" height="56" rx="6" fill="#fff6f0" stroke="#eb6834" stroke-width="1.5"/>
+  <text class="t" x="532" y="64">Prometheus</text>
+  <text class="s" x="532" y="83">receives Alloy metrics</text>
+  <polyline class="ln" points="440,118 480,118 480,68 518,68" marker-end="url(#a)"/>
+
+  <rect x="520" y="150" width="190" height="200" rx="8" fill="#fff6f0" stroke="#eb6834" stroke-width="1.5"/>
+  <text class="t" x="534" y="176">Central NATS</text>
+  <text class="s" x="534" y="196">nats1.oats, nats2.oats</text>
+  <text class="s" x="534" y="228">KV avenabox</text>
+  <text class="s" x="534" y="245">(config source of truth)</text>
+  <text class="s" x="534" y="277">leaf hub on :7422</text>
+  <text class="s" x="534" y="297">WebSocket on :8080</text>
+  <text class="s" x="534" y="317">clients on :4222</text>
+
+  <line class="ln" x1="442" y1="212" x2="518" y2="212" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text class="l" x="480" y="204" text-anchor="middle">leaf link</text>
+  <text class="l" x="480" y="229" text-anchor="middle">outbound</text>
+
+  <!-- Your machine -->
+  <rect x="770" y="130" width="210" height="240" rx="8" fill="#effaf5" stroke="#1baf7a" stroke-width="1.5"/>
+  <text class="h" x="784" y="154">Your machine</text>
+
+  <rect x="784" y="170" width="182" height="70" rx="6" fill="#ffffff" stroke="#1baf7a" stroke-width="1.5"/>
+  <text class="t" x="796" y="193">Webapp (browser)</text>
+  <text class="s" x="796" y="211">live plots, config,</text>
+  <text class="s" x="796" y="227">CSV downloads</text>
+
+  <rect x="784" y="270" width="182" height="70" rx="6" fill="#ffffff" stroke="#1baf7a" stroke-width="1.5"/>
+  <text class="t" x="796" y="293">Command line</text>
+  <text class="s" x="796" y="311">nats CLI,</text>
+  <text class="s" x="796" y="327">request-nats-export.mjs</text>
+
+  <line class="ln" x1="712" y1="205" x2="782" y2="205" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text class="l" x="747" y="197" text-anchor="middle">WebSocket</text>
+  <line class="ln" x1="712" y1="305" x2="782" y2="305" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text class="l" x="747" y="297" text-anchor="middle">NATS</text>
+
+  <text class="l" x="520" y="400">Your machine never connects to an edge node directly.</text>
+  <text class="l" x="520" y="416">Live data, config and export traffic all pass through</text>
+  <text class="l" x="520" y="432">central NATS, which reaches each edge node over the</text>
+  <text class="l" x="520" y="448">leaf link that the edge node opens outbound.</text>
+</svg>

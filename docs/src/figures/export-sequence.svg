@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 500" width="860" height="500" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">Export request sequence</title>
+  <desc id="d">The client publishes a JSON request with a reply inbox. The exporter answers with a meta frame, then CSV chunks. After every eight chunks it waits for eight acknowledgements on the ack subject. It ends with a summary frame and a complete frame.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#52514e"/>
+    </marker>
+  </defs>
+  <style>
+    .t { font-size: 14px; font-weight: 600; fill: #1d1d1b; }
+    .s { font-size: 12px; fill: #1d1d1b; }
+    .l { font-size: 11px; fill: #52514e; }
+    .ln { stroke: #52514e; stroke-width: 1.5; fill: none; }
+    .life { stroke: #b8c0cc; stroke-width: 1.5; stroke-dasharray: 4 4; }
+  </style>
+  <rect x="0" y="0" width="860" height="500" rx="10" fill="#ffffff"/>
+
+  <rect x="70" y="20" width="160" height="40" rx="6" fill="#effaf5" stroke="#1baf7a" stroke-width="1.5"/>
+  <text class="t" x="150" y="45" text-anchor="middle">Client</text>
+  <rect x="630" y="20" width="160" height="40" rx="6" fill="#ffffff" stroke="#2a78d6" stroke-width="1.5"/>
+  <text class="t" x="710" y="45" text-anchor="middle">exporter (edge)</text>
+  <line class="life" x1="150" y1="60" x2="150" y2="470"/>
+  <line class="life" x1="710" y1="60" x2="710" y2="470"/>
+
+  <line class="ln" x1="150" y1="95" x2="708" y2="95" marker-end="url(#a)"/>
+  <text class="s" x="430" y="87" text-anchor="middle">request on …export.request, reply to an inbox</text>
+
+  <line class="ln" x1="710" y1="140" x2="152" y2="140" marker-end="url(#a)"/>
+  <text class="s" x="430" y="132" text-anchor="middle">meta: file name, text/csv</text>
+
+  <line class="ln" x1="710" y1="180" x2="152" y2="180" marker-end="url(#a)"/>
+  <text class="s" x="430" y="172" text-anchor="middle">chunk 1 (up to 512 KiB of CSV)</text>
+  <line class="ln" x1="710" y1="205" x2="152" y2="205" marker-end="url(#a)"/>
+  <text class="l" x="430" y="200" text-anchor="middle">…</text>
+  <line class="ln" x1="710" y1="230" x2="152" y2="230" marker-end="url(#a)"/>
+  <text class="s" x="430" y="222" text-anchor="middle">chunk 8</text>
+
+  <line class="ln" x1="150" y1="275" x2="708" y2="275" marker-end="url(#a)"/>
+  <text class="s" x="430" y="267" text-anchor="middle">8 acks on the ack subject</text>
+  <text class="l" x="722" y="262">waits for all 8,</text>
+  <text class="l" x="722" y="277">up to 30 s each</text>
+
+  <line class="ln" x1="710" y1="320" x2="152" y2="320" marker-end="url(#a)"/>
+  <text class="s" x="430" y="312" text-anchor="middle">next 8 chunks, and so on</text>
+
+  <line class="ln" x1="710" y1="370" x2="152" y2="370" marker-end="url(#a)"/>
+  <text class="s" x="430" y="362" text-anchor="middle">summary: bytes sent, channels with no data</text>
+
+  <line class="ln" x1="710" y1="410" x2="152" y2="410" marker-end="url(#a)"/>
+  <text class="s" x="430" y="402" text-anchor="middle">complete</text>
+
+  <text class="l" x="430" y="450" text-anchor="middle">Every message passes through central NATS and the edge node's leaf link.</text>
+  <text class="l" x="430" y="466" text-anchor="middle">An error frame can end the exchange at any point.</text>
+</svg>

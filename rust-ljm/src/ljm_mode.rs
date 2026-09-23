@@ -1,8 +1,14 @@
 //! LabJack LJM library initialization for the selected linking mode.
 //!
-//! The crate is built with exactly one of the `dynlink` or `staticlib` features.
-//! Dynamic mode can load a library path from `LJM_PATH`; static mode initializes
-//! the linked library directly.
+//! The crate is built with exactly one of the `dynlink` (default) or `staticlib`
+//! features; enabling both or neither is a compile error. Dynamic mode loads the
+//! LJM shared library at run time, so builds do not depend on platform linker
+//! paths. Static mode initializes the library linked at build time.
+//!
+//! # Configuration
+//!
+//! * `LJM_PATH` - Path to the LJM shared library, read only in `dynlink` builds.
+//!   When unset, no path is passed to `ljmrs::LJMLibrary::init`.
 
 use ljmrs::{LJMError, LJMLibrary};
 
@@ -15,6 +21,10 @@ compile_error!(
 compile_error!("Enable one LJM mode: `dynlink` or `staticlib`.");
 
 /// Initializes the LabJack LJM library for the configured feature mode.
+///
+/// # Errors
+///
+/// Returns the error from `LJMLibrary::init` unchanged.
 ///
 /// # Safety
 ///

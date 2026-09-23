@@ -2,7 +2,6 @@
 \#auto_saved_files#
 
 .vscode
-.claude
 __pycache__/
 *.py[cod]
 /target/
