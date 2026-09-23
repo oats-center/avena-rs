@@ -85,6 +85,8 @@ by hand on a box once it is installed.
 
 ## Where to go next
 
-- Setting up a new edge node: [Edge node setup](setup/edge-node-legacy.md).
-- Checking on a running edge node: [Services on an edge node](operations/services.md).
+- Setting up a new edge node: [A new edge node](setup/edge-node.md).
+- Watching data and downloading it: [The webapp](setup/webapp.md).
+- Looking after a running box: [Services on an edge node](operations/services.md)
+  and [Troubleshooting](operations/troubleshooting.md).
 - Working on the code: [API reference](code-api.md).
