@@ -74,9 +74,9 @@ is present. Older documents with none of them publish on
 | `calibrations` | object | Conversion from volts to engineering units, keyed by channel number as a string. Optional. |
 
 `scans_per_read` and `scan_rate_hz` together set how often messages are sent:
-100 scans per read at 100 Hz is one message per channel per second. Keep a
-message to roughly ten per second or fewer; more messages mean more overhead
-without more data.
+100 scans per read at 100 Hz is one message per channel per second. Aim for
+about ten messages per channel per second or fewer; more messages mean more
+overhead without more data.
 
 ## Calibrations
 
@@ -94,3 +94,10 @@ exporter writes both the raw and the calibrated value to every CSV row. The
 archiver stores the calibration that was active in each Parquet file's
 metadata, and starts a new file when it changes, so old files keep the
 calibration they were recorded with.
+
+## Calibration presets
+
+The webapp also keeps reusable calibrations in the same bucket, one per key
+`calibration.<id>`, so a sensor's calibration can be picked from a list instead
+of typed in again. The services never read these keys; only the copy inside a
+box's configuration takes effect.

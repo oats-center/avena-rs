@@ -24,6 +24,12 @@
 - [Export protocol](reference/export-protocol.md)
 - [Command-line tools](reference/tools.md)
 
+# Webapp
+
+- [How the webapp works](webapp/architecture.md)
+- [Components](webapp/components.md)
+- [Developing and deploying](webapp/development.md)
+
 # Background
 
 - [Design notes](design.md)

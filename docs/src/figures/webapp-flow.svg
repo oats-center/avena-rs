@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 460" width="900" height="460" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">Webapp pages and their NATS traffic</title>
+  <desc id="d">The connect page tests a connection and stores the server and credentials in session storage. The LabJack list page reads configurations and calibration presets from the avenabox bucket and writes them back through the config form. The plot page subscribes to the live channel subjects, draws them with RealTimePlot, and requests exports from the edge exporter.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#52514e"/>
+    </marker>
+  </defs>
+  <style>
+    .t { font-size: 14px; font-weight: 600; fill: #1d1d1b; }
+    .s { font-size: 12px; fill: #52514e; }
+    .l { font-size: 11px; fill: #52514e; }
+    .page { fill: #ffffff; stroke: #1baf7a; stroke-width: 1.5; }
+    .comp { fill: #ffffff; stroke: #2a78d6; stroke-width: 1.5; }
+    .ln { stroke: #52514e; stroke-width: 1.5; fill: none; }
+  </style>
+  <rect x="0" y="0" width="900" height="460" rx="10" fill="#ffffff"/>
+
+  <!-- pages -->
+  <rect class="page" x="30" y="30" width="300" height="56" rx="6"/>
+  <text class="t" x="44" y="54">/  (connect)</text>
+  <text class="s" x="44" y="73">tests a connection, stores the login</text>
+
+  <rect x="30" y="104" width="300" height="40" rx="6" fill="#f6f8fb" stroke="#8a8984" stroke-dasharray="5 4"/>
+  <text class="s" x="44" y="129">sessionStorage: serverName, credentialsContent</text>
+
+  <rect class="page" x="30" y="164" width="300" height="56" rx="6"/>
+  <text class="t" x="44" y="188">/labjacks</text>
+  <text class="s" x="44" y="207">one card per configuration</text>
+
+  <rect class="comp" x="80" y="238" width="250" height="44" rx="6"/>
+  <text class="t" x="94" y="258">LabJackConfigModal</text>
+  <text class="s" x="94" y="274">edits one configuration</text>
+
+  <rect class="page" x="30" y="304" width="300" height="56" rx="6"/>
+  <text class="t" x="44" y="328">/labjacks/plots/[asset]?key=…</text>
+  <text class="s" x="44" y="347">live plots, triggers, export form</text>
+
+  <rect class="comp" x="80" y="378" width="250" height="44" rx="6"/>
+  <text class="t" x="94" y="398">RealTimePlot</text>
+  <text class="s" x="94" y="414">one canvas per plotted channel</text>
+
+  <line class="ln" x1="180" y1="86" x2="180" y2="102" marker-end="url(#a)"/>
+  <line class="ln" x1="180" y1="144" x2="180" y2="162" marker-end="url(#a)"/>
+  <line class="ln" x1="50" y1="220" x2="50" y2="302" marker-end="url(#a)"/>
+  <text class="l" x="56" y="296">plot button</text>
+  <line x1="205" y1="220" x2="205" y2="238" stroke="#2a78d6" stroke-width="1.5"/>
+  <line x1="205" y1="360" x2="205" y2="378" stroke="#2a78d6" stroke-width="1.5"/>
+
+  <!-- central -->
+  <rect x="560" y="30" width="310" height="400" rx="8" fill="#fff6f0" stroke="#eb6834" stroke-width="1.5"/>
+  <text class="t" x="576" y="54">Central NATS (WebSocket)</text>
+
+  <rect x="580" y="96" width="270" height="92" rx="6" fill="#ffffff" stroke="#eb6834" stroke-width="1.5"/>
+  <text class="t" x="594" y="118">KV bucket avenabox</text>
+  <text class="s" x="594" y="138">&lt;site&gt;.&lt;box&gt;.&lt;source&gt;.config</text>
+  <text class="s" x="594" y="156">calibration.&lt;id&gt; (presets)</text>
+  <text class="l" x="594" y="176">edge streamers mirror their key</text>
+
+  <rect x="580" y="232" width="270" height="56" rx="6" fill="#ffffff" stroke="#eb6834" stroke-width="1.5"/>
+  <text class="t" x="594" y="254">live subjects</text>
+  <text class="s" x="594" y="273">avenars.&lt;site&gt;.&lt;box&gt;.&lt;source&gt;.live.chNN</text>
+
+  <rect x="580" y="326" width="270" height="72" rx="6" fill="#ffffff" stroke="#eb6834" stroke-width="1.5"/>
+  <text class="t" x="594" y="348">export request</text>
+  <text class="s" x="594" y="367">…&lt;source&gt;.export.request</text>
+  <text class="l" x="594" y="386">answered by that box's exporter</text>
+
+  <!-- traffic -->
+  <line class="ln" x1="332" y1="50" x2="558" y2="50" marker-end="url(#a)"/>
+  <text class="l" x="445" y="43" text-anchor="middle">test connection</text>
+
+  <polyline class="ln" points="332,190 440,190 440,150 578,150" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text class="l" x="450" y="132">list and read configs,</text>
+  <text class="l" x="450" y="145">write on save</text>
+
+  <polyline class="ln" points="578,260 460,260 460,320 332,320" marker-end="url(#a)"/>
+  <text class="l" x="452" y="294" text-anchor="end">subscribe per channel</text>
+
+  <polyline class="ln" points="332,344 490,344 490,362 578,362" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text class="l" x="360" y="338">request, CSV chunks, acks</text>
+</svg>

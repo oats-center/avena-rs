@@ -20,4 +20,7 @@ and that is where the interesting code lives.
 ## Webapp library
 
 The TypeScript modules under `webapp/src/lib` are documented in the
-[webapp reference](api/webapp/index.html).
+[webapp reference](api/webapp/index.html). The Svelte components and pages are
+described in [Components](webapp/components.md) and [How the webapp
+works](webapp/architecture.md); each also carries a `@component` comment at the
+top of its file.

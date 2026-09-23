@@ -68,3 +68,7 @@ uplink is usually the limit.
 The same request can be made from the command line, which is handy for
 scripting and for checking the export path without a browser. See
 [Command-line tools](../reference/tools.md).
+
+For how the webapp is put together, and how to build and host it for others,
+see [How the webapp works](../webapp/architecture.md) and [Developing and
+deploying](../webapp/development.md).
