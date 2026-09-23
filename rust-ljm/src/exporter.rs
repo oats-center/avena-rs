@@ -26,11 +26,17 @@ use axum::{
 use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, Utc};
 use futures_util::StreamExt;
 use parquet::{
-    file::reader::{FileReader, SerializedFileReader},
-    record::RowAccessor,
+    column::reader::get_typed_column_reader,
+    data_type::{DataType, DoubleType, Int64Type},
+    file::{
+        metadata::RowGroupMetaData,
+        reader::{FileReader, RowGroupReader, SerializedFileReader},
+        statistics::Statistics,
+    },
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::io::Write as _;
 mod calibration;
 mod nats_config;
 mod subjects;
@@ -693,9 +699,10 @@ impl NatsCsvStreamer {
         calibrated_value: f64,
         calibration_id: &str,
     ) -> Result<()> {
-        let line =
-            format!("{timestamp},ch{channel:02},{raw_value},{calibrated_value},{calibration_id}\n");
-        self.chunk.extend_from_slice(line.as_bytes());
+        writeln!(
+            self.chunk,
+            "{timestamp},ch{channel:02},{raw_value},{calibrated_value},{calibration_id}"
+        )?;
         if self.chunk.len() >= Self::CHUNK_SIZE {
             self.flush().await?;
         }
@@ -770,32 +777,24 @@ impl NatsCsvStreamer {
         channel: u8,
         found: &mut bool,
     ) -> Result<()> {
-        let file = fs::File::open(path)
-            .with_context(|| format!("failed to open parquet file {}", path.display()))?;
-        let reader = SerializedFileReader::new(file)
-            .with_context(|| format!("failed to create reader for {}", path.display()))?;
-        let calibration = read_calibration_from_metadata(&reader, path);
-        let calibration_id = calibration.id_or_default().to_string();
-        let mut iter = reader.get_row_iter(None)?;
-        while let Some(row) = iter.next() {
-            let row = row?;
-            let timestamp_unix_ns = row.get_long(0)?;
-            let ts = match timestamp_unix_ns_to_rfc3339(timestamp_unix_ns) {
-                Some(ts) => ts,
-                None => continue,
-            };
-            let ts_parsed = match DateTime::parse_from_rfc3339(&ts) {
-                Ok(dt) => dt.with_timezone(&Utc),
-                Err(_) => continue,
-            };
-            if ts_parsed < self.start || ts_parsed > self.end {
-                continue;
-            }
-            let raw_value = row.get_double(1)?;
-            let calibrated_value = calibration.apply(raw_value);
+        let matched = read_matching_rows(
+            path,
+            datetime_to_unix_ns(self.start),
+            datetime_to_unix_ns(self.end),
+        )?;
+        let mut formatter = Rfc3339Formatter::new();
+        for (timestamp_unix_ns, raw_value) in matched.rows {
+            let ts = formatter.format(timestamp_unix_ns);
+            let calibrated_value = matched.calibration.apply(raw_value);
             *found = true;
-            self.push_record(&ts, channel, raw_value, calibrated_value, &calibration_id)
-                .await?;
+            self.push_record(
+                ts,
+                channel,
+                raw_value,
+                calibrated_value,
+                &matched.calibration_id,
+            )
+            .await?;
         }
         Ok(())
     }
@@ -855,9 +854,10 @@ impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
         calibrated_value: f64,
         calibration_id: &str,
     ) -> Result<()> {
-        let line =
-            format!("{timestamp},ch{channel:02},{raw_value},{calibrated_value},{calibration_id}\n");
-        self.chunk.extend_from_slice(line.as_bytes());
+        writeln!(
+            self.chunk,
+            "{timestamp},ch{channel:02},{raw_value},{calibrated_value},{calibration_id}"
+        )?;
         if self.chunk.len() >= Self::CHUNK_SIZE {
             self.flush().await?;
         }
@@ -916,40 +916,172 @@ impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
         channel: u8,
         found: &mut bool,
     ) -> Result<()> {
-        let file = fs::File::open(path)
-            .with_context(|| format!("failed to open parquet file {}", path.display()))?;
-        let reader = SerializedFileReader::new(file)
-            .with_context(|| format!("failed to create reader for {}", path.display()))?;
-        let calibration = read_calibration_from_metadata(&reader, path);
-        let calibration_id = calibration.id_or_default().to_string();
-        let mut iter = reader.get_row_iter(None)?;
-        while let Some(row) = iter.next() {
-            let row = row?;
-            let timestamp_unix_ns = row.get_long(0)?;
-            let ts = match timestamp_unix_ns_to_rfc3339(timestamp_unix_ns) {
-                Some(ts) => ts,
-                None => continue,
-            };
-            let ts_parsed = match DateTime::parse_from_rfc3339(&ts) {
-                Ok(dt) => dt.with_timezone(&Utc),
-                Err(_) => continue,
-            };
-            if ts_parsed < self.start || ts_parsed > self.end {
-                continue;
-            }
-            let raw_value = row.get_double(1)?;
-            let calibrated_value = calibration.apply(raw_value);
+        let matched = read_matching_rows(
+            path,
+            datetime_to_unix_ns(self.start),
+            datetime_to_unix_ns(self.end),
+        )?;
+        let mut formatter = Rfc3339Formatter::new();
+        for (timestamp_unix_ns, raw_value) in matched.rows {
+            let ts = formatter.format(timestamp_unix_ns);
+            let calibrated_value = matched.calibration.apply(raw_value);
             *found = true;
-            self.push_record(&ts, channel, raw_value, calibrated_value, &calibration_id)
-                .await?;
+            self.push_record(
+                ts,
+                channel,
+                raw_value,
+                calibrated_value,
+                &matched.calibration_id,
+            )
+            .await?;
         }
         Ok(())
     }
 }
 
 /// Converts a Unix nanosecond timestamp into RFC 3339 text.
-fn timestamp_unix_ns_to_rfc3339(timestamp_unix_ns: i64) -> Option<String> {
-    Some(DateTime::<Utc>::from_timestamp_nanos(timestamp_unix_ns).to_rfc3339())
+fn timestamp_unix_ns_to_rfc3339(timestamp_unix_ns: i64) -> String {
+    DateTime::<Utc>::from_timestamp_nanos(timestamp_unix_ns).to_rfc3339()
+}
+
+/// Formats timestamps exactly like [`timestamp_unix_ns_to_rfc3339`], faster.
+///
+/// Archived rows arrive in time order, so the date and time up to the second
+/// changes only once per 100-2,000 rows. That part is built once per second
+/// with chrono; only the fractional part is formatted per row, following
+/// chrono's `to_rfc3339` rule: no fraction for whole seconds, otherwise 3, 6
+/// or 9 digits for millisecond, microsecond or nanosecond precision.
+struct Rfc3339Formatter {
+    second: Option<i64>,
+    prefix: String,
+    buf: String,
+}
+
+impl Rfc3339Formatter {
+    fn new() -> Self {
+        Self {
+            second: None,
+            prefix: String::new(),
+            buf: String::with_capacity(40),
+        }
+    }
+
+    fn format(&mut self, timestamp_unix_ns: i64) -> &str {
+        use std::fmt::Write as _;
+        let second = timestamp_unix_ns.div_euclid(1_000_000_000);
+        let nanos = timestamp_unix_ns.rem_euclid(1_000_000_000) as u32;
+        if self.second != Some(second) {
+            // Seconds-based constructor: `second * 1e9` would overflow near i64::MIN.
+            let text = DateTime::<Utc>::from_timestamp(second, 0)
+                .map(|instant| instant.to_rfc3339())
+                .unwrap_or_default();
+            // Whole seconds render as "<date>T<time>+00:00"; keep the part before the offset.
+            self.prefix = text.trim_end_matches("+00:00").to_string();
+            self.second = Some(second);
+        }
+        self.buf.clear();
+        self.buf.push_str(&self.prefix);
+        let _ = if nanos == 0 {
+            Ok(())
+        } else if nanos % 1_000_000 == 0 {
+            write!(self.buf, ".{:03}", nanos / 1_000_000)
+        } else if nanos % 1_000 == 0 {
+            write!(self.buf, ".{:06}", nanos / 1_000)
+        } else {
+            write!(self.buf, ".{nanos:09}")
+        };
+        self.buf.push_str("+00:00");
+        &self.buf
+    }
+}
+
+/// Converts an instant to Unix nanoseconds, clamping outside the i64 range.
+fn datetime_to_unix_ns(instant: DateTime<Utc>) -> i64 {
+    instant
+        .timestamp_nanos_opt()
+        .unwrap_or(if instant.timestamp() < 0 {
+            i64::MIN
+        } else {
+            i64::MAX
+        })
+}
+
+/// Rows of one Parquet file that fall inside an export range.
+struct MatchedFile {
+    calibration: CalibrationSpec,
+    calibration_id: String,
+    rows: Vec<(i64, f64)>,
+}
+
+/// Returns whether a row group's timestamp statistics overlap `[start_ns, end_ns]`.
+///
+/// Row groups without statistics are always read.
+fn row_group_may_match(meta: &RowGroupMetaData, start_ns: i64, end_ns: i64) -> bool {
+    match meta.column(0).statistics() {
+        Some(Statistics::Int64(stats)) => match (stats.min_opt(), stats.max_opt()) {
+            (Some(min), Some(max)) => *max >= start_ns && *min <= end_ns,
+            _ => true,
+        },
+        _ => true,
+    }
+}
+
+/// Reads every value of one required column in a row group.
+fn read_column<T: DataType>(row_group: &dyn RowGroupReader, index: usize) -> Result<Vec<T::T>> {
+    let rows = usize::try_from(row_group.metadata().num_rows()).unwrap_or(0);
+    let mut reader = get_typed_column_reader::<T>(row_group.get_column_reader(index)?);
+    let mut values = Vec::with_capacity(rows);
+    loop {
+        let (records, _, _) = reader.read_records(rows.max(1), None, None, &mut values)?;
+        if records == 0 {
+            break;
+        }
+    }
+    Ok(values)
+}
+
+/// Reads the rows of one archived file whose timestamps fall in `[start_ns, end_ns]`.
+///
+/// Row groups whose timestamp statistics lie entirely outside the range are
+/// skipped without being decoded, and the two columns are read with typed
+/// column readers instead of building a generic row object per sample.
+fn read_matching_rows(path: &Path, start_ns: i64, end_ns: i64) -> Result<MatchedFile> {
+    let file = fs::File::open(path)
+        .with_context(|| format!("failed to open parquet file {}", path.display()))?;
+    let reader = SerializedFileReader::new(file)
+        .with_context(|| format!("failed to create reader for {}", path.display()))?;
+    let calibration = read_calibration_from_metadata(&reader, path);
+    let calibration_id = calibration.id_or_default().to_string();
+
+    let mut rows = Vec::new();
+    for index in 0..reader.num_row_groups() {
+        if !row_group_may_match(reader.metadata().row_group(index), start_ns, end_ns) {
+            continue;
+        }
+        let row_group = reader.get_row_group(index)?;
+        let timestamps = read_column::<Int64Type>(row_group.as_ref(), 0)?;
+        let values = read_column::<DoubleType>(row_group.as_ref(), 1)?;
+        if timestamps.len() != values.len() {
+            return Err(anyhow!(
+                "row group {index} in {} has {} timestamps but {} values",
+                path.display(),
+                timestamps.len(),
+                values.len()
+            ));
+        }
+        rows.extend(
+            timestamps
+                .into_iter()
+                .zip(values)
+                .filter(|(ts, _)| *ts >= start_ns && *ts <= end_ns),
+        );
+    }
+
+    Ok(MatchedFile {
+        calibration,
+        calibration_id,
+        rows,
+    })
 }
 
 /// Reads calibration metadata written by the archiver from a Parquet file.
@@ -1005,4 +1137,277 @@ fn date_range(start: NaiveDate, end: NaiveDate) -> Vec<NaiveDate> {
         current += ChronoDuration::days(1);
     }
     days
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use parquet::{
+        column::writer::ColumnWriter,
+        file::{properties::WriterProperties, writer::SerializedFileWriter},
+        record::RowAccessor,
+        schema::parser::parse_message_type,
+    };
+    use std::time::Instant;
+
+    /// The exporter's reading logic before this change, kept as a reference.
+    fn reference_rows(path: &Path, start: DateTime<Utc>, end: DateTime<Utc>) -> Vec<(i64, f64)> {
+        let reader = SerializedFileReader::new(fs::File::open(path).unwrap()).unwrap();
+        let mut out = Vec::new();
+        let mut iter = reader.get_row_iter(None).unwrap();
+        while let Some(row) = iter.next() {
+            let row = row.unwrap();
+            let ts_ns = row.get_long(0).unwrap();
+            let text = DateTime::<Utc>::from_timestamp_nanos(ts_ns).to_rfc3339();
+            let parsed = DateTime::parse_from_rfc3339(&text)
+                .unwrap()
+                .with_timezone(&Utc);
+            if parsed < start || parsed > end {
+                continue;
+            }
+            out.push((ts_ns, row.get_double(1).unwrap()));
+        }
+        out
+    }
+
+    /// Writes a two-column file with the given row groups (plain, uncompressed,
+    /// like the archiver's older output).
+    fn write_file(path: &Path, row_groups: &[Vec<(i64, f64)>]) {
+        let schema = Arc::new(
+            parse_message_type(
+                "message schema { REQUIRED INT64 timestamp_unix_ns; REQUIRED DOUBLE value; }",
+            )
+            .unwrap(),
+        );
+        let props = Arc::new(WriterProperties::builder().build());
+        let mut writer =
+            SerializedFileWriter::new(fs::File::create(path).unwrap(), schema, props).unwrap();
+        for group in row_groups {
+            let mut rg = writer.next_row_group().unwrap();
+            let ts: Vec<i64> = group.iter().map(|(t, _)| *t).collect();
+            let vs: Vec<f64> = group.iter().map(|(_, v)| *v).collect();
+            let mut col = rg.next_column().unwrap().unwrap();
+            if let ColumnWriter::Int64ColumnWriter(w) = col.untyped() {
+                w.write_batch(&ts, None, None).unwrap();
+            }
+            col.close().unwrap();
+            let mut col = rg.next_column().unwrap().unwrap();
+            if let ColumnWriter::DoubleColumnWriter(w) = col.untyped() {
+                w.write_batch(&vs, None, None).unwrap();
+            }
+            col.close().unwrap();
+            rg.close().unwrap();
+        }
+        writer.close().unwrap();
+    }
+
+    fn at(ns: i64) -> DateTime<Utc> {
+        DateTime::<Utc>::from_timestamp_nanos(ns)
+    }
+
+    #[test]
+    fn new_reader_matches_reference_for_every_range_shape() {
+        let dir = std::env::temp_dir().join(format!("exporter-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("part-0001.parquet");
+        let base = 1_790_000_000_000_000_000_i64;
+        let group = |from: i64, n: i64| -> Vec<(i64, f64)> {
+            (0..n)
+                .map(|i| (base + (from + i) * 10_000_000, 3.7 + i as f64 * 1e-4))
+                .collect()
+        };
+        // Three row groups, the last one stepping backwards in time like a
+        // clock re-anchor, plus a NaN value.
+        let mut last = group(250, 40);
+        last[3].1 = f64::NAN;
+        write_file(
+            &path,
+            &[group(0, 100), group(100, 100), group(200, 100), last],
+        );
+
+        let ns = |k: i64| base + k * 10_000_000;
+        for (start, end) in [
+            (ns(-50), ns(1_000)), // everything
+            (ns(0), ns(0)),       // single inclusive sample
+            (ns(120), ns(180)),   // inside one row group
+            (ns(99), ns(100)),    // across a row-group boundary
+            (ns(260), ns(270)),   // overlapping, out-of-order timestamps
+            (ns(500), ns(600)),   // after all data
+            (ns(-100), ns(-1)),   // before all data
+        ] {
+            let got = read_matching_rows(&path, start, end).unwrap().rows;
+            let want = reference_rows(&path, at(start), at(end));
+            assert_eq!(got.len(), want.len(), "range {start}..{end}");
+            for (g, w) in got.iter().zip(&want) {
+                assert_eq!(g.0, w.0);
+                assert!(g.1 == w.1 || (g.1.is_nan() && w.1.is_nan()));
+            }
+        }
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn row_groups_outside_the_range_are_skipped() {
+        let dir = std::env::temp_dir().join(format!("exporter-skip-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("part-0001.parquet");
+        let group =
+            |from: i64| -> Vec<(i64, f64)> { (from..from + 10).map(|t| (t, 1.0)).collect() };
+        write_file(&path, &[group(0), group(100), group(200)]);
+        let reader = SerializedFileReader::new(fs::File::open(&path).unwrap()).unwrap();
+        let meta = reader.metadata();
+        assert!(row_group_may_match(meta.row_group(0), 5, 105));
+        assert!(row_group_may_match(meta.row_group(1), 5, 105));
+        assert!(!row_group_may_match(meta.row_group(2), 5, 105));
+        assert!(!row_group_may_match(meta.row_group(0), 10, 99));
+        assert!(row_group_may_match(meta.row_group(0), 9, 9));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn csv_lines_are_byte_identical_to_the_previous_format() {
+        let ts = timestamp_unix_ns_to_rfc3339(1_790_000_000_008_000_000);
+        for (raw, cal, id) in [
+            (3.7215, 252.1, "tp3505"),
+            (-0.0546, f64::NAN, "default"),
+            (0.0, -8.3148, ""),
+        ] {
+            let old = format!("{ts},ch{:02},{raw},{cal},{id}\n", 8);
+            let mut new = Vec::new();
+            writeln!(new, "{ts},ch{:02},{raw},{cal},{id}", 8).unwrap();
+            assert_eq!(new, old.as_bytes());
+        }
+        assert_eq!(ts, "2026-09-21T14:13:20.008+00:00");
+    }
+
+    #[test]
+    fn fast_formatter_matches_chrono_exactly() {
+        let mut f = Rfc3339Formatter::new();
+        let mut check =
+            |ns: i64| assert_eq!(f.format(ns), timestamp_unix_ns_to_rfc3339(ns), "ns={ns}");
+        for ns in [
+            0,
+            1,
+            999,
+            1_000,
+            1_000_000,
+            999_999_999,
+            1_000_000_000,
+            -1,
+            -1_000,
+            -1_000_000,
+            -999_999_999,
+            -1_000_000_000,
+            -1_000_000_001,
+            i64::MIN,
+            i64::MAX,
+            1_790_000_000_000_000_000,
+            1_790_000_000_008_000_000,
+            1_790_000_000_008_123_000,
+            1_790_000_000_008_123_456,
+            1_790_000_000_010_000_000,
+            1_790_000_000_500_000_000,
+        ] {
+            check(ns);
+        }
+        // Consecutive samples at 2 kHz and 100 Hz across second boundaries.
+        for k in 0..5_000_i64 {
+            check(1_790_000_000_000_000_000 + k * 500_000);
+            check(1_789_999_999_478_000_000 + k * 10_000_000);
+        }
+        // Pseudo-random timestamps across the whole i64 range, in random order.
+        let mut x: u64 = 0x9E37_79B9_7F4A_7C15;
+        for _ in 0..1_000_000 {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            check(x as i64);
+        }
+    }
+
+    #[test]
+    fn range_bounds_convert_to_nanoseconds_and_clamp() {
+        assert_eq!(
+            datetime_to_unix_ns(at(1_790_000_000_008_000_000)),
+            1_790_000_000_008_000_000
+        );
+        let far = DateTime::parse_from_rfc3339("3000-01-01T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        assert_eq!(datetime_to_unix_ns(far), i64::MAX);
+        let early = DateTime::parse_from_rfc3339("1000-01-01T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        assert_eq!(datetime_to_unix_ns(early), i64::MIN);
+    }
+
+    /// Compares old and new readers on real archive files for speed and exact
+    /// equality. Run with `AVENA_EXPORT_BENCH_DIR=<dir of .parquet files>`.
+    #[test]
+    #[ignore = "benchmark on real files; set AVENA_EXPORT_BENCH_DIR"]
+    fn benchmark_against_reference_on_real_files() {
+        let Ok(dir) = std::env::var("AVENA_EXPORT_BENCH_DIR") else {
+            return;
+        };
+        let mut files: Vec<PathBuf> = fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| p.extension().is_some_and(|x| x == "parquet"))
+            .collect();
+        files.sort();
+        let (start, end) = (at(i64::MIN / 2), at(i64::MAX / 2));
+        let (mut t_old, mut t_new, mut rows) = (0.0, 0.0, 0usize);
+        for path in &files {
+            let t = Instant::now();
+            let want = reference_rows(path, start, end);
+            t_old += t.elapsed().as_secs_f64();
+            let t = Instant::now();
+            let got =
+                read_matching_rows(path, datetime_to_unix_ns(start), datetime_to_unix_ns(end))
+                    .unwrap()
+                    .rows;
+            t_new += t.elapsed().as_secs_f64();
+            assert_eq!(got.len(), want.len(), "{}", path.display());
+            assert!(
+                got.iter()
+                    .zip(&want)
+                    .all(|(g, w)| g.0 == w.0 && (g.1 == w.1 || (g.1.is_nan() && w.1.is_nan())))
+            );
+            rows += got.len();
+        }
+        println!(
+            "{} files, {rows} rows: reading: reference {t_old:.3} s, new {t_new:.3} s ({:.1}x)",
+            files.len(),
+            t_old / t_new
+        );
+
+        // End to end: rows to CSV bytes, the old way and the new way.
+        let (mut e_old, mut e_new) = (0.0, 0.0);
+        for path in &files {
+            let t = Instant::now();
+            let mut old_csv = Vec::new();
+            for (ts_ns, raw) in reference_rows(path, start, end) {
+                let ts = DateTime::<Utc>::from_timestamp_nanos(ts_ns).to_rfc3339();
+                let line = format!("{ts},ch{:02},{raw},{raw},id\n", 8);
+                old_csv.extend_from_slice(line.as_bytes());
+            }
+            e_old += t.elapsed().as_secs_f64();
+            let t = Instant::now();
+            let mut new_csv = Vec::new();
+            let matched =
+                read_matching_rows(path, datetime_to_unix_ns(start), datetime_to_unix_ns(end))
+                    .unwrap();
+            let mut formatter = Rfc3339Formatter::new();
+            for (ts_ns, raw) in matched.rows {
+                let ts = formatter.format(ts_ns);
+                writeln!(new_csv, "{ts},ch{:02},{raw},{raw},id", 8).unwrap();
+            }
+            e_new += t.elapsed().as_secs_f64();
+            assert_eq!(old_csv, new_csv, "CSV differs for {}", path.display());
+        }
+        println!(
+            "end to end CSV: reference {e_old:.3} s, new {e_new:.3} s ({:.1}x)",
+            e_old / e_new
+        );
+    }
 }
