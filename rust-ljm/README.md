@@ -1,260 +1,28 @@
-# Rust-LJM
+# rust-ljm
 
-Rust binaries for LabJack streaming, parquet archiving, and export serving.
+The Rust services that run on each Avena edge node.
 
-## Binaries
-
-- `streamer`: reads from the LabJack and publishes samples to NATS
-- `archiver`: subscribes to NATS and writes parquet files
-- `exporter`: serves parquet-backed exports over WebSocket, or runs an edge export worker over NATS
-- `subscriber`: diagnostic NATS subscriber
-
-## Deployment
-
-- MU / edge host with the LabJack attached: run the local NATS leaf node,
-  `streamer`, and `archiver`
-- Remote server with webapp support: run the web app against the central OATS
-  NATS WebSocket endpoint
-
-`exporter` now supports two modes:
-
-- `direct`: read local parquet and serve `/export` over WebSocket
-- `worker`: subscribe for export jobs over core NATS, read local parquet, and
-  publish chunked CSV responses back over core NATS
-
-In `direct` mode, `exporter` must run on the same host as the parquet
-directory it serves. The standard edge-box setup uses `worker` mode so the
-laptop webapp only needs a central NATS WebSocket connection.
-
-For central-webapp exports backed by edge-local parquet:
-
-- run `exporter` in `worker` mode on the MU with access to local parquet
-- point the webapp at central OATS NATS as usual
-- the browser publishes export requests over its existing NATS WebSocket session
-- the webapp includes `box_id` in export requests so the correct edge worker is targeted
-
-The browser-to-worker path uses core NATS subjects, not JetStream, for export chunks:
-
-- request subject: `avenars.<site_id>.<box_id>.<source_id>.export.request`
-- reply subject: generated browser inbox
-
-The local LabJack KV config and live sample stream remain on JetStream-backed
-subjects as before.
-
-## Runtime Config Sync
-
-`streamer` can treat the central OATS KV entry as the source of truth while
-still running against the local leaf node and local JetStream domain.
-
-When `CFG_NATS_SERVERS` or `CENTRAL_NATS_SERVERS` is set in `streamer.env.json`:
-
-- `streamer` connects to the local leaf node as usual
-- it bootstraps the local `CFG_BUCKET:CFG_KEY` from the central
-  central config bucket/key, defaulting to `CFG_BUCKET:CFG_KEY`
-- it keeps watching the central KV key for updates
-- each central update is mirrored into local KV
-- the existing local KV watcher then restarts the sampler with the new config
-
-This is one-way sync from central to local. Live samples still publish through
-the local JetStream domain and leaf connection.
-
-## Service Control
-
-Use the repository installer for a deployed edge box. It builds release
-binaries, renders the selected profile, installs runtime files under
-`/etc/avena-rs` and `/usr/local/libexec/avena-rs`, and installs persistent
-system units:
+| Binary | Source | Role |
+|---|---|---|
+| `streamer` | `src/main.rs` | Streams the LabJack T7 and publishes samples to the local NATS server |
+| `archiver` | `src/store.rs` | Consumes the samples from JetStream and writes Parquet files |
+| `exporter` | `src/exporter.rs` | Answers export requests over NATS with CSV read from the archive |
+| `subscriber` | `src/subscriber.rs` | Diagnostic capture of live samples to CSV |
+| `recompress` | `src/recompress.rs` | Rewrites old archive files in the current compressed format |
 
 ```bash
-cd /home/user/avena-rs
-./scripts/install-edge-services.sh \
-  --profile shared/edge-boxes/i69-mu1.json \
-  --start
+cargo build --release          # all binaries, into target/release
+cargo test --release           # unit tests
+cargo doc --no-deps --document-private-items --open
 ```
 
-Control the deployed system services:
+Building needs the LabJack LJM library only at run time (`dynlink`, the
+default). The NATS integration test is ignored by default; run it against a
+local JetStream-enabled server with
+`AVENA_TEST_NATS_URL=nats://127.0.0.1:4222 cargo test --release -- --ignored`.
 
-```bash
-sudo systemctl start avena-streamer avena-archiver avena-exporter
-systemctl status avena-streamer avena-archiver avena-exporter
-journalctl -u avena-streamer -f
-sudo systemctl restart avena-streamer
-sudo systemctl stop avena-streamer
-```
+On an edge node the binaries are installed and run by
+`scripts/install-edge-services.sh`, never from `target/`.
 
-`avena-service.sh` remains a development helper for transient user units. It
-is not the production boot configuration.
-
-`archiver` subscribes to NATS and writes parquet files locally under `PARQUET_DIR`.
-
-During acquisition, files end in `.parquet.inprogress`. On rotation or graceful
-shutdown, the archiver flushes rows, closes the writer, and atomically renames
-the part to `.parquet`. On startup, unfinished or unreadable historical parts
-are preserved with a `.quarantined-...` suffix so the exporter cannot mistake
-them for completed data.
-
-Set `EXPORTER_ADDR` to an address reachable from the laptop, for example:
-
-```json
-{
-  "env": {
-    "PARQUET_DIR": "parquet",
-    "EXPORTER_ADDR": "0.0.0.0:9001"
-  }
-}
-```
-
-`exporter.env.json` fields:
-
-- `EXPORTER_MODE`: `direct` or `worker`
-- `EXPORTER_ADDR`: WebSocket listen address for `direct`
-- `PARQUET_DIR`: local parquet root for `direct` and `worker`
-- `NATS_SERVERS`: NATS URL list for `worker`
-- `NATS_CREDS_FILE`: creds file for `worker`
-- `BOX_ID` or `EXPORT_BOX_ID`: worker target box id for subject binding
-
-Example `worker` config:
-
-```json
-{
-  "env": {
-    "EXPORTER_MODE": "worker",
-    "PARQUET_DIR": "parquet",
-    "NATS_SERVERS": "nats://127.0.0.1:4222",
-    "NATS_CREDS_FILE": "apt.creds",
-    "NATS_SUBJECT": "avenars",
-    "SITE_ID": "i69",
-    "BOX_ID": "i69-mu1",
-    "SOURCE_TYPE": "labjack",
-    "SOURCE_ID": "i69-lj2"
-  }
-}
-```
-
-## Streamer Env Config
-
-`streamer.env.json` contains the environment variables exported before `streamer`
-starts.
-
-Important fields:
-
-- `NATS_CREDS_FILE`: path to the NATS creds file
-- `NATS_SERVERS`: local NATS leaf node URL, normally `nats://127.0.0.1:4222`
-- `JS_DOMAIN`: local JetStream domain, for example `edge-i69-mu1`
-- `CFG_BUCKET`: JetStream KV bucket
-- `CFG_KEY`: JetStream KV key for the LabJack config
-- `CENTRAL_NATS_SERVERS`: optional central OATS NATS URLs for config sync
-- `CENTRAL_NATS_CREDS_FILE`: optional central creds file, defaults to `NATS_CREDS_FILE`
-- `CENTRAL_CFG_BUCKET`: optional central KV bucket to mirror from, defaults to `CFG_BUCKET`
-- `CENTRAL_CFG_KEY`: optional central KV key to mirror from, defaults to `CFG_KEY`
-- `CENTRAL_JS_DOMAIN`: optional central JetStream domain if central KV is domain-scoped
-- `LABJACK_IP`: required direct LabJack IP for `streamer`
-- `LABJACK_SERIAL`: optional but recommended post-connect serial verification
-- `LABJACK_NAME`: optional logical device name for logging
-- `STREAMER_MAX_LABJACK_FAILURES`: consecutive sampler failures before the streamer exits cleanly, default `5`
-- `STREAMER_LABJACK_RETRY_DELAY_SECS`: delay between sampler retries, default `5`
-
-If `CFG_NATS_SERVERS` or `CENTRAL_NATS_SERVERS` is set, `streamer` bootstraps
-the local KV from central KV and keeps watching the central key for updates.
-Central changes are mirrored into local KV, and the existing local KV watcher
-then restarts the sampler with the new config.
-
-`streamer` now uses a strict Ethernet IP path only:
-
-- no subnet scan
-- no indirect serial/name discovery
-- no USB fallback
-
-On connect, `streamer`:
-
-- opens the T7 directly via `LABJACK_IP`
-- verifies the connected handle is a T7
-- verifies `LABJACK_SERIAL` if provided
-- runs a minimal read/write self-test using `STREAM_SETTLING_US`
-
-During runtime, `streamer` retries sampler failures up to
-`STREAMER_MAX_LABJACK_FAILURES` consecutive times. After that it exits with a
-successful status so a `Restart=on-failure` systemd unit does not keep hammering
-the LabJack. Fix the hardware/network/config issue, then restart the service
-manually.
-
-## FlatBuffer Codegen
-
-The stream payload schema is committed in `src/data.fbs`, and the generated
-bindings are also committed:
-
-- Rust: `src/data_generated.rs`
-- TypeScript: `../webapp/src/lib/sampler.ts` and `../webapp/src/lib/sampler/scan.ts`
-
-When `src/data.fbs` changes, regenerate both files from the repo root:
-
-```bash
-flatc --rust -o rust-ljm/src rust-ljm/src/data.fbs
-flatc --ts --gen-object-api -o webapp/src/lib rust-ljm/src/data.fbs
-```
-
-## Browser Decode Note
-
-The browser receives FlatBuffer payloads over the NATS WebSocket connection.
-Some payloads arrive as `Uint8Array` slices whose `byteOffset` is not 8-byte
-aligned. The generated TypeScript helper `valuesArray()` can throw on these
-misaligned payloads when it tries to create a `Float64Array` view directly.
-
-`webapp/src/lib/flatbuffer-parser.ts` now:
-
-- tries the fast `valuesArray()` path first
-- falls back to scalar `scan.values(i)` extraction when alignment is invalid
-
-This keeps per-channel point counts stable in the plot UI even when the browser
-receives misaligned WebSocket payload slices.
-
-## LabJack KV Config
-
-The JSON stored in JetStream KV should use the newer structure:
-
-```json
-{
-  "labjack_name": "Macbook",
-  "asset_number": 1456,
-  "max_channels": 14,
-  "site_id": "i69",
-  "box_id": "i69-mu1",
-  "source_type": "labjack",
-  "source_id": "i69-lj2",
-  "nats_subject": "avenars",
-  "nats_stream": "labjacks",
-  "rotate_secs": 300,
-  "sensor_settings": {
-    "scans_per_read": 100,
-    "scan_rate_hz": 500,
-    "channels_enabled": [11, 13],
-    "gains": 1,
-    "data_formats": ["voltage", "voltage"],
-    "measurement_units": ["V", "V"],
-    "labjack_on_off": true,
-    "calibrations": {
-      "11": { "type": "identity" },
-      "13": { "type": "identity" }
-    }
-  }
-}
-```
-
-With the structured namespace, channel 11 from this config publishes to:
-
-```text
-avenars.i69.i69-mu1.i69-lj2.live.ch11
-```
-
-Older configs using `avenabox.<asset>.data.ch##` still parse and publish with
-the legacy subject shape. New configs should use the structured `avenars`
-fields above.
-
-Legacy KV configs using `scan_rate` and `sampling_rate` are still accepted on
-read, but new configs should use `scans_per_read` and `scan_rate_hz` so the
-names match the actual LabJack stream semantics.
-
-## Full Edge Setup
-
-Setup, operation and reference documentation is published at
-<https://oats-center.github.io/avena-rs/>; the source is under `../docs`.
+Full documentation, including configuration, data formats and the export
+protocol, is at <https://oats-center.github.io/avena-rs/> (source in `../docs`).
