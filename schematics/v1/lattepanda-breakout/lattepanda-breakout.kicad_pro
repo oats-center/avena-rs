@@ -8,14 +8,14 @@
         "apply_defaults_to_fp_fields": false,
         "apply_defaults_to_fp_shapes": false,
         "apply_defaults_to_fp_text": false,
-        "board_outline_line_width": 0.05,
-        "copper_line_width": 0.2,
+        "board_outline_line_width": 0.0508,
+        "copper_line_width": 0.2032,
         "copper_text_italic": false,
-        "copper_text_size_h": 1.5,
-        "copper_text_size_v": 1.5,
-        "copper_text_thickness": 0.3,
+        "copper_text_size_h": 1.524,
+        "copper_text_size_v": 1.524,
+        "copper_text_thickness": 0.3048,
         "copper_text_upright": false,
-        "courtyard_line_width": 0.05,
+        "courtyard_line_width": 0.0508,
         "dimension_precision": 4,
         "dimension_units": 3,
         "dimensions": {
@@ -43,11 +43,11 @@
           "height": 1.27,
           "width": 2.54
         },
-        "silk_line_width": 0.1,
+        "silk_line_width": 0.1524,
         "silk_text_italic": false,
-        "silk_text_size_h": 1.0,
-        "silk_text_size_v": 1.0,
-        "silk_text_thickness": 0.1,
+        "silk_text_size_h": 0.8128,
+        "silk_text_size_v": 0.8128,
+        "silk_text_thickness": 0.1524,
         "silk_text_upright": false,
         "zones": {
           "border_display_style": 2,
@@ -61,7 +61,7 @@
           "hatch_smoothing_value": 0.1,
           "hatch_thickness": 1.0,
           "min_clearance": 0.5,
-          "min_island_area": 10.0,
+          "min_island_area": 9.99999999996,
           "min_thickness": 0.25,
           "pad_connection": 1,
           "remove_islands": 0,
@@ -707,7 +707,7 @@
         "uuid": "80ae3edd-3088-4067-bc99-625be8dfe1e2"
       }
     ],
-    "used_designators": "SW1,#FLG1-2,A1,C1-9,R1-7,U1-4,J1-9,#PWR1-28",
+    "used_designators": "#PWR1-28,J1-9,U1-4,R1-7,C1-9,A1,#FLG1-2,SW1",
     "variants": []
   },
   "sheets": [
