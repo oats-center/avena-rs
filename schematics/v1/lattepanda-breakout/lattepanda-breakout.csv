@@ -1,0 +1,18 @@
+"Id";"Designator";"Footprint";"Quantity";"Designation";"Supplier and ref";
+1;"3V3/5";"Nidec_Copal_CAS-120A";1;"3V3/5V";;;
+2;"C1, C2, C3, C4, C5, C6, C7, C8";"C_0603_1608Metric";8;"0.1uF";;;
+3;"J1";"PinHeader_2x05_P2.54mm_Vertical";1;"Arduino";;;
+4;"J2";"PinHeader_2x06_P2.54mm_Vertical_SMD";1;"Arduino";;;
+5;"J3";"PinSocket_2x05_P2.54mm_Vertical";1;"COM(RS232/485)";;;
+6;"J4";"PinSocket_2x05_P2.54mm_Vertical";1;"Front Panel";;;
+7;"J5";"PC-1053866";1;"RS422";;;
+8;"J6";"PC-1053866";1;"RS485";;;
+9;"J7";"PC-1053866";1;"RS232";;;
+10;"J8";"rj45_smd";1;"PiKVM";;;
+11;"J9";"PC-1053866";1;"SDI12";;;
+12;"R1, R2";"R_0603_1608Metric";2;"120";;;
+13;"R3";"R_0603_1608Metric";1;"3.3k";;;
+14;"R4";"R_0603_1608Metric";1;"6.8k";;;
+15;"REF**, REF**, REF**, REF**";"PC-PinLabel";4;"PC-PinLabel";;;
+16;"U1, U3, U4";"MAX22508";3;"21-0041_S8+2C_MXM";;;
+17;"U2";"TRFS3232E";1;"TRSF3232ECD";;;
