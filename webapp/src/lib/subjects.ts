@@ -35,30 +35,43 @@ export interface LabJackSubjectConfig {
 }
 
 /**
+ * Characters Rust's `char::is_whitespace` accepts (the Unicode `White_Space` set).
+ * JavaScript's `\s` differs from it: it also matches U+FEFF and misses U+0085.
+ */
+const RUST_WHITESPACE = /^[\t\n\v\f\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]$/;
+
+/**
  * Converts free-form identity text into a single NATS subject token.
  *
- * Trims and lowercases the text, replaces each run of whitespace, `.` and `/` with
- * one `-`, drops every character other than `a-z`, `0-9`, `_` and `-`, and strips
- * leading and trailing `-`. This keeps `.` and the wildcards `*` and `>` out of the
- * token.
- *
- * @remarks
- * The Rust `sanitize_token` turns each such character into its own `-`, so input
- * with consecutive separators (for example `"a  b"`) gives `a-b` here but `a--b`
- * there.
+ * Works character by character, exactly like the Rust `sanitize_token`: ASCII letters
+ * are lowercased, ASCII digits, `_` and `-` are kept, each whitespace character, `.`
+ * and `/` becomes its own `-`, and every other character (including non-ASCII
+ * letters) is dropped. Leading and trailing `-` are then stripped. This keeps `.` and
+ * the wildcards `*` and `>` out of the token.
  *
  * @param raw - Identity text such as a site ID, box ID or LabJack name.
  * @returns The token, or `unknown` if nothing usable remains.
+ *
+ * @example
+ * ```ts
+ * sanitizeToken("I69 MU1");  // "i69-mu1"
+ * sanitizeToken("a  b");     // "a--b"
+ * sanitizeToken("site.a/b"); // "site-a-b"
+ * sanitizeToken(" *> ");     // "unknown"
+ * ```
  */
 function sanitizeToken(raw: string): string {
-  const normalized = raw
-    .trim()
-    .toLowerCase()
-    .replace(/[\s./]+/g, "-")
-    .replace(/[^a-z0-9_-]/g, "")
-    .replace(/^-+|-+$/g, "");
+  let out = "";
+  for (const ch of raw) {
+    if (/^[A-Za-z0-9_-]$/.test(ch)) {
+      out += ch.toLowerCase();
+    } else if (ch === "." || ch === "/" || RUST_WHITESPACE.test(ch)) {
+      out += "-";
+    }
+  }
 
-  return normalized || "unknown";
+  const trimmed = out.replace(/^-+|-+$/g, "");
+  return trimmed || "unknown";
 }
 
 /**

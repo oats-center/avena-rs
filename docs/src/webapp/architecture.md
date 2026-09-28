@@ -68,7 +68,9 @@ The export form on the plot page builds an export request and hands it to
 side of the [export protocol](../reference/export-protocol.md). It publishes the
 request with a reply inbox and an ack subject, acknowledges every chunk as it
 arrives, collects the chunks, and when the `complete` frame arrives turns them
-into a file download. If no message arrives for ten minutes, it gives up.
+into a file download. If no exporter is listening (the box is offline), the
+NATS server says so straight away and the export fails with that message. If no
+message arrives for ten minutes, it gives up.
 
 ## Current limitations
 
@@ -78,11 +80,10 @@ These are known and worth fixing, but none of them affects recorded data:
   messages a second is not plotted in full: 2 kHz with 100 scans per read sends
   twenty a second, so about half of them reach the plot. The archive and
   exports have every sample.
-- **Exports are held in memory.** A very large export is built up in the
-  browser before it is saved. Split long ranges into several downloads.
-- **An offline box is slow to report.** A request to a box that is offline
-  gets no reply at all, so the export waits for the ten-minute timeout before
-  failing.
+- **Exports are held by the browser until saved.** Received chunks are folded
+  into Blob parts every 8 MiB, so little sits in JavaScript memory, but the
+  whole file is kept in the browser's Blob storage before it is saved. Split
+  very long ranges into several downloads.
 - **Retrying and reloading open extra connections.** Close and reopen the tab
   if a page has been retried many times.
 - **The credentials sit in `sessionStorage` as plain text** for as long as the

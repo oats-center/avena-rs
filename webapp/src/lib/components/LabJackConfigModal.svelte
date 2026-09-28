@@ -68,8 +68,11 @@
         onClose
     }: Props = $props();
     
-    /** Working copy being edited. Shallow copy of `config`, taken once at mount. */
-    let formData = $state<LabJackConfig>({ ...config });
+    /**
+     * Working copy being edited. Deep copy of `config`, taken once at mount, so Cancel
+     * leaves the caller's object (including `sensor_settings`) untouched.
+     */
+    let formData = $state<LabJackConfig>($state.snapshot(config) as LabJackConfig);
     /** Validation messages keyed by field name (`labjack_name`, `gains`, ...). */
     let errors = $state<Record<string, string>>({});
     let saving = $state<boolean>(false);
@@ -409,48 +412,39 @@
     /**
      * Enables or disables a channel.
      *
-     * Disabling removes the channel's data format, unit and calibration. Enabling appends
-     * `voltage`, `V` and an identity calibration. `channels_enabled` is then sorted.
+     * Disabling removes the channel's data format, unit and calibration. Enabling adds
+     * `voltage`, `V` and an identity calibration. `channels_enabled` is then sorted and
+     * `data_formats` and `measurement_units` are rebuilt in the same order, so every
+     * channel keeps its own labels whatever order channels are toggled in.
      *
      * @param channel - Channel number, 0 to `max_channels - 1`.
      */
     function handleChannelToggle(channel: number) {
-        const channels = [...formData.sensor_settings.channels_enabled];
-        const index = channels.indexOf(channel);
-        const calibrations = { ...(formData.sensor_settings.calibrations ?? {}) };
-        
-        if (index > -1) {
-            // Remove channel and corresponding data format/measurement unit
-            channels.splice(index, 1);
-            formData.sensor_settings.data_formats.splice(index, 1);
-            formData.sensor_settings.measurement_units.splice(index, 1);
+        const settings = formData.sensor_settings;
+        const calibrations = { ...(settings.calibrations ?? {}) };
+
+        // Pair each enabled channel with its labels before changing anything.
+        const labels = new Map<number, { format: string; unit: string }>();
+        settings.channels_enabled.forEach((ch, i) => {
+            labels.set(ch, {
+                format: settings.data_formats[i] || "voltage",
+                unit: settings.measurement_units[i] || "V",
+            });
+        });
+
+        if (labels.has(channel)) {
+            labels.delete(channel);
             delete calibrations[String(channel)];
         } else {
-            // Add channel and default data format/measurement unit
-            channels.push(channel);
-            formData.sensor_settings.data_formats.push("voltage");
-            formData.sensor_settings.measurement_units.push("V");
+            labels.set(channel, { format: "voltage", unit: "V" });
             calibrations[String(channel)] = { type: "identity" };
         }
-        
-        formData.sensor_settings.channels_enabled = channels.sort((a, b) => a - b);
-        
-        // Meant to reorder data formats and units to match the sorted channels, but
-        // `originalIndex` is looked up in the already sorted list, so it equals the loop
-        // index and the arrays keep their order. Enabling a channel below an existing one
-        // therefore leaves its `voltage`/`V` defaults at the end, shifting labels by one.
-        const sortedDataFormats = [];
-        const sortedMeasurementUnits = [];
-        
-        for (const sortedChannel of formData.sensor_settings.channels_enabled) {
-            const originalIndex = formData.sensor_settings.channels_enabled.indexOf(sortedChannel);
-            sortedDataFormats.push(formData.sensor_settings.data_formats[originalIndex] || "voltage");
-            sortedMeasurementUnits.push(formData.sensor_settings.measurement_units[originalIndex] || "V");
-        }
-        
-        formData.sensor_settings.data_formats = sortedDataFormats;
-        formData.sensor_settings.measurement_units = sortedMeasurementUnits;
-        formData.sensor_settings.calibrations = calibrations;
+
+        const channels = [...labels.keys()].sort((a, b) => a - b);
+        settings.channels_enabled = channels;
+        settings.data_formats = channels.map((ch) => labels.get(ch)!.format);
+        settings.measurement_units = channels.map((ch) => labels.get(ch)!.unit);
+        settings.calibrations = calibrations;
     }
     
     
@@ -491,8 +485,8 @@ duplicates are also flagged live while adding. Escape, the close button, Cancel,
 click on the backdrop close the modal without saving.
 
 Props:
-- `config: LabJackConfig`: document to edit, or the defaults for a new one. Copied
-  once at mount.
+- `config: LabJackConfig`: document to edit, or the defaults for a new one. Deep-copied
+  once at mount, so closing without saving discards every edit.
 - `isAddingNew: boolean`: new LabJack (enables duplicate checks, changes titles).
 - `existingLabJacks: Map<string, LabJackConfig>`: all loaded configs by KV key, used
   for the duplicate name and asset number checks.
