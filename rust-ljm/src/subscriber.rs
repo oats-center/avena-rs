@@ -5,18 +5,19 @@
 //! inspecting that live stream without running the archiver. It makes a plain
 //! (non-JetStream) core NATS subscription to the live subject wildcard from
 //! [`subjects::live_labjack_stream_subject`], decodes each scan, and appends one CSV
-//! file per channel. It only sees messages published while it is running.
+//! file per asset and channel. It only sees messages published while it is running.
 //!
 //! Each CSV file is named `labjack_<asset>_<channel>.csv` (for example
-//! `labjack_001_ch03.csv`) and has the header `sequence,timestamp,raw_value`. Every
-//! sample becomes one row: the scan's sequence number, the sample time as RFC 3339
+//! `labjack_001_ch03.csv`) and has the header `sequence,timestamp,raw_value`. The
+//! asset is taken from the subject for legacy subjects and from `ASSET_NUMBER`
+//! otherwise. Every sample becomes one row: the scan's sequence number, the sample time as RFC 3339
 //! UTC, and the value as published.
 //!
 //! # Configuration
 //!
 //! * `NATS_SUBJECT` - Subject root. Default: `avenabox`.
-//! * `ASSET_NUMBER` - Asset number used in CSV file names, and in the structured
-//!   layout as the source when neither `SOURCE_ID` nor `LABJACK_NAME` is set.
+//! * `ASSET_NUMBER` - Asset number used in CSV file names for structured subjects,
+//!   and as the source when neither `SOURCE_ID` nor `LABJACK_NAME` is set.
 //!   Unparseable values fall back to the default. Default: `1`.
 //! * `SITE_ID` - Site ID for the structured subject layout.
 //! * `BOX_ID` - Box ID for the structured subject layout.
@@ -30,7 +31,7 @@
 //! * `NATS_CREDS_FILE` - NATS credentials file. Default: `apt.creds`.
 //!
 //! With the defaults the subscription is the legacy wildcard `avenabox.*.data.*`,
-//! which matches every asset, while the file names always use `ASSET_NUMBER`.
+//! which matches every asset; each file is named after the asset in its subject.
 //! Setting any of `SITE_ID`, `BOX_ID` or `SOURCE_ID`, or `NATS_SUBJECT=avenars`,
 //! switches to `<root>.<site>.<box>.<source>.live.*`.
 
@@ -73,6 +74,39 @@ fn extract_channel_token(subject: &str) -> Option<String> {
     subject.split('.').last().map(|s| s.to_string())
 }
 
+/// Finds the asset number a message belongs to.
+///
+/// Legacy subjects carry the asset as their own token (`<root>.<asset>.data.chNN`),
+/// and the legacy wildcard receives every asset under the root, so the asset is read
+/// from the subject. Structured subjects (`<root>.<site>.<box>.<source>.live.chNN`)
+/// have no asset token, but the structured wildcard only receives one source, so the
+/// configured asset is used for them.
+///
+/// # Arguments
+///
+/// * `subject` - Subject of a received message.
+/// * `default_asset` - Asset number from `ASSET_NUMBER`.
+///
+/// # Returns
+///
+/// The asset number from a legacy subject, or `default_asset` when the subject is
+/// not legacy or its asset token is not a number.
+///
+/// # Examples
+///
+/// ```text
+/// asset_for_subject("avenabox.1456.data.ch03", 1)               -> 1456
+/// asset_for_subject("avenabox.007.data.ch03", 1)                -> 7
+/// asset_for_subject("avenars.i69.i69-mu1.i69-lj2.live.ch11", 1) -> 1
+/// ```
+fn asset_for_subject(subject: &str, default_asset: u32) -> u32 {
+    let tokens: Vec<&str> = subject.split('.').collect();
+    match tokens.as_slice() {
+        [.., asset, "data", _channel] => asset.parse().unwrap_or(default_asset),
+        _ => default_asset,
+    }
+}
+
 /// Opens or creates the per-channel CSV file and writes its header if needed.
 ///
 /// The file is `<out_dir>/labjack_<asset>_<ch_token>.csv`, with the asset formatted by
@@ -90,8 +124,7 @@ fn extract_channel_token(subject: &str) -> Option<String> {
 /// Returns an error if the file cannot be opened or created, its metadata cannot be
 /// read, or the header cannot be written.
 fn open_csv_for_channel(out_dir: &Path, asset: u32, ch_token: &str) -> std::io::Result<File> {
-    let fname = format!("labjack_{}_{}.csv", subjects::pad_asset(asset), ch_token);
-    let path = out_dir.join(fname);
+    let path = out_dir.join(csv_file_name(asset, ch_token));
     let need_header = !path.exists();
 
     let mut file = OpenOptions::new().create(true).append(true).open(&path)?;
@@ -99,6 +132,23 @@ fn open_csv_for_channel(out_dir: &Path, asset: u32, ch_token: &str) -> std::io::
         writeln!(file, "sequence,timestamp,raw_value")?;
     }
     Ok(file)
+}
+
+/// Builds the CSV file name for one asset and channel.
+///
+/// # Arguments
+///
+/// * `asset` - Asset number, formatted by [`subjects::pad_asset`].
+/// * `ch_token` - Channel token from the subject, for example `ch03`.
+///
+/// # Examples
+///
+/// ```text
+/// csv_file_name(1, "ch03")    -> "labjack_001_ch03.csv"
+/// csv_file_name(1456, "ch11") -> "labjack_1456_ch11.csv"
+/// ```
+fn csv_file_name(asset: u32, ch_token: &str) -> String {
+    format!("labjack_{}_{}.csv", subjects::pad_asset(asset), ch_token)
 }
 
 /// Converts a Unix nanosecond timestamp into RFC 3339 text in UTC.
@@ -122,8 +172,8 @@ fn timestamp_unix_ns_to_rfc3339(timestamp_unix_ns: i64) -> Option<String> {
 /// connects to NATS with the credentials file, and subscribes to the live wildcard.
 /// For each message it decodes a `sampler::Scan` and writes one row per value, with
 /// sample `i` timestamped `first_sample_unix_ns + i * sample_interval_ns`. CSV files are
-/// opened on first use per channel token and kept open. The file is flushed after each
-/// scan.
+/// opened on first use per asset and channel token (see [`asset_for_subject`]) and kept
+/// open. The file is flushed after each scan.
 ///
 /// Messages that fail FlatBuffer decoding are logged to stderr and skipped. Scans
 /// without a `values` vector are skipped silently. If a timestamp does not fit in
@@ -191,7 +241,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("Connected to NATS with creds, subscribed at '{}'", wildcard);
 
     let mut sub = nc.subscribe(wildcard.clone()).await?;
-    let mut files: HashMap<String, File> = HashMap::new();
+    let mut files: HashMap<(u32, String), File> = HashMap::new();
 
     while let Some(msg) = sub.next().await {
         let ch_token = match extract_channel_token(&msg.subject) {
@@ -212,11 +262,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let first_sample_unix_ns = scan.first_sample_unix_ns();
                 let sample_interval_ns = scan.sample_interval_ns();
 
+                let asset = asset_for_subject(&msg.subject, asset_number);
                 let out_dir_clone = out_dir.clone();
-                let file = files.entry(ch_token.clone()).or_insert_with(move || {
-                    open_csv_for_channel(&out_dir_clone, asset_number, &ch_token)
-                        .expect("failed to open per-channel csv")
-                });
+                let file = files
+                    .entry((asset, ch_token.clone()))
+                    .or_insert_with(move || {
+                        open_csv_for_channel(&out_dir_clone, asset, &ch_token)
+                            .expect("failed to open per-channel csv")
+                    });
 
                 for (index, value) in values.iter().enumerate() {
                     let timestamp_unix_ns = (first_sample_unix_ns as u128)
@@ -248,4 +301,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Legacy subjects name files after their own asset; structured ones use the default.
+    #[test]
+    fn file_names_follow_the_asset_in_the_subject() {
+        assert_eq!(asset_for_subject("avenabox.1456.data.ch03", 1), 1456);
+        assert_eq!(asset_for_subject("avenabox.007.data.ch11", 1), 7);
+        assert_eq!(
+            asset_for_subject("avenars.i69.i69-mu1.i69-lj2.live.ch11", 1001),
+            1001
+        );
+        assert_eq!(asset_for_subject("avenabox.abc.data.ch03", 5), 5);
+
+        let a = csv_file_name(asset_for_subject("avenabox.1456.data.ch03", 1), "ch03");
+        let b = csv_file_name(asset_for_subject("avenabox.1457.data.ch03", 1), "ch03");
+        assert_eq!(a, "labjack_1456_ch03.csv");
+        assert_eq!(b, "labjack_1457_ch03.csv");
+    }
 }

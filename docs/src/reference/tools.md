@@ -70,8 +70,8 @@ cargo run --release --bin subscriber
 ```
 
 Set `SITE_ID`, `BOX_ID` and `SOURCE_ID`. With none of them it falls back to the
-legacy wildcard, which matches every asset but names every file after
-`ASSET_NUMBER`.
+legacy wildcard, which matches every asset and names each file after the asset
+in its subject.
 
 ## render-edge-config.py
 
