@@ -99,10 +99,11 @@ const SAME_RUN_TOLERANCE_MS = 250;
 
 /**
  * Gap threshold, in sample intervals. Consecutive batches within a run are one interval
- * apart (plus or minus a slew of at most half an interval), so more than 1.5 intervals
- * means samples are missing.
+ * apart, plus or minus a slew of at most half an interval, so up to 1.5 intervals is
+ * normal. One missing sample makes it 2. The threshold sits between the two so that
+ * rounding at the slew limit never draws a false gap.
  */
-const GAP_THRESHOLD_INTERVALS = 1.5;
+const GAP_THRESHOLD_INTERVALS = 1.75;
 
 /**
  * Converts one decoded scan into plot points and decides how it joins the buffer.
