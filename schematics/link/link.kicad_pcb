@@ -2806,7 +2806,7 @@
 		(descr "Capacitor SMD 0402 (1005 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf)")
 		(tags "capacitor")
 		(property "Reference" "C24"
-			(at -2.4384 0 90)
+			(at -2.1844 0 90)
 			(layer "F.SilkS")
 			(uuid "943630e7-900d-4f53-8ff4-2b27292b8475")
 			(effects
@@ -3005,6 +3005,7 @@
 		(property "Reference" "R32"
 			(at 0 -1.143 90)
 			(layer "F.SilkS")
+			(hide yes)
 			(uuid "f37646bd-a5bc-4f46-acd3-adb023ef9214")
 			(effects
 				(font
@@ -4819,6 +4820,7 @@
 		(property "Reference" "D9"
 			(at 0 -2.54 90)
 			(layer "F.SilkS")
+			(hide yes)
 			(uuid "1f573db6-6984-4ce6-9f70-277360721350")
 			(effects
 				(font
@@ -11278,6 +11280,7 @@
 		(property "Reference" "C42"
 			(at -2.1255 0 0)
 			(layer "F.SilkS")
+			(hide yes)
 			(uuid "fb17fad0-815f-4818-9827-11931387ccc2")
 			(effects
 				(font
@@ -37131,6 +37134,31 @@
 		)
 		(layer "Edge.Cuts")
 		(uuid "79ac6f2f-79a9-4f48-b78c-2b7198b8a107")
+	)
+	(gr_text "PoE | +12V"
+		(at 138.938 53.213 90)
+		(layer "F.SilkS")
+		(uuid "6244c940-9287-42e8-ae94-43a0ac9070eb")
+		(effects
+			(font
+				(size 1.016 1.016)
+				(thickness 0.2032)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+	)
+	(gr_text "nRST"
+		(at 183.896 108.839 0)
+		(layer "F.SilkS")
+		(uuid "a20a6995-73a7-4b58-8e28-8fb547fe6224")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.1524)
+			)
+			(justify left bottom)
+		)
 	)
 	(gr_text "+  -"
 		(at 113.792 49.657 90)
