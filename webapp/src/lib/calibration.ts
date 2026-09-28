@@ -46,15 +46,37 @@ export type CalibrationSpec =
     };
 
 /**
+ * Reads a number the way a person would have typed it.
+ *
+ * @param value - Candidate value.
+ * @returns The value if it is a finite number, the parsed value if it is a non-blank
+ *   string holding a finite number (such as `"2.5"`), otherwise `undefined`.
+ */
+function toFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+/**
  * Converts a partial or unknown calibration object into a valid spec.
  *
- * Rules, by `type`:
+ * The Rust `CalibrationSpec` accepts only finite JSON numbers and rejects the whole
+ * config when a spec is malformed. This function repairs such input instead, keeping
+ * as much of what was entered as possible, so that saving from the dashboard writes a
+ * spec Rust can read. Valid specs come out unchanged. Rules, by `type`:
  *
  * - Missing input or a non-string `type`: unnamed identity.
- * - `linear`: `a` and `b` are kept if they are finite numbers, otherwise `a`
- *   becomes 1 and `b` becomes 0. Numeric strings are not accepted.
- * - `polynomial`: each coefficient is converted with `Number()` and non-finite
- *   results are dropped. An empty result becomes `[0, 1]`, the identity polynomial.
+ * - `linear`: `a` and `b` are kept if they are finite numbers or numeric strings
+ *   (stored back as numbers), otherwise `a` becomes 1 and `b` becomes 0.
+ * - `polynomial`: coefficients that are finite numbers or numeric strings are kept as
+ *   numbers and the rest dropped. An empty list stays empty and, as in Rust, evaluates
+ *   to 0. A missing or non-array `coeffs` becomes `[0, 1]`, the identity polynomial.
  * - Any other `type`: identity.
  *
  * `id` is carried over in every case except the first. Returns a new object and does
@@ -65,10 +87,10 @@ export type CalibrationSpec =
  *
  * @example
  * ```ts
- * normalizeCalibration({ type: "linear", a: 2 });
+ * normalizeCalibration({ type: "linear", a: "2" });
  * // { id: undefined, type: "linear", a: 2, b: 0 }
  * normalizeCalibration({ type: "polynomial", coeffs: [] });
- * // { id: undefined, type: "polynomial", coeffs: [0, 1] }
+ * // { id: undefined, type: "polynomial", coeffs: [] }
  * ```
  */
 export function normalizeCalibration(
@@ -82,35 +104,36 @@ export function normalizeCalibration(
     return {
       id: raw.id,
       type: "linear",
-      a: Number.isFinite(raw.a as number) ? Number(raw.a) : 1,
-      b: Number.isFinite(raw.b as number) ? Number(raw.b) : 0,
+      a: toFiniteNumber(raw.a) ?? 1,
+      b: toFiniteNumber(raw.b) ?? 0,
     };
   }
 
   if (raw.type === "polynomial") {
-    const coeffs = Array.isArray(raw.coeffs)
-      ? raw.coeffs.map((value) => Number(value)).filter((value) => Number.isFinite(value))
-      : [];
-    return {
-      id: raw.id,
-      type: "polynomial",
-      coeffs: coeffs.length > 0 ? coeffs : [0, 1],
-    };
+    if (!Array.isArray(raw.coeffs)) {
+      return { id: raw.id, type: "polynomial", coeffs: [0, 1] };
+    }
+    const coeffs = raw.coeffs
+      .map(toFiniteNumber)
+      .filter((value): value is number => value !== undefined);
+    return { id: raw.id, type: "polynomial", coeffs };
   }
 
   return { id: raw.id, type: "identity" };
 }
 
 /**
- * Applies a calibration formula to one raw sample value.
+ * Applies a calibration formula to one raw sample value, with the same arithmetic as
+ * the Rust `CalibrationSpec::apply` that fills the exported `calibrated_value` column.
  *
- * A non-finite `raw` (`NaN` for a skipped sample, or an infinity) is returned
- * unchanged without evaluating the formula. The spec is used as given; pass it
- * through {@link normalizeCalibration} first if it may be incomplete.
+ * Non-finite input is not special-cased, again as in Rust: `NaN` stays `NaN` through
+ * identity, linear and non-empty polynomial formulas, while an empty polynomial gives
+ * -0 for any input. The spec is used as given; pass it through
+ * {@link normalizeCalibration} first if it may be incomplete.
  *
  * @param spec - Calibration to apply.
  * @param raw - Raw reading, in volts.
- * @returns The calibrated value. An empty polynomial evaluates to 0.
+ * @returns The calibrated value. An empty polynomial evaluates to -0.
  *
  * @example
  * ```ts
@@ -119,16 +142,13 @@ export function normalizeCalibration(
  * ```
  */
 export function applyCalibration(spec: CalibrationSpec, raw: number): number {
-  if (!Number.isFinite(raw)) {
-    return raw;
-  }
-
   if (spec.type === "linear") {
     return spec.a * raw + spec.b;
   }
 
   if (spec.type === "polynomial") {
-    return spec.coeffs.reduce((acc, coeff, idx) => acc + coeff * raw ** idx, 0);
+    // Rust's float `sum()` starts from -0.0, so an empty polynomial gives -0.
+    return spec.coeffs.reduce((acc, coeff, idx) => acc + coeff * raw ** idx, -0);
   }
 
   return raw;
