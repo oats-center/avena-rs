@@ -58,9 +58,10 @@
 //!
 //! * Timestamps are derived, not read. The LJM stream API returns values without
 //!   timestamps, so [`StreamClock`] numbers the batches and computes each batch's
-//!   first-sample time from the actual scan rate. It re-anchors to the system clock
-//!   when the drift between the LabJack crystal and the host clock passes 5 ms, so
-//!   the error does not grow over runs that last weeks.
+//!   first-sample time from the actual scan rate. It slews the timeline toward the
+//!   system clock by at most 1 ms a minute, so drift between the LabJack crystal
+//!   and the host clock does not grow over runs that last weeks, without chasing
+//!   read-latency noise (see [`StreamClock`]).
 //! * Publishing does not wait for JetStream acknowledgements. The acks for a batch
 //!   are checked on a spawned task so a slow ack does not delay the next LabJack
 //!   read, which would risk a device buffer overflow.
@@ -918,22 +919,35 @@ use std::sync::{
 
 /// Length of each window over which clock drift is measured, in nanoseconds (60 s).
 ///
-/// Long enough that at least one read in the window arrives with low latency, so
-/// the window minimum reflects drift rather than scheduling delay.
+/// Long enough that at least one read in the window usually arrives with low
+/// latency, so the window minimum approximates drift rather than scheduling delay.
 const CLOCK_CHECK_WINDOW_NS: u128 = 60_000_000_000;
-/// Smallest drift that is corrected, in nanoseconds (5 ms).
+/// Smallest window offset that is acted on, in nanoseconds (5 ms).
+const CLOCK_SLEW_THRESHOLD_NS: i128 = 5_000_000;
+/// Largest adjustment made in one window when slewing, in nanoseconds (1 ms).
 ///
-/// Drift below this is left alone to avoid reacting to read-latency jitter.
-const CLOCK_REANCHOR_THRESHOLD_NS: i128 = 5_000_000;
-/// Correction size at which the log line is marked as suspicious, in nanoseconds
-/// (1 s).
+/// The actual limit is the smaller of this and half the sample interval (see
+/// [`StreamClock::max_slew_ns`]), so an adjustment never makes timestamps go
+/// backwards or collide. One millisecond per minute follows crystal drift of up
+/// to about 16 ppm at 100 Hz, and a quarter millisecond (the limit at 2 kHz) up to
+/// about 4 ppm; MU1 measured about 2 ppm.
+const CLOCK_MAX_SLEW_NS: i128 = 1_000_000;
+/// Windows over which the slewing offset is taken as the smallest window offset
+/// (15, about a quarter of an hour).
 ///
-/// Corrections this large are still applied, but a crystal drift of a few ppm
-/// cannot produce them in one window, so they more likely come from a system clock
-/// step or a backlog of unread batches.
-const CLOCK_LARGE_CORRECTION_NS: i128 = 1_000_000_000;
+/// A single minute is not enough on a busy host: on MU1 the read latency stayed
+/// high for several minutes at a time before dropping back, so each minute's
+/// minimum overstated the offset. Over 15 minutes at least one fast read almost
+/// always occurs, while 2 ppm of drift moves the offset by under 2 ms.
+const CLOCK_OFFSET_HISTORY_WINDOWS: usize = 15;
+/// Offset treated as a system clock step rather than drift, in nanoseconds (2 s).
+const CLOCK_STEP_THRESHOLD_NS: i128 = 2_000_000_000;
+/// Consecutive windows a step-sized offset must persist before the timeline jumps.
+const CLOCK_STEP_WINDOWS: u32 = 3;
+/// Windows between summary log lines about slewing (60, about one hour).
+const CLOCK_LOG_EVERY_WINDOWS: u32 = 60;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 /// Tracks timestamp continuity for successive LabJack stream batches.
 ///
 /// The LabJack stream API returns value batches without per-sample timestamps,
@@ -942,12 +956,33 @@ const CLOCK_LARGE_CORRECTION_NS: i128 = 1_000_000_000;
 ///
 /// The LabJack crystal and the system clock disagree by a few ppm, which added
 /// up to about 4-5 s over a 26-day run on MU1. To stop that accumulating, the
-/// clock compares each batch's last-sample time with the system clock. Over
-/// each 60 s window it keeps the smallest difference, which is the drift plus
-/// the fastest read latency, free of jitter. If that exceeds 5 ms, the
-/// timestamps are shifted by it and the correction is logged. Because the
-/// minimum of steadily growing drift is its value at the start of the window,
-/// corrections trail the drift by up to one window (0.12 ms at 2 ppm).
+/// clock compares each batch's last-sample time with the system clock and keeps
+/// the smallest difference seen in each 60 s window.
+///
+/// That minimum is not a clean drift measurement on a busy host. On MU1, with the
+/// camera software loading the CPU, read latency wandered by tens to hundreds of
+/// milliseconds from one minute to the next. An earlier version jumped the
+/// timeline by the full window minimum and so chased that noise, stepping the
+/// timestamps by up to 430 ms every minute. The clock therefore never jumps for
+/// ordinary offsets. It slews:
+///
+/// * The offset used for slewing is the smallest window minimum over the last 15
+///   windows, because on a busy host a whole minute can pass without a fast read.
+/// * An offset of at least 5 ms that points the same way in two consecutive
+///   windows moves the timeline by at most 1 ms (less at high sample rates, see
+///   [`StreamClock::max_slew_ns`]). Genuine drift is steady and gets followed;
+///   latency noise changes sign or size and mostly does not.
+/// * Only an offset of 2 s or more that persists for three windows, which is what
+///   a system clock step looks like (for example chronyd correcting a badly set
+///   clock), moves the timeline in one jump. That jump is logged.
+///
+/// The first batch of a run is anchored to the system clock at the moment it
+/// arrives, so whatever delay that one read had is built into the timeline. At the
+/// end of the first window the clock therefore corrects the anchor once, in full,
+/// by the smallest offset seen in that window, and logs it. After that only the
+/// rules above apply.
+///
+/// Slewing is summarized in the log about once an hour.
 ///
 /// A new clock is created for every sampling run, so sequence numbers restart at 0
 /// and the first batch of each run is anchored to the system clock again.
@@ -967,6 +1002,84 @@ struct StreamClock {
     /// Smallest receive-time minus last-sample-time seen in the current window, in
     /// nanoseconds. `None` until the window has a measurement.
     window_min_error_ns: Option<i128>,
+    /// Window minimum of the previous window, in nanoseconds.
+    previous_window_error_ns: Option<i128>,
+    /// Consecutive windows whose offset was at least [`CLOCK_STEP_THRESHOLD_NS`]
+    /// in the same direction.
+    step_windows: u32,
+    /// This window's own minimum from the previous window, for step detection.
+    previous_raw_offset_ns: Option<i128>,
+    /// Total slew applied since the last summary log line, in nanoseconds.
+    slewed_since_log_ns: i128,
+    /// Whether the first window has ended and the initial anchor was checked.
+    anchor_checked: bool,
+    /// Window minima of the most recent windows, oldest first, at most
+    /// [`CLOCK_OFFSET_HISTORY_WINDOWS`].
+    recent_offsets_ns: std::collections::VecDeque<i128>,
+    /// Windows completed since the last summary log line.
+    windows_since_log: u32,
+}
+
+/// What the clock decided to do at the end of one drift window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClockAdjustment {
+    /// Leave the timeline alone.
+    None,
+    /// Move the timeline by this many nanoseconds, at most [`CLOCK_MAX_SLEW_NS`].
+    Slew(i128),
+    /// Move the timeline by this many nanoseconds in one jump (a clock step).
+    Step(i128),
+    /// Correct the initial anchor by this many nanoseconds, once per run.
+    Anchor(i128),
+}
+
+/// Decides how to adjust the timeline from two consecutive window offsets.
+///
+/// # Arguments
+///
+/// * `current_ns` - Minimum receive-time minus sample-time in the window that
+///   just ended, in nanoseconds. Positive means the timeline is behind the system
+///   clock.
+/// * `previous_ns` - The same measure for the window before, if there was one.
+/// * `step_windows` - Consecutive windows, including this one, whose offset was at
+///   least [`CLOCK_STEP_THRESHOLD_NS`] in this direction.
+/// * `max_slew_ns` - Largest slew allowed, in nanoseconds (positive).
+///
+/// # Returns
+///
+/// [`ClockAdjustment::Step`] when a step-sized offset has lasted
+/// [`CLOCK_STEP_WINDOWS`] windows, [`ClockAdjustment::Slew`] when an offset of at
+/// least [`CLOCK_SLEW_THRESHOLD_NS`] points the same way as in the previous window,
+/// and [`ClockAdjustment::None`] otherwise.
+///
+/// # Examples
+///
+/// ```text
+/// decide_adjustment(64 ms, Some(60 ms), 0, 1 ms)   -> Slew(+1 ms)
+/// decide_adjustment(64 ms, Some(-400 ms), 0, 1 ms) -> None     (direction changed)
+/// decide_adjustment(3 s, Some(3 s), 3, 1 ms)       -> Step(+3 s)
+/// ```
+fn decide_adjustment(
+    current_ns: i128,
+    previous_ns: Option<i128>,
+    step_windows: u32,
+    max_slew_ns: i128,
+) -> ClockAdjustment {
+    if current_ns.abs() >= CLOCK_STEP_THRESHOLD_NS {
+        return if step_windows >= CLOCK_STEP_WINDOWS {
+            ClockAdjustment::Step(current_ns)
+        } else {
+            ClockAdjustment::None
+        };
+    }
+    let persistent = previous_ns.is_some_and(|previous| {
+        previous.abs() >= CLOCK_SLEW_THRESHOLD_NS && previous.signum() == current_ns.signum()
+    });
+    if current_ns.abs() >= CLOCK_SLEW_THRESHOLD_NS && persistent {
+        ClockAdjustment::Slew(current_ns.clamp(-max_slew_ns, max_slew_ns))
+    } else {
+        ClockAdjustment::None
+    }
 }
 
 impl StreamClock {
@@ -985,15 +1098,32 @@ impl StreamClock {
             run_started: false,
             window_start_unix_ns: 0,
             window_min_error_ns: None,
+            previous_window_error_ns: None,
+            step_windows: 0,
+            previous_raw_offset_ns: None,
+            slewed_since_log_ns: 0,
+            windows_since_log: 0,
+            anchor_checked: false,
+            recent_offsets_ns: std::collections::VecDeque::new(),
         }
+    }
+
+    /// Returns the largest slew allowed per window, in nanoseconds.
+    ///
+    /// The smaller of [`CLOCK_MAX_SLEW_NS`] and half the sample interval, so that
+    /// even a backward slew leaves consecutive timestamps strictly increasing.
+    fn max_slew_ns(&self) -> i128 {
+        CLOCK_MAX_SLEW_NS
+            .min(self.sample_interval_ns as i128 / 2)
+            .max(1)
     }
 
     /// Returns the first sample timestamp and sequence for the next batch.
     ///
     /// Reads the system clock and calls [`Self::next_batch_at`]. The first batch is
     /// anchored so that its last sample falls at the current wall-clock time. Each
-    /// later batch starts where the previous one ended, with occasional drift
-    /// corrections (see the type docs).
+    /// later batch starts where the previous one ended, with the drift handling
+    /// described in the type docs.
     ///
     /// # Arguments
     ///
@@ -1017,10 +1147,10 @@ impl StreamClock {
     ///
     /// For every batch after the first, it measures the receive time minus the
     /// expected time of the batch's last sample and keeps the window minimum. When
-    /// the window has lasted [`CLOCK_CHECK_WINDOW_NS`], a minimum of at least
-    /// [`CLOCK_REANCHOR_THRESHOLD_NS`] (in either direction) is added to this
-    /// batch's first-sample time, and later batches continue from the corrected
-    /// time. The window then restarts at `now_ns`.
+    /// the window has lasted [`CLOCK_CHECK_WINDOW_NS`], [`decide_adjustment`]
+    /// chooses whether to slew or step, the adjustment is added to this batch's
+    /// first-sample time, and later batches continue from there. The window then
+    /// restarts at `now_ns`.
     ///
     /// # Arguments
     ///
@@ -1064,26 +1194,119 @@ impl StreamClock {
             });
 
             if (now_ns as u128).saturating_sub(self.window_start_unix_ns) >= CLOCK_CHECK_WINDOW_NS {
-                let correction_ns = self.window_min_error_ns.take().unwrap_or(0);
+                let offset_ns = self.window_min_error_ns.take().unwrap_or(0);
                 self.window_start_unix_ns = now_ns as u128;
-                if correction_ns.abs() >= CLOCK_REANCHOR_THRESHOLD_NS {
-                    let corrected = first_sample_unix_ns as i128 + correction_ns;
+
+                let same_direction = self
+                    .previous_raw_offset_ns
+                    .is_some_and(|previous| previous.signum() == offset_ns.signum());
+                self.step_windows = if offset_ns.abs() >= CLOCK_STEP_THRESHOLD_NS {
+                    if same_direction {
+                        self.step_windows + 1
+                    } else {
+                        1
+                    }
+                } else {
+                    0
+                };
+
+                self.previous_raw_offset_ns = Some(offset_ns);
+                let adjustment = if !self.anchor_checked {
+                    // First window: fix the latency built into the initial anchor.
+                    self.anchor_checked = true;
+                    if offset_ns.abs() >= CLOCK_SLEW_THRESHOLD_NS {
+                        println!(
+                            "[clock] Corrected the initial anchor by {:+.3} ms after the first minute",
+                            offset_ns as f64 / 1e6
+                        );
+                        ClockAdjustment::Anchor(offset_ns)
+                    } else {
+                        ClockAdjustment::None
+                    }
+                } else {
+                    self.recent_offsets_ns.push_back(offset_ns);
+                    if self.recent_offsets_ns.len() > CLOCK_OFFSET_HISTORY_WINDOWS {
+                        self.recent_offsets_ns.pop_front();
+                    }
+                    let floor_ns = self
+                        .recent_offsets_ns
+                        .iter()
+                        .copied()
+                        .min()
+                        .unwrap_or(offset_ns);
+                    // A clock step shows in every recent window at once, so step detection
+                    // uses this window; slewing uses the floor over the recent history.
+                    let decision_ns = if offset_ns.abs() >= CLOCK_STEP_THRESHOLD_NS {
+                        offset_ns
+                    } else {
+                        floor_ns
+                    };
+                    decide_adjustment(
+                        decision_ns,
+                        self.previous_window_error_ns,
+                        self.step_windows,
+                        self.max_slew_ns(),
+                    )
+                };
+                self.previous_window_error_ns = Some(
+                    self.recent_offsets_ns
+                        .iter()
+                        .copied()
+                        .min()
+                        .unwrap_or(offset_ns),
+                );
+
+                let applied_ns = match adjustment {
+                    ClockAdjustment::None => 0,
+                    ClockAdjustment::Slew(ns) => {
+                        self.slewed_since_log_ns += ns;
+                        ns
+                    }
+                    ClockAdjustment::Anchor(ns) => {
+                        // The anchor is now corrected; start the persistence rule afresh.
+                        self.previous_window_error_ns = None;
+                        ns
+                    }
+                    ClockAdjustment::Step(ns) => {
+                        println!(
+                            "[clock] Offset of {:+.3} s persisted for {} minutes; stepped stream timestamps at sequence {} (system clock step?)",
+                            ns as f64 / 1e9,
+                            CLOCK_STEP_WINDOWS,
+                            self.sequence
+                        );
+                        self.step_windows = 0;
+                        self.previous_window_error_ns = None;
+                        ns
+                    }
+                };
+                if applied_ns != 0 {
+                    // Offsets measured before the adjustment are now off by applied_ns.
+                    for past in self.recent_offsets_ns.iter_mut() {
+                        *past -= applied_ns;
+                    }
+                    if let Some(previous) = self.previous_window_error_ns.as_mut() {
+                        *previous -= applied_ns;
+                    }
+                    let corrected = first_sample_unix_ns as i128 + applied_ns;
                     first_sample_unix_ns = u64::try_from(corrected).map_err(|_| {
                         LJMError::LibraryError(
                             "Corrected stream timestamp overflowed u64".to_string(),
                         )
                     })?;
-                    let note = if correction_ns.abs() >= CLOCK_LARGE_CORRECTION_NS {
-                        " (large: system clock step or read backlog?)"
-                    } else {
-                        ""
-                    };
-                    println!(
-                        "[clock] Re-anchored stream timestamps by {:+.3} ms at sequence {}{}",
-                        correction_ns as f64 / 1e6,
-                        self.sequence,
-                        note
-                    );
+                }
+
+                self.windows_since_log += 1;
+                if self.windows_since_log >= CLOCK_LOG_EVERY_WINDOWS {
+                    if self.slewed_since_log_ns != 0 {
+                        println!(
+                            "[clock] Slewed stream timestamps by {:+.3} ms over the last {} minutes; latest window offset {:+.3} ms",
+                            self.slewed_since_log_ns as f64 / 1e6,
+                            self.windows_since_log,
+                            offset_ns as f64 / 1e6
+                        );
+                    }
+                    self.slewed_since_log_ns = 0;
+                    self.windows_since_log = 0;
                 }
             }
         }
@@ -1766,32 +1989,207 @@ mod tests {
         }
     }
 
-    /// Checks that steady drift is corrected after a full window and stays bounded.
-    #[test]
-    fn clock_reanchors_when_drift_exceeds_threshold() {
-        // The device clock runs 200 ppm slow relative to the system clock, so
-        // each 1 s batch arrives 0.2 ms later than the nominal timeline.
-        let mut clock = StreamClock::new(10_000_000);
-        let t0 = 1_790_000_000_000_000_000_u64;
-        let (first0, _) = clock.next_batch_at(100, t0).expect("first batch");
-        let mut corrected_at = None;
-        let mut previous_first = first0;
-        for k in 1..=130_u64 {
-            let now = t0 + k * 1_000_200_000;
-            let (first, _) = clock.next_batch_at(100, now).expect("batch");
-            let step = first - previous_first;
-            if step != 1_000_000_000 {
-                corrected_at = Some((k, step));
-            }
-            previous_first = first;
-            // Corrections trail steadily growing drift by at most about two
-            // windows (12 ms per window at 200 ppm), so the error stays bounded.
-            let last_sample = first + 99 * 10_000_000;
-            assert!((now as i128 - last_sample as i128).abs() < 30_000_000);
+    /// One simulated batch: the timestamp the clock gave its first sample, and the
+    /// system-clock time at which that sample was really taken.
+    struct SimBatch {
+        stamped_ns: i128,
+        true_ns: i128,
+    }
+
+    /// Runs a clock through `batches` reads and records what it stamped.
+    ///
+    /// The device clock runs `drift_ppm` slow, each batch arrives
+    /// `latency_ns(k)` after its last sample, and the system clock jumps by
+    /// `clock_step` (batch index, nanoseconds) if given.
+    fn simulate(
+        interval_ns: u64,
+        scans: usize,
+        batches: u64,
+        drift_ppm: f64,
+        latency_ns: impl Fn(u64) -> i128,
+        clock_step: Option<(u64, i128)>,
+    ) -> Vec<SimBatch> {
+        let mut clock = StreamClock::new(interval_ns);
+        let t0: i128 = 1_790_000_000_000_000_000;
+        let real_interval = interval_ns as f64 * (1.0 + drift_ppm * 1e-6);
+        let mut out = Vec::new();
+        for k in 0..batches {
+            let offset = match clock_step {
+                Some((at, ns)) if k >= at => ns,
+                _ => 0,
+            };
+            let first_true = t0 + (k as f64 * scans as f64 * real_interval) as i128 + offset;
+            let last_true = first_true + ((scans - 1) as f64 * real_interval) as i128;
+            let now = (last_true + latency_ns(k)) as u64;
+            let (stamped, _) = clock.next_batch_at(scans, now).expect("batch");
+            out.push(SimBatch {
+                stamped_ns: stamped as i128,
+                true_ns: first_true,
+            });
         }
-        let (k, step) = corrected_at.expect("drift of 12 ms per minute must be corrected");
-        assert!(k >= 60, "no correction before a full window");
-        assert!(step > 1_000_000_000, "correction moves timestamps forward");
+        out
+    }
+
+    /// Largest change between consecutive batch start times beyond the nominal span.
+    fn largest_adjustment(batches: &[SimBatch], span_ns: i128) -> i128 {
+        batches
+            .windows(2)
+            .map(|w| (w[1].stamped_ns - w[0].stamped_ns - span_ns).abs())
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Largest difference between stamped and true times after `skip` batches.
+    fn largest_error(batches: &[SimBatch], skip: usize) -> i128 {
+        batches[skip..]
+            .iter()
+            .map(|b| (b.stamped_ns - b.true_ns).abs())
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Checks that latency wander like MU1's under CPU load never jumps the timeline.
+    #[test]
+    fn clock_does_not_chase_latency_wander() {
+        // 100 Hz, 100 scans per read, three hours. Latency ramps by 64 ms per
+        // minute and resets every seven minutes, with a 300 ms stall every 37
+        // batches: the pattern seen on MU1 while the camera loaded the CPU.
+        let latency = |k: u64| -> i128 {
+            let ramp = (k % 420) as i128 * 64_000_000 / 60;
+            let stall = if k % 37 == 0 { 300_000_000 } else { 0 };
+            2_000_000 + ramp + stall
+        };
+        let batches = simulate(10_000_000, 100, 3 * 3600, 0.0, latency, None);
+        // The first batch arrived during a stall; the anchor is fixed once after the
+        // first minute, and every later adjustment is a small slew.
+        assert!(largest_adjustment(&batches[61..], 1_000_000_000) <= 1_000_000);
+        // No real drift, so the timeline must stay close to the truth.
+        assert!(
+            largest_error(&batches, 61) < 25_000_000,
+            "{}",
+            largest_error(&batches, 61)
+        );
+    }
+
+    /// Checks that steady crystal drift is followed by small slews.
+    #[test]
+    fn clock_follows_steady_drift_with_small_slews() {
+        // The device runs 10 ppm slow (0.6 ms per minute, five times MU1's measured
+        // drift), with 0-3 ms of latency. Uncorrected, the error would reach 108 ms
+        // after three hours. The steady-state error is the 5 ms threshold plus the
+        // drift over the 15-minute history (9 ms) plus latency.
+        let batches = simulate(
+            10_000_000,
+            100,
+            3 * 3600,
+            10.0,
+            |k| (k % 4) as i128 * 1_000_000,
+            None,
+        );
+        assert!(largest_adjustment(&batches, 1_000_000_000) <= 1_000_000 + 10_000);
+        assert!(
+            largest_error(&batches, 1200) < 20_000_000,
+            "{}",
+            largest_error(&batches, 1200)
+        );
+
+        // At MU1's measured 2 ppm the error stays within a few milliseconds.
+        let batches = simulate(
+            10_000_000,
+            100,
+            6 * 3600,
+            2.0,
+            |k| (k % 4) as i128 * 1_000_000,
+            None,
+        );
+        assert!(
+            largest_error(&batches, 0) < 10_000_000,
+            "{}",
+            largest_error(&batches, 0)
+        );
+    }
+
+    /// Checks that at 2 kHz timestamps stay strictly increasing through slews.
+    #[test]
+    fn clock_keeps_timestamps_increasing_at_high_rates() {
+        // 2 kHz, 100 scans per read (50 ms batches), 5 ppm drift, jittery latency.
+        let latency = |k: u64| -> i128 { ((k * 7919) % 40) as i128 * 1_000_000 };
+        let batches = simulate(500_000, 100, 20 * 60 * 30, 5.0, latency, None);
+        let span = 100 * 500_000;
+        assert!(largest_adjustment(&batches, span) <= 250_000 + 10_000);
+        // The last sample of each batch comes before the first of the next.
+        for w in batches.windows(2) {
+            assert!(w[1].stamped_ns > w[0].stamped_ns + 99 * 500_000);
+        }
+    }
+
+    /// Checks that a persistent system clock step moves the timeline in one jump.
+    #[test]
+    fn clock_steps_after_a_persistent_system_clock_jump() {
+        // The system clock jumps forward 3 s ten minutes in.
+        let batches = simulate(
+            10_000_000,
+            100,
+            30 * 60,
+            0.0,
+            |_| 2_000_000,
+            Some((600, 3_000_000_000)),
+        );
+        let jumps: Vec<(usize, i128)> = batches
+            .windows(2)
+            .enumerate()
+            .map(|(i, w)| (i + 1, w[1].stamped_ns - w[0].stamped_ns - 1_000_000_000))
+            .filter(|(_, d)| d.abs() > 1_000_000)
+            .collect();
+        assert_eq!(jumps.len(), 1, "exactly one jump: {jumps:?}");
+        let (at, size) = jumps[0];
+        assert!(
+            (600..600 + 5 * 60).contains(&at),
+            "jump within five windows, at {at}"
+        );
+        assert!(
+            (size - 3_000_000_000).abs() < 10_000_000,
+            "jump of about 3 s: {size}"
+        );
+        assert!(largest_error(&batches, at + 1) < 10_000_000);
+    }
+
+    /// Checks the slew and step decisions on single inputs.
+    #[test]
+    fn adjustment_decisions() {
+        let ms = 1_000_000_i128;
+        assert_eq!(
+            decide_adjustment(64 * ms, Some(60 * ms), 0, ms),
+            ClockAdjustment::Slew(ms)
+        );
+        assert_eq!(
+            decide_adjustment(-64 * ms, Some(-9 * ms), 0, ms),
+            ClockAdjustment::Slew(-ms)
+        );
+        assert_eq!(
+            decide_adjustment(64 * ms, Some(-400 * ms), 0, ms),
+            ClockAdjustment::None
+        );
+        assert_eq!(
+            decide_adjustment(64 * ms, None, 0, ms),
+            ClockAdjustment::None
+        );
+        assert_eq!(
+            decide_adjustment(4 * ms, Some(4 * ms), 0, ms),
+            ClockAdjustment::None
+        );
+        assert_eq!(
+            decide_adjustment(3 * ms / 2 * 4, Some(8 * ms), 0, ms / 4),
+            ClockAdjustment::Slew(ms / 4)
+        );
+        assert_eq!(
+            decide_adjustment(3000 * ms, Some(3000 * ms), 2, ms),
+            ClockAdjustment::None
+        );
+        assert_eq!(
+            decide_adjustment(3000 * ms, Some(3000 * ms), 3, ms),
+            ClockAdjustment::Step(3000 * ms)
+        );
     }
 
     /// Checks that LJM dummy values become NaN and are counted.

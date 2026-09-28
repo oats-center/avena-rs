@@ -52,8 +52,10 @@ local bucket, opens the LabJack at `LABJACK_IP`, checks it is a T7 with the
 expected serial, and streams the enabled channels. Each read becomes one
 message per channel on `avenars.<site>.<box>.<source>.live.chNN`. A
 configuration change stops the stream and starts it again with the new
-settings. Every 60 seconds it compares its sample timeline with the system
-clock and corrects drift of 5 ms or more, logging `[clock] Re-anchored ...`.
+settings. It keeps its sample timeline in step with the system clock by
+nudging it at most 1 ms a minute, and logs a summary about once an hour
+(`[clock] Slewed ...`). Only a system clock step of 2 s or more moves the
+timeline in one jump (`[clock] Offset of ... persisted`).
 
 **archiver** has one durable JetStream consumer per enabled channel. It writes
 samples into Parquet files that cover aligned five-minute windows (:00 to :05,

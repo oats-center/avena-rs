@@ -43,10 +43,12 @@ flatc --ts --gen-object-api -o webapp/src/lib rust-ljm/src/data.fbs
 The LabJack does not timestamp samples. The streamer stamps the first read of a
 stream with the system clock and counts forward using the sample interval.
 Because the LabJack's crystal and the system clock drift apart by a few parts
-per million, the streamer compares the two every 60 seconds and shifts the
-timeline when they differ by 5 ms or more. Timestamps can therefore step by a
-few milliseconds, forward or backward, at a correction. Sort by timestamp
-rather than relying on file order.
+per million, the streamer nudges the timeline toward the system clock by at
+most 1 ms a minute, and never by more than half a sample interval, so
+timestamps within a run always increase. Two things can still move timestamps
+in one jump: the first minute of a run, when the initial anchor is corrected
+once, and a system clock step of 2 s or more. Both are logged. Sort by
+timestamp rather than relying on file order.
 
 ## Parquet archive
 
