@@ -1,17 +1,12 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    
-    /** One sample of one channel, as the plot page hands it over. */
-    interface DataPoint {
-        /** Sample time, Unix epoch in milliseconds. Positions the point on the time axis. */
-        timestamp: number;
-        /** Sample value in `unit` (already calibrated by the caller). */
-        value: number;
-        /** Source clock time of the sample, Unix epoch ms, or `null` if unknown. */
-        sourceTimestamp?: number | null;
-        /** Browser time the containing message arrived, Unix epoch ms. Used for the lag badge. */
-        receivedAt?: number;
-    }
+    import type { DataPoint } from "$lib/plot/stream";
+    import {
+        computeValueRange,
+        downsampleMinMax,
+        latestFinitePoint,
+        selectTimeWindow
+    } from "$lib/plot/render";
     
     /** Component props. See the `@component` block below for each one. */
     interface Props {
@@ -86,20 +81,12 @@
     let plotHeight = 0;
     /** Space around the plot area for tick labels and axis titles, in CSS pixels. */
     let margin = { top: 30, right: 40, bottom: 50, left: 80 };
-    /** Value extrema captured once when a trigger freezes the plot, so the y axis holds still. */
-    let frozenRange: { min: number; max: number } | null = null;
-    /** Trigger time that `frozenRange` was captured for; a new trigger recaptures it. */
-    let frozenRangeTriggerTime = 0;
     /** Running min/max of every value seen in continuous autoscale. Only grows until reset. */
     let stickyAutoExtrema: { min: number; max: number } | null = null;
     /** Number of horizontal grid intervals on the y axis. */
     const Y_GRID_DIVISIONS = 8;
     /** Smallest autoscale grid step, in `unit`. Keeps a flat signal from collapsing the axis. */
     const MIN_AUTO_Y_INTERVAL = 0.01;
-    /** Fraction of `timeWindow` the newest sample may lag `Date.now()` before the axis anchors to it. */
-    const MAX_VISIBLE_LIVE_LAG_FRACTION = 0.1;
-    /** Lower bound on that allowed lag, in milliseconds. */
-    const MAX_VISIBLE_LIVE_LAG_MS = 75;
     
     // Color palette for different channels. Only index 0 is used today (one trace per plot).
     const colors = [
@@ -201,25 +188,6 @@
     }
     
     /**
-     * Returns the smallest and largest finite `value` in a list of points.
-     *
-     * @param points - Samples to scan. Non-finite values are skipped.
-     * @returns `{ min, max }`, or `null` if there are no finite values.
-     */
-    function computeValueRange(points: DataPoint[]): { min: number; max: number } | null {
-        if (!points || points.length === 0) return null;
-        let minValue = Number.POSITIVE_INFINITY;
-        let maxValue = Number.NEGATIVE_INFINITY;
-        for (const point of points) {
-            if (!Number.isFinite(point.value)) continue;
-            minValue = Math.min(minValue, point.value);
-            maxValue = Math.max(maxValue, point.value);
-        }
-        if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) return null;
-        return { min: minValue, max: maxValue };
-    }
-
-    /**
      * Rounds a raw grid step up to 1, 2, 5 or 10 times a power of ten.
      *
      * @param value - Raw step, in `unit`.
@@ -288,7 +256,9 @@
      *
      * - `yAutoScale` off: `yMin`/`yMax` (falling back to -1 and 1), with `high` forced
      *   above `low`.
-     * - Frozen mode: `frozenRange` if captured, otherwise the extrema of `points`.
+     * - Frozen mode: the extrema of `points`, the whole capture so far. While the capture
+     *   is collecting the range can widen as samples arrive, so every captured sample is
+     *   inside the axis.
      * - Continuous mode: the union of `points` and every earlier call, kept in
      *   `stickyAutoExtrema`, so the axis grows but does not shrink or jitter.
      *
@@ -308,7 +278,7 @@
         }
 
         if (mode === 'frozen') {
-            const frozenExtrema = frozenRange ?? computeValueRange(points);
+            const frozenExtrema = computeValueRange(points);
             if (!frozenExtrema) return null;
             const { low, high } = normalizeAutoDisplayRange(frozenExtrema);
             return { low, high };
@@ -397,10 +367,12 @@
      *
      * Time labels match {@link mapTimeToX}: in continuous mode they run from
      * `-timeWindow` to 0 s, in frozen mode from `-pre` to `+post` around the trigger.
-     * Offsets under 0.1 s are shown in milliseconds. Value labels use
-     * {@link getDisplayRange}; with no data they show a fixed -10 to 10 scale.
+     * Offsets under 0.1 s are shown in milliseconds. Value labels use the same range as
+     * the trace; with no data they show a fixed -10 to 10 scale.
+     *
+     * @param range - Y range of this frame, from {@link getDisplayRange}.
      */
-    function drawLabels() {
+    function drawLabels(range: { low: number; high: number } | null) {
         if (!ctx) return;
         
         ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
@@ -436,9 +408,6 @@
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
         
-        const labelData = mode === 'frozen' && frozenData ? frozenData : data;
-        const range = getDisplayRange(labelData);
-
         if (range) {
             const span = range.high - range.low;
             const step = span / Y_GRID_DIVISIONS;
@@ -487,7 +456,7 @@
         if (mode === 'frozen') {
             x = mapTimeToX(0);
         } else {
-            const referenceTime = getContinuousReferenceTime(data);
+            const referenceTime = getContinuousReferenceTime(getDisplayData());
             const timeSinceTrigger = (referenceTime - triggerTime) / 1000;
             x = mapTimeToX(timeSinceTrigger);
         }
@@ -509,14 +478,14 @@
      *
      * Skipped unless `showTriggerThreshold` is set and the threshold is a number inside
      * the current y range.
+     *
+     * @param range - Y range of this frame, from {@link getDisplayRange}.
      */
-    function drawThresholdLine() {
+    function drawThresholdLine(range: { low: number; high: number } | null) {
         if (!ctx || !showTriggerThreshold || typeof triggerThreshold !== 'number' || Number.isNaN(triggerThreshold)) {
             return;
         }
 
-        const source = mode === 'frozen' && frozenData ? frozenData : data;
-        const range = getDisplayRange(source);
         if (!range) return;
         if (triggerThreshold < range.low || triggerThreshold > range.high) return;
 
@@ -594,34 +563,20 @@
     /**
      * Returns the time, in Unix epoch ms, that sits at the "0 s" edge in continuous mode.
      *
-     * Uses `Date.now()` so the trace scrolls smoothly. If the newest sample is further
-     * from now than the larger of `MAX_VISIBLE_LIVE_LAG_MS` and
-     * `MAX_VISIBLE_LIVE_LAG_FRACTION * timeWindow`, uses the newest sample's timestamp
-     * instead, so a lagging or clock-skewed source still fills the window rather than
-     * sliding off the left edge.
+     * This is the newest sample's own time, so the time axis is sample time from the
+     * box and does not depend on the browser clock or on network delay (the lag badge
+     * shows that). The plot is redrawn when new samples arrive, so the trace moves in
+     * steps of one message.
      *
-     * @param dataToPlot - Samples in arrival order; the last one is taken as newest.
-     * @returns Reference time in Unix epoch ms.
+     * @param dataToPlot - Samples sorted by time; the last one is the newest.
+     * @returns Reference time in Unix epoch ms, or `Date.now()` with no samples.
      */
     function getContinuousReferenceTime(dataToPlot: DataPoint[]): number {
-        const latestPoint = dataToPlot[dataToPlot.length - 1];
-        const latestTimestamp = latestPoint?.timestamp;
-        const now = Date.now();
-        if (typeof latestTimestamp !== 'number' || Number.isNaN(latestTimestamp)) {
-            return now;
+        const latestTimestamp = dataToPlot[dataToPlot.length - 1]?.timestamp;
+        if (typeof latestTimestamp !== 'number' || !Number.isFinite(latestTimestamp)) {
+            return Date.now();
         }
-
-        // Keep the live trace filled even when transport/render lag is noticeable.
-        const skew = Math.abs(now - latestTimestamp);
-        const maxVisibleLag = Math.max(
-            MAX_VISIBLE_LIVE_LAG_MS,
-            timeWindow * 1000 * MAX_VISIBLE_LIVE_LAG_FRACTION
-        );
-        if (skew > maxVisibleLag) {
-            return latestTimestamp;
-        }
-
-        return now;
+        return latestTimestamp;
     }
 
     /**
@@ -684,118 +639,51 @@
     
     
     /**
-     * Reduces a sorted series to about two points per horizontal pixel, keeping peaks.
-     *
-     * Splits the series into one bucket per pixel of plot width (at least 16) and keeps
-     * each bucket's minimum and maximum sample, in time order. Unlike taking every Nth
-     * sample, this never hides a spike, and it bounds the work per frame regardless of
-     * sample rate. Series that already fit (two points per bucket or fewer) are returned
-     * unchanged.
-     *
-     * @param data - Samples sorted by `timestamp`.
-     * @returns The reduced series, or `data` itself if no reduction was needed or
-     *   possible.
-     */
-    function downsampleMinMax(data: DataPoint[]): DataPoint[] {
-        if (data.length <= 2 || plotWidth <= 0) return data;
-
-        // One bucket per CSS pixel of plot width. Two points per bucket is as much detail
-        // as the screen can show.
-        const bucketCount = Math.max(16, Math.floor(plotWidth - margin.left - margin.right));
-        if (data.length <= bucketCount * 2) return data;
-
-        const bucketSize = Math.ceil(data.length / bucketCount);
-        const reduced: DataPoint[] = [];
-
-        for (let start = 0; start < data.length; start += bucketSize) {
-            const end = Math.min(data.length, start + bucketSize);
-            let minPoint: DataPoint | null = null;
-            let maxPoint: DataPoint | null = null;
-
-            for (let i = start; i < end; i++) {
-                const point = data[i];
-                if (!minPoint || point.value < minPoint.value) minPoint = point;
-                if (!maxPoint || point.value > maxPoint.value) maxPoint = point;
-            }
-
-            if (!minPoint || !maxPoint) continue;
-
-            // Emit min and max in time order so the path does not zigzag backward in x.
-            if (minPoint.timestamp <= maxPoint.timestamp) {
-                reduced.push(minPoint);
-                if (maxPoint !== minPoint) reduced.push(maxPoint);
-            } else {
-                reduced.push(maxPoint);
-                if (maxPoint !== minPoint) reduced.push(minPoint);
-            }
-        }
-
-        return reduced.length > 1 ? reduced : data;
-    }
-
-    /**
      * Returns the samples that fall inside the visible time window.
      *
-     * Frozen mode after a trigger keeps `[triggerTime - pre, triggerTime + post]`;
-     * otherwise keeps the `timeWindow` seconds ending at `referenceTime`. Both bounds
-     * are inclusive.
+     * Frozen mode after a trigger keeps `[triggerTime - pre, triggerTime + post]`, which
+     * is exactly the capture. Otherwise keeps the `timeWindow` seconds ending at
+     * `referenceTime`, plus the nearest sample outside each edge so the line runs to the
+     * border (where the canvas clips it).
      *
-     * @param dataToPlot - Candidate samples.
+     * @param dataToPlot - Samples sorted by time.
      * @param referenceTime - Right edge of the continuous window, Unix epoch ms.
-     * @returns A new filtered array (or the input if it is empty).
+     * @returns A new array.
      */
     function getVisiblePoints(dataToPlot: DataPoint[], referenceTime: number): DataPoint[] {
         if (dataToPlot.length === 0) return dataToPlot;
 
         if (mode === 'frozen' && isTriggered) {
             const { pre, post } = getFrozenWindow();
-            const start = triggerTime - (pre * 1000);
-            const end = triggerTime + (post * 1000);
-            return dataToPlot.filter((point) => point.timestamp >= start && point.timestamp <= end);
+            return selectTimeWindow(dataToPlot, triggerTime - pre * 1000, triggerTime + post * 1000);
         }
 
-        const end = referenceTime;
-        const start = end - (timeWindow * 1000);
-        return dataToPlot.filter((point) => point.timestamp >= start && point.timestamp <= end);
+        return selectTimeWindow(dataToPlot, referenceTime - timeWindow * 1000, referenceTime, true);
     }
-    
-    
+
     /**
-     * Draws the trace for the visible samples.
+     * Draws the trace for the visible samples, clipped to the plot area.
      *
-     * Steps: pick frozen or live data, keep the visible window, sort by time if needed,
-     * downsample with {@link downsampleMinMax}, then draw one path. The path is broken
-     * (a new `moveTo`) where time goes backward, where two neighboring points are more
-     * than a quarter of the plot width apart (a gap in the data), and around points
-     * outside the plot area.
+     * Downsamples to a min/max pair per pixel column (spikes stay visible, gaps are
+     * kept) and draws one path. The path is broken at every `NaN` value (a missing
+     * sample or a gap in the stream) and wherever time goes backward, so gaps are never
+     * bridged. Everything is clipped to the plot rectangle, so values outside a fixed y
+     * range, or points just past the time window, cannot draw over the axes or labels.
      *
-     * @param data - Live samples. Shadows the `data` prop; in frozen mode `frozenData` is
-     *   used instead when set.
+     * @param visibleData - Samples to draw, sorted by time (see {@link getVisiblePoints}).
+     * @param range - Y range of this frame.
+     * @param referenceTime - Right edge of the continuous window, Unix epoch ms.
      * @param color - CSS stroke color.
      */
-    function drawDataLine(data: DataPoint[], color: string) {
-        if (!ctx || data.length < 1) return;
-        
-        // For frozen mode, use the frozen data if available, otherwise use regular data
-        const dataToPlot = mode === 'frozen' && frozenData ? frozenData : data;
-        if (dataToPlot.length < 1) return;
-        
-        
-        const referenceTime = getContinuousReferenceTime(dataToPlot);
-        const visibleData = getVisiblePoints(dataToPlot, referenceTime);
-        if (visibleData.length < 1) return;
+    function drawDataLine(
+        visibleData: DataPoint[],
+        range: { low: number; high: number },
+        referenceTime: number,
+        color: string
+    ) {
+        if (!ctx || visibleData.length < 1) return;
 
-        const range = getDisplayRange(visibleData);
-        if (!range) return;
-        
-        // Enable anti-aliasing for smooth lines
-        ctx.imageSmoothingEnabled = true;
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1.5; // Slightly thinner for smoother appearance
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        
-        // Fast path: avoid sorting every frame when data is already monotonic.
+        // Buffers are kept sorted by the page; sort defensively if they are not.
         let isMonotonic = true;
         for (let i = 1; i < visibleData.length; i++) {
             if (visibleData[i].timestamp < visibleData[i - 1].timestamp) {
@@ -806,59 +694,58 @@
         const orderedData = isMonotonic
             ? visibleData
             : [...visibleData].sort((a, b) => a.timestamp - b.timestamp);
-        const sampledData = downsampleMinMax(orderedData);
-        
+        // About two points (min and max) per pixel column, so spikes stay visible at any
+        // sample rate; NaN gaps are kept.
+        const sampledData = downsampleMinMax(
+            orderedData,
+            Math.max(16, Math.floor(plotWidth - margin.left - margin.right))
+        );
+
+        ctx.save();
         ctx.beginPath();
-        
+        ctx.rect(
+            margin.left,
+            margin.top,
+            Math.max(0, plotWidth - margin.left - margin.right),
+            Math.max(0, plotHeight - margin.top - margin.bottom)
+        );
+        ctx.clip();
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+
         let hasActiveSegment = false;
         let previousTimestamp = Number.NaN;
-        let previousX = Number.NaN;
-        // A jump wider than this between neighboring points is treated as a data gap and
-        // left undrawn instead of bridged with a straight line.
-        const reconnectThreshold = (plotWidth - margin.left - margin.right) * 0.25;
-        
+
         for (const point of sampledData) {
-            // Validate point before accessing properties
-            if (!point || typeof point.timestamp !== 'number' || typeof point.value !== 'number') {
+            // A NaN value is a missing sample or a gap in the stream: end the line here so
+            // the gap is not bridged.
+            if (!point || !Number.isFinite(point.timestamp) || !Number.isFinite(point.value)) {
+                hasActiveSegment = false;
                 continue;
             }
-            
-            let timeSincePoint: number;
-            
-            if (mode === 'frozen' && isTriggered) {
-                // For frozen mode, calculate time relative to trigger time
-                // This can be negative (before trigger) or positive (after trigger)
-                timeSincePoint = (point.timestamp - triggerTime) / 1000;
-            } else {
-                // For continuous mode, calculate time relative to now
-                timeSincePoint = (referenceTime - point.timestamp) / 1000;
-            }
-            
+
+            const timeSincePoint = mode === 'frozen' && isTriggered
+                ? (point.timestamp - triggerTime) / 1000
+                : (referenceTime - point.timestamp) / 1000;
             const x = mapTimeToX(timeSincePoint);
             const y = mapValueToY(point.value, range);
-            
-            
-            if (x >= margin.left && x <= plotWidth - margin.right) {
-                // Start a new subpath after an off-screen point, a repeated or backward timestamp,
-                // or a gap; otherwise extend the current one.
-                const nonMonotonicTime = Number.isFinite(previousTimestamp) && point.timestamp <= previousTimestamp;
-                const largeJump = Number.isFinite(previousX) && Math.abs(x - previousX) > reconnectThreshold;
 
-                if (!hasActiveSegment || nonMonotonicTime || largeJump) {
-                    ctx.moveTo(x, y);
-                    hasActiveSegment = true;
-                } else {
-                    // Draw lines between consecutive reduced points.
-                    ctx.lineTo(x, y);
-                }
-                previousTimestamp = point.timestamp;
-                previousX = x;
+            const nonMonotonicTime = Number.isFinite(previousTimestamp) && point.timestamp <= previousTimestamp;
+            if (!hasActiveSegment || nonMonotonicTime) {
+                ctx.moveTo(x, y);
+                hasActiveSegment = true;
             } else {
-                hasActiveSegment = false;
+                ctx.lineTo(x, y);
             }
+            previousTimestamp = point.timestamp;
         }
-        
+
         ctx.stroke();
+        ctx.restore();
     }
     
     /**
@@ -884,20 +771,26 @@
         // Draw axes
         drawAxes();
         
-        const dataToPlot = mode === 'frozen' && frozenData ? frozenData : data;
+        const dataToPlot = getDisplayData();
+
+        // One y range per frame, from the samples actually drawn, shared by the trace,
+        // the threshold line and the labels so they always agree.
+        const referenceTime = getContinuousReferenceTime(dataToPlot);
+        const visibleData = getVisiblePoints(dataToPlot, referenceTime);
+        const range = getDisplayRange(visibleData);
 
         // Draw data
-        if (dataToPlot.length > 0) {
-            drawDataLine(data, getChannelColor(0));
+        if (range && visibleData.length > 0) {
+            drawDataLine(visibleData, range, referenceTime, getChannelColor(0));
         }
 
-        drawThresholdLine();
+        drawThresholdLine(range);
         
         // Draw trigger line
         drawTriggerLine();
         
         // Draw labels
-        drawLabels();
+        drawLabels(range);
 
         drawCanvasBadges();
         
@@ -970,24 +863,14 @@
     });
 
     /**
-     * Captures `frozenRange` once per trigger (from `frozenData` if it has samples, else
-     * from `data`) and clears it when the plot leaves frozen mode. Later samples added
-     * while COLLECTING do not widen it.
+     * Redraws when any display setting changes, so axis, window and badge changes show
+     * at once rather than with the next batch of data.
      */
     $effect(() => {
-        if (mode === 'frozen' && isTriggered && triggerTime > 0) {
-            const shouldInitialize =
-                triggerTime !== frozenRangeTriggerTime || frozenRange === null;
-            if (shouldInitialize) {
-                const source =
-                    frozenData && frozenData.length > 0 ? frozenData : data;
-                frozenRange = computeValueRange(source);
-                frozenRangeTriggerTime = triggerTime;
-            }
-        } else {
-            frozenRange = null;
-            frozenRangeTriggerTime = 0;
-        }
+        // Bare reads register these props as dependencies.
+        timeWindow; unit; isTriggered; triggerTime; frozenPreWindowSec; frozenPostWindowSec;
+        frozenCollecting; showTriggerThreshold; triggerThreshold; prebuffering;
+        yMin; yMax; invertX; invertY;
         scheduleRender();
     });
 </script>
@@ -1000,17 +883,18 @@ samples and passes them in. This component does no NATS I/O.
 
 Modes:
 - `continuous`: the x axis shows the last `timeWindow` seconds, newest at the right
-  (left with `invertX`). The right edge is `Date.now()`, or the newest sample's time
-  when that lags by more than max(75 ms, 10% of the window).
+  (left with `invertX`). The right edge is the newest sample's own time (sample time,
+  not the browser clock).
 - `frozen`: after a trigger, shows `frozenData` from `frozenPreWindowSec` before to
   `frozenPostWindowSec` after `triggerTime`, with the trigger at 0 s. With autoscale,
-  the y range is captured once per trigger so the plot holds still. Badges read COLLECTING while
-  post-trigger samples are still arriving, then FROZEN.
+  the y range covers every captured sample, so it can widen while the capture is
+  collecting. Badges read COLLECTING while post-trigger samples are still arriving,
+  then FROZEN.
 
 Rendering: redraws are batched to one per animation frame. Each frame keeps only
 samples inside the window, sorts them if needed, and downsamples to a min/max pair per
-pixel column so spikes stay visible at any sample rate. The path breaks at data gaps
-wider than a quarter of the plot. With autoscale the y axis snaps to round 1/2/5 grid
+pixel column so spikes stay visible at any sample rate. The path breaks at every `NaN`
+value (missing sample or stream gap) and is clipped to the plot area. With autoscale the y axis snaps to round 1/2/5 grid
 steps and only widens in continuous mode until autoscale is turned off or `data` is
 emptied. Below the canvas: sample count, source clock and lag at t = 0 (the newest
 sample, or the one nearest the trigger when frozen), and the latest value.
@@ -1051,7 +935,7 @@ Events: none. The component only reads its props.
     {#if (mode === 'continuous' && data.length > 0) || (mode === 'frozen' && frozenData && frozenData.length > 0)}
         {@const plotData = getDisplayData()}
         {@const zeroPoint = getZeroTimePoint(plotData)}
-        {@const latestPoint = plotData[plotData.length - 1]}
+        {@const latestPoint = latestFinitePoint(plotData)}
         {@const zeroSourceTimestamp = (typeof zeroPoint?.sourceTimestamp === 'number' && Number.isFinite(zeroPoint.sourceTimestamp)) ? zeroPoint.sourceTimestamp : null}
         {@const lagReferenceTimestamp = (typeof zeroPoint?.receivedAt === 'number' && Number.isFinite(zeroPoint.receivedAt)) ? zeroPoint.receivedAt : zeroPoint?.timestamp}
         {@const zeroLagMs = zeroSourceTimestamp !== null && typeof lagReferenceTimestamp === 'number' ? Math.max(0, lagReferenceTimestamp - zeroSourceTimestamp) : null}
@@ -1073,7 +957,7 @@ Events: none. The component only reads its props.
                     </span>
                 {/if}
                 <span class="badge badge-primary badge-sm">
-                    Latest: {latestPoint?.value.toFixed(3)} {unit}
+                    Latest: {latestPoint ? latestPoint.value.toFixed(3) : '--'} {unit}
                 </span>
             </div>
         </div>

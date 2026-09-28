@@ -1,8 +1,8 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onMount, onDestroy } from "svelte";
     import { connect, getKeys, getKeyValue, updateConfig, deleteKey } from "$lib/nats.svelte";
     import { normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
-    import { labjackConfigKey } from "$lib/subjects";
+    import { planConfigSave } from "$lib/plot/config-key";
     import LabJackConfigModal from "$lib/components/LabJackConfigModal.svelte";
     
     /** `sensor_settings` object of a LabJack config in KV. See the KV config reference. */
@@ -168,10 +168,14 @@
      */
     let isAddingNew = $state<boolean>(false);
     /**
-     * Connection opened by {@link loadLabJacks} and used for KV reads. Not closed by this
-     * page.
+     * Connection opened by {@link loadLabJacks} and used for KV reads. Closed before each
+     * reload and when the page is destroyed.
      */
     let natsService: any = null;
+    /** Incremented by each {@link loadLabJacks} call; older calls see they are stale. */
+    let loadGeneration = 0;
+    /** Set in `onDestroy`, so a load that finishes afterwards closes its connection. */
+    let destroyed = false;
     /**
      * Calibration presets from `calibration.*` keys, keyed by preset id, offered in the
      * modal.
@@ -181,6 +185,23 @@
     onMount(async () => {
         await loadLabJacks();
     });
+
+    onDestroy(() => {
+        destroyed = true;
+        closeConnection();
+    });
+
+    /** Closes this page's connection, if any, without waiting. */
+    function closeConnection() {
+        const service = natsService;
+        natsService = null;
+        if (!service) return;
+        try {
+            service.connection.close().catch((err: unknown) => console.error("Error closing NATS connection:", err));
+        } catch (err) {
+            console.error("Error closing NATS connection:", err);
+        }
+    }
     
     /**
      * Connects to central NATS and loads all LabJack configs and calibration presets.
@@ -193,12 +214,16 @@
      * the connection fails or listing fails; the promise does not reject.
      *
      * @remarks
-     * Also used by the Retry button. Each call opens a new connection and does not close
-     * the previous one.
+     * Also used by the Retry button. Each call first closes the previous connection. If
+     * a newer call starts, or the page is destroyed, while this one is waiting, this one
+     * closes the connection it opened and changes nothing.
      */
     async function loadLabJacks() {
+        const generation = ++loadGeneration;
+        const superseded = () => generation !== loadGeneration || destroyed;
         loading = true;
         error = "";
+        closeConnection();
         
         try {
             const serverName = sessionStorage.getItem("serverName");
@@ -210,17 +235,22 @@
                 return;
             }
             
-            natsService = await connect(serverName, credentialsContent);
-            if (!natsService) {
+            const service = await connect(serverName, credentialsContent);
+            if (superseded()) {
+                service?.connection.close().catch(() => {});
+                return;
+            }
+            if (!service) {
                 error = "Failed to connect to NATS server";
                 loading = false;
                 return;
             }
+            natsService = service;
             
-            await loadCalibrations();
+            await loadCalibrations(service);
 
             // Get all LabJack config keys from avenabox bucket
-            const keys = await getKeys(natsService, "avenabox", "*.*.*.config");
+            const keys = await getKeys(service, "avenabox", "*.*.*.config");
             console.log("Found keys:", keys);
             
             const newLabJacks = new Map<string, LabJackConfig>();
@@ -228,7 +258,7 @@
             // Load each LabJack configuration
             for (const key of keys) {
                 try {
-                    const configStr = await getKeyValue(natsService, "avenabox", key);
+                    const configStr = await getKeyValue(service, "avenabox", key);
                     const config = normalizeLabJackConfig(JSON.parse(configStr));
                     if (config) newLabJacks.set(key, config);
                 } catch (err) {
@@ -236,12 +266,14 @@
                 }
             }
             
+            if (superseded()) return;
             labjacks = newLabJacks;
         } catch (err) {
+            if (superseded()) return;
             console.error("Error loading LabJacks:", err);
             error = "Failed to load LabJack configurations";
         } finally {
-            loading = false;
+            if (!superseded()) loading = false;
         }
     }
 
@@ -251,14 +283,16 @@
      * Each value is passed through `normalizeCalibration`. The preset id is the value's `id`
      * field, or the key without the `calibration.` prefix. Errors are logged; a failure to
      * list keys leaves {@link availableCalibrations} unchanged.
+     *
+     * @param service - Connection to read from.
      */
-    async function loadCalibrations() {
+    async function loadCalibrations(service: any) {
         try {
-            const keys = await getKeys(natsService, "avenabox", "calibration.*");
+            const keys = await getKeys(service, "avenabox", "calibration.*");
             const presets = new Map<string, CalibrationSpec>();
             for (const key of keys) {
                 try {
-                    const raw = await getKeyValue(natsService, "avenabox", key);
+                    const raw = await getKeyValue(service, "avenabox", key);
                     const parsed = normalizeCalibration(JSON.parse(raw));
                     const id = parsed.id ?? key.replace(/^calibration\./, "");
                     presets.set(id, { ...parsed, id });
@@ -363,11 +397,20 @@
     /**
      * Writes a config from the modal to KV and updates the card list.
      *
-     * The config is cleaned with {@link sanitizeLabJackConfig}. A new config is stored
-     * under `labjackConfigKey(config)`, i.e. `<site>.<box>.<source>.config`. An edited
-     * config is stored under its original key, even if its site, box or source changed.
-     * `updateConfig` opens its own short-lived connection. On success the modal closes; on
-     * failure `error` is set and the modal stays open.
+     * The config is cleaned with {@link sanitizeLabJackConfig}. The key comes from
+     * `planConfigSave`: a new config goes to `<site>.<box>.<source>.config`; an edit that
+     * keeps site, box and source stays under the key it was loaded from; an edit that
+     * changes any of them moves to the key of the new identity. Saving onto a key that
+     * already holds another config is refused.
+     *
+     * A move asks for confirmation, writes the new key, and only after that write
+     * succeeds deletes the old key, so a failed write never loses the config. If the
+     * delete fails, both keys remain and `error` says so. Edge boxes read the key named
+     * in their `CFG_KEY` setting and ignore deletes, so a box keeps running its last
+     * config until `CFG_KEY` is changed to the new key.
+     *
+     * `updateConfig` and `deleteKey` open their own short-lived connections. On success
+     * the modal closes; on failure `error` is set and the modal stays open.
      *
      * @param config - Config returned by `LabJackConfigModal`.
      */
@@ -382,13 +425,46 @@
             }
             
             const sanitizedConfig = sanitizeLabJackConfig(config);
-            const key = isAddingNew ? labjackConfigKey(sanitizedConfig) : editingKey;
+            const plan = planConfigSave({
+                isAddingNew,
+                editingKey,
+                original: labjacks.get(editingKey) ?? null,
+                updated: sanitizedConfig,
+                existingKeys: labjacks.keys()
+            });
+            const key = plan.key;
+
+            if (plan.conflict) {
+                error = `Not saved: another configuration already uses key "${key}". Change the site, box or source.`;
+                return;
+            }
+            if (
+                plan.previousKey &&
+                !confirm(
+                    `Site, box or source changed, so this configuration moves from "${plan.previousKey}" to "${key}".\n\n` +
+                    `An edge box reads the key named in its CFG_KEY setting. Until that is changed to "${key}", ` +
+                    `the box keeps running its last configuration and does not see this edit.\n\nContinue?`
+                )
+            ) {
+                return;
+            }
+
             const success = await updateConfig(serverName, credentialsContent, "avenabox", key, sanitizedConfig);
             
             if (success) {
                 // Update local state
                 const newLabJacks = new Map(labjacks);
                 newLabJacks.set(key, sanitizedConfig);
+
+                // Remove the old key only after the new one is stored.
+                if (plan.previousKey) {
+                    const deleted = await deleteKey(serverName, credentialsContent, "avenabox", plan.previousKey);
+                    if (deleted) {
+                        newLabJacks.delete(plan.previousKey);
+                    } else {
+                        error = `Saved under "${key}", but the old key "${plan.previousKey}" could not be deleted. Delete it by hand.`;
+                    }
+                }
                 labjacks = newLabJacks;
                 
                 showModal = false;
@@ -484,14 +560,15 @@
 LabJack config list at `/labjacks`. It takes no URL parameters.
 
 Reads `serverName` and `credentialsContent` from sessionStorage (written by the login
-page) and opens a connection to central NATS. If either item is missing it shows an
+page) and opens a connection to central NATS, closed on retry and when leaving the page. If either item is missing it shows an
 error with a link back to `/`.
 
 KV bucket `avenabox`:
 - Reads every key matching `*.*.*.config` (one LabJack config each, shown as a card)
   and every key matching `calibration.*` (calibration presets).
-- Writes a config to `<site>.<box>.<source>.config` on save, deletes a config key on
-  delete, and writes `calibration.<id>` when a preset is saved from the modal. Writes
+- Writes a config to `<site>.<box>.<source>.config` on save (an edit that changes site,
+  box or source moves it to the new key and then deletes the old one), deletes a config
+  key on delete, and writes `calibration.<id>` when a preset is saved from the modal. Writes
   and deletes go through `updateConfig` and `deleteKey`, which each open their own
   short-lived connection.
 
