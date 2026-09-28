@@ -17,6 +17,13 @@
         type DataPoint,
         type LiveChannel
     } from "$lib/plot/stream";
+    import {
+        advanceTrigger,
+        getTriggerWindows,
+        hasRequiredPreBuffer,
+        type TriggerCapture,
+        type TriggerSettings
+    } from "$lib/plot/trigger";
 
     
     /** `sensor_settings` object of a LabJack config in KV. See the KV config reference. */
@@ -143,20 +150,6 @@
      */
     type ChannelPlotMode = 'free_run' | 'trigger_normal' | 'trigger_single';
 
-    /** Trigger settings of one channel, edited in the Trigger Settings panel. */
-    interface TriggerSettings {
-        /** Edge that fires the trigger. */
-        type: 'rising' | 'falling';
-        /**
-         * Level compared with calibrated sample values, in the channel's calibrated unit.
-         */
-        threshold: number;
-        /** Share of the capture window before the trigger, in percent, 0 to 95. */
-        preTriggerPercent: number;
-        /** Length of the capture after the trigger, in seconds. */
-        postTriggerWindowSec: number;
-    }
-
     /** Axis settings of one channel, edited in the Mode & Axis panel. */
     interface AxisSettings {
         /** When true the plot scales Y to the data and ignores `yMin` and `yMax`. */
@@ -174,29 +167,6 @@
         invertX: boolean;
         /** Mirrors the Y axis. */
         invertY: boolean;
-    }
-
-    /**
-     * Frozen capture around one trigger, grown as new samples arrive until it is
-     * complete.
-     */
-    interface TriggerCaptureState {
-        /** Samples from `triggerTime - preWindowSec` to `captureEndTime`. */
-        data: DataPoint[];
-        /** Time of the first sample past the threshold, in Unix milliseconds. */
-        triggerTime: number;
-        /**
-         * End of the capture window, `triggerTime + postWindowSec`, in Unix milliseconds.
-         */
-        captureEndTime: number;
-        /** Timestamp of the newest sample in `data`, in Unix milliseconds. */
-        lastCapturedTimestamp: number;
-        /** Pre-trigger window in seconds, fixed when the trigger fired. */
-        preWindowSec: number;
-        /** Post-trigger window in seconds, fixed when the trigger fired. */
-        postWindowSec: number;
-        /** True once samples up to `captureEndTime` have been captured. */
-        complete: boolean;
     }
 
     /**
@@ -264,12 +234,8 @@
      */
     let channelPrebufferReady = $state<Map<number, boolean>>(new Map());
     /** Per channel, the current trigger capture, if any. */
-    let channelTriggerCaptures = $state<Map<number, TriggerCaptureState>>(new Map());
-    /**
-     * Browser time updated every tick; used in {@link getPlotConfig} when no capture
-     * state exists.
-     */
-    let uiNow = $state<number>(Date.now());
+    let channelTriggerCaptures = $state<Map<number, TriggerCapture>>(new Map());
+    /** Timer that decodes queued messages and refreshes the plots every tick. */
     let uiNowTimer: ReturnType<typeof setInterval> | null = null;
     /**
      * Automatic X window in seconds, from {@link deriveAutoTimeWindowSec}; the default
@@ -636,14 +602,6 @@
         )
     );
 
-    /** {@link frozenChannelData} passed through {@link downsampleForDisplay}. */
-    let frozenDisplayData = $derived(
-        new Map(
-            Array.from(frozenChannelData.entries()).map(([channel, data]) => {
-                return [channel, downsampleForDisplay(data)];
-            })
-        )
-    );
 
     
     /**
@@ -762,7 +720,7 @@
         const newChannelTriggered = new Map<number, boolean>();
         const newChannelTriggerTime = new Map<number, number>();
         const newChannelPrebufferReady = new Map<number, boolean>();
-        const newChannelTriggerCaptures = new Map<number, TriggerCaptureState>();
+        const newChannelTriggerCaptures = new Map<number, TriggerCapture>();
         const newLiveChannels = new Map<number, LiveChannel>();
         const newFrozenBuffers = new Map<number, DataPoint[]>();
         labjackConfig.sensor_settings.channels_enabled.forEach(channel => {
@@ -924,7 +882,7 @@
     ) {
         const channelMode = channelModes.get(channel) ?? "free_run";
         if (channelMode === "trigger_normal" || channelMode === "trigger_single") {
-            processTriggerMode(channel, channelMode, buffer, chunk);
+            processTriggerMode(channel, channelMode, buffer, chunkStartIndex, reset, chunk);
         } else {
             if (!(channelPrebufferReady.get(channel) ?? false)) {
                 channelPrebufferReady.set(channel, true);
@@ -934,232 +892,100 @@
     }
 
     /**
-     * Advances the trigger state of one channel after a new chunk.
+     * Advances the trigger state of one channel after a new batch.
      *
-     * While not triggered, waits until the buffer spans the pre-trigger window, then looks
-     * for a crossing with {@link checkTriggerCondition}. While triggered, extends the
-     * capture. In `trigger_single` the capture is held until Re-arm. In `trigger_normal`,
-     * once the chunk's last sample passes the post-trigger window, the trigger is cleared
-     * (the frozen plot stays) and the same chunk is checked for the next crossing.
+     * Updates the pre-buffer flag, then lets `advanceTrigger` (`$lib/plot/trigger`) extend
+     * the open capture or look for the next crossing. A capture holds exactly the
+     * samples in `[trigger - pre, trigger + post]`. In `trigger_normal` the last capture
+     * stays on screen until the next trigger replaces it; in `trigger_single` it is held
+     * until Re-arm.
      *
      * @param channel - LabJack channel number.
      * @param mode - `trigger_normal` or `trigger_single`.
-     * @param fullData - The channel's live buffer, already including `newChunk`.
-     * @param newChunk - Points just appended.
+     * @param buffer - The channel's live buffer, already including the batch.
+     * @param chunkStartIndex - Index in `buffer` of the batch's first point.
+     * @param reset - The buffer was emptied before this batch.
+     * @param chunk - Points just appended.
      */
     function processTriggerMode(
         channel: number,
         mode: ChannelPlotMode,
-        fullData: DataPoint[],
-        newChunk: DataPoint[]
+        buffer: DataPoint[],
+        chunkStartIndex: number,
+        reset: boolean,
+        chunk: DataPoint[]
     ) {
-        const channelTriggerSetting = triggerSettings.get(channel);
-        if (!channelTriggerSetting) return;
+        const settings = triggerSettings.get(channel);
+        if (!settings) return;
 
-        const isSingleShot = mode === "trigger_single";
-        const lastTimestamp = newChunk[newChunk.length - 1]?.timestamp ?? Date.now();
-        const isChannelTriggered = channelTriggered.get(channel) || false;
-        const prebufferReady = hasRequiredPreBuffer(fullData, channelTriggerSetting);
-        const triggerTime = channelTriggerTime.get(channel) || 0;
-        const postWindowMs = Math.max(0, channelTriggerSetting.postTriggerWindowSec || 0) * 1000;
-        const postWindowEnd = triggerTime + postWindowMs;
-
-        const previousReady = channelPrebufferReady.get(channel) ?? false;
-        if (previousReady !== prebufferReady) {
+        const prebufferReady = hasRequiredPreBuffer(buffer, settings);
+        if ((channelPrebufferReady.get(channel) ?? false) !== prebufferReady) {
             channelPrebufferReady.set(channel, prebufferReady);
             channelPrebufferReady = new Map(channelPrebufferReady);
         }
 
-        if (!isChannelTriggered && !prebufferReady) {
-            return;
+        const previous = channelTriggerCaptures.get(channel) ?? null;
+        const capture = advanceTrigger(
+            previous,
+            mode === "trigger_single",
+            settings,
+            buffer,
+            chunkStartIndex,
+            reset,
+            chunk
+        );
+
+        if (capture && capture !== previous) {
+            setTriggerCapture(channel, capture);
         }
-
-        if (isChannelTriggered) {
-            const capture = channelTriggerCaptures.get(channel);
-            if (capture && !capture.complete) {
-                appendToTriggerCapture(channel, newChunk);
-            }
-
-            if (isSingleShot) {
-                return;
-            }
-
-            if (lastTimestamp < postWindowEnd) {
-                return;
-            }
-
-            clearTriggerState(channel, false);
-        }
-
-        checkTriggerCondition(channel, fullData, newChunk);
     }
 
     /**
-     * Arms the channel again by clearing its trigger flag, time and capture.
+     * Stores a channel's capture and the trigger flags derived from it.
      *
      * @param channel - LabJack channel number.
-     * @param clearFrozen - Also empty the frozen plot. `trigger_normal` passes `false` so
-     *   the last capture stays on screen until the next trigger.
+     * @param capture - New or updated capture.
      */
-    function clearTriggerState(channel: number, clearFrozen: boolean = true) {
+    function setTriggerCapture(channel: number, capture: TriggerCapture) {
+        channelTriggerCaptures.set(channel, capture);
+        channelTriggerCaptures = new Map(channelTriggerCaptures);
+        if (!(channelTriggered.get(channel) ?? false)) {
+            channelTriggered.set(channel, true);
+            channelTriggered = new Map(channelTriggered);
+        }
+        if (channelTriggerTime.get(channel) !== capture.triggerTime) {
+            channelTriggerTime.set(channel, capture.triggerTime);
+            channelTriggerTime = new Map(channelTriggerTime);
+        }
+        frozenChannelBuffers.set(channel, capture.data);
+        markUiSnapshotDirty();
+    }
+
+    /**
+     * Arms the channel again by clearing its trigger flag, time, capture and frozen plot.
+     *
+     * @param channel - LabJack channel number.
+     */
+    function clearTriggerState(channel: number) {
         channelTriggered.set(channel, false);
         channelTriggerTime.set(channel, 0);
         channelTriggerCaptures.delete(channel);
-
-        if (clearFrozen) {
-            frozenChannelBuffers.set(channel, []);
-            markUiSnapshotDirty();
-        }
+        frozenChannelBuffers.set(channel, []);
+        markUiSnapshotDirty();
 
         channelTriggered = new Map(channelTriggered);
         channelTriggerTime = new Map(channelTriggerTime);
         channelTriggerCaptures = new Map(channelTriggerCaptures);
     }
-    
-    /**
-     * Looks for the first threshold crossing in a new chunk and starts a capture there.
-     *
-     * Compares each point with the one before it, starting from the last point before the
-     * chunk. Rising fires when the previous value is at or below the threshold and the
-     * current one is above it; falling is the mirror. Does nothing if there is no point
-     * before the chunk.
-     *
-     * @param channel - LabJack channel number.
-     * @param fullData - The channel's live buffer, already including `newChunk`.
-     * @param newChunk - Points just appended.
-     */
-    function checkTriggerCondition(channel: number, fullData: DataPoint[], newChunk: DataPoint[]) {
-        const channelTriggerSetting = triggerSettings.get(channel);
-        if (!channelTriggerSetting) return;
 
-        // Get the last point before the new chunk was added
-        const lastPointBeforeChunk = fullData[fullData.length - newChunk.length - 1];
-        if (!lastPointBeforeChunk) return; // Not enough data to compare
 
-        let previousPoint = lastPointBeforeChunk;
-        const threshold = channelTriggerSetting.threshold;
-
-        for (const currentPoint of newChunk) {
-            let triggered = false;
-            if (channelTriggerSetting.type === 'rising' && previousPoint.value <= threshold && currentPoint.value > threshold) {
-                triggered = true;
-            } else if (channelTriggerSetting.type === 'falling' && previousPoint.value >= threshold && currentPoint.value < threshold) {
-                triggered = true;
-            }
-
-            if (triggered) {
-                channelTriggered.set(channel, true);
-                channelTriggerTime.set(channel, currentPoint.timestamp);
-                channelTriggered = new Map(channelTriggered);
-                channelTriggerTime = new Map(channelTriggerTime);
-                
-                initializeTriggerCapture(
-                    channel,
-                    fullData,
-                    currentPoint.timestamp,
-                    channelTriggerSetting
-                );
-
-                return; 
-            }
-
-            previousPoint = currentPoint;
-        }
-    }
-
-    /**
-     * Starts a capture with the buffered points around a trigger.
-     *
-     * Copies points from `triggerTime - preWindowSec` to `triggerTime + postWindowSec`
-     * into the capture and the frozen buffer. The capture is complete at once if the buffer
-     * already reaches the end of the window.
-     *
-     * @param channel - LabJack channel number.
-     * @param data - The channel's live buffer.
-     * @param triggerTime - Time of the crossing sample, in Unix milliseconds.
-     * @param settings - The channel's trigger settings.
-     */
-    function initializeTriggerCapture(
-        channel: number,
-        data: DataPoint[],
-        triggerTime: number,
-        settings: TriggerSettings
-    ) {
-        const { preWindowSec, postWindowSec } = getTriggerWindows(settings);
-        const startTime = triggerTime - (preWindowSec * 1000);
-        const endTime = triggerTime + (postWindowSec * 1000);
-
-        const frozenData = data.filter(point =>
-            point.timestamp >= startTime && point.timestamp <= endTime
-        );
-        const lastCapturedTimestamp =
-            frozenData.length > 0 ? frozenData[frozenData.length - 1].timestamp : triggerTime;
-        const capture: TriggerCaptureState = {
-            data: frozenData,
-            triggerTime,
-            captureEndTime: endTime,
-            lastCapturedTimestamp,
-            preWindowSec,
-            postWindowSec,
-            complete: lastCapturedTimestamp >= endTime
-        };
-
-        channelTriggerCaptures.set(channel, capture);
-        channelTriggerCaptures = new Map(channelTriggerCaptures);
-        frozenChannelBuffers.set(channel, frozenData);
-        markUiSnapshotDirty();
-    }
-
-    /**
-     * Adds new points to an open capture and marks it complete at the end of the window.
-     *
-     * Only points newer than the last captured one and not past `captureEndTime` are added.
-     *
-     * @param channel - LabJack channel number.
-     * @param chunk - Points just appended to the live buffer.
-     */
-    function appendToTriggerCapture(channel: number, chunk: DataPoint[]) {
-        const capture = channelTriggerCaptures.get(channel);
-        if (!capture || capture.complete) return;
-
-        const appended = chunk.filter(
-            (point) =>
-                point.timestamp > capture.lastCapturedTimestamp &&
-                point.timestamp <= capture.captureEndTime
-        );
-
-        if (appended.length === 0) {
-            const latestChunkTimestamp = chunk[chunk.length - 1]?.timestamp ?? capture.lastCapturedTimestamp;
-            if (latestChunkTimestamp >= capture.captureEndTime) {
-                channelTriggerCaptures.set(channel, { ...capture, complete: true });
-                channelTriggerCaptures = new Map(channelTriggerCaptures);
-            }
-            return;
-        }
-
-        const data = capture.data.concat(appended);
-        const lastCapturedTimestamp = data[data.length - 1]?.timestamp ?? capture.lastCapturedTimestamp;
-        const updatedCapture: TriggerCaptureState = {
-            ...capture,
-            data,
-            lastCapturedTimestamp,
-            complete: lastCapturedTimestamp >= capture.captureEndTime
-        };
-
-        channelTriggerCaptures.set(channel, updatedCapture);
-        channelTriggerCaptures = new Map(channelTriggerCaptures);
-        frozenChannelBuffers.set(channel, data);
-        markUiSnapshotDirty();
-    }
-    
-    
     /**
      * Handles the Re-arm button: clears the trigger and the frozen plot.
      *
      * @param channel - LabJack channel number.
      */
     function resetChannelTrigger(channel: number) {
-        clearTriggerState(channel, true);
+        clearTriggerState(channel);
     }
 
     /**
@@ -1176,8 +1002,7 @@
      * Changes a channel's plot mode.
      *
      * Switching between the two trigger modes keeps the current capture; any other change
-     * clears it. The pre-buffer flag is recomputed from the last snapshot in
-     * {@link channelData}, not from the live buffer.
+     * clears it. The pre-buffer flag is recomputed from the live buffer.
      *
      * @param channel - LabJack channel number.
      * @param nextMode - Mode chosen in the Plot Mode select.
@@ -1187,12 +1012,12 @@
         if (currentMode === nextMode) return;
 
         if (!isTriggerMode(nextMode) || !isTriggerMode(currentMode)) {
-            clearTriggerState(channel, true);
+            clearTriggerState(channel);
         }
 
         if (isTriggerMode(nextMode)) {
             const settings = triggerSettings.get(channel);
-            const data = channelData.get(channel) || [];
+            const data = liveChannels.get(channel)?.buffer ?? [];
             const ready = settings ? hasRequiredPreBuffer(data, settings) : false;
             channelPrebufferReady.set(channel, ready);
         } else {
@@ -1232,52 +1057,11 @@
     }
 
     /**
-     * Converts trigger settings into pre and post window lengths.
-     *
-     * The post window is at least 0.01 s. The pre-trigger percent is clamped to 0 to 95 and
-     * taken as a share of the whole window, so `pre = post * p / (1 - p)`.
-     *
-     * @param settings - The channel's trigger settings, or `undefined` for the minimums.
-     * @returns `preWindowSec` and `postWindowSec`, in seconds.
-     *
-     * @example
-     * ```ts
-     * getTriggerWindows({ type: "rising", threshold: 0, preTriggerPercent: 40, postTriggerWindowSec: 1 });
-     * // { preWindowSec: 0.667, postWindowSec: 1 } (approximately)
-     * ```
-     */
-    function getTriggerWindows(settings: TriggerSettings | undefined) {
-        const postWindowSec = Math.max(0.01, settings?.postTriggerWindowSec || 0.01);
-        const preFraction = Math.min(0.95, Math.max(0, (settings?.preTriggerPercent || 0) / 100));
-        const preWindowSec = postWindowSec * (preFraction / (1 - preFraction));
-        return { preWindowSec, postWindowSec };
-    }
-
-    /**
-     * Tells whether a buffer spans the pre-trigger window.
-     *
-     * @param data - Points sorted by time, oldest first.
-     * @param settings - The channel's trigger settings.
-     * @returns `true` when there are at least two points and the newest is at least
-     *   `preWindowSec` after the oldest.
-     */
-    function hasRequiredPreBuffer(data: DataPoint[], settings: TriggerSettings): boolean {
-        if (data.length < 2) return false;
-        const { preWindowSec } = getTriggerWindows(settings);
-        const requiredMs = preWindowSec * 1000;
-        const oldest = data[0]?.timestamp;
-        const latest = data[data.length - 1]?.timestamp;
-        if (!Number.isFinite(oldest) || !Number.isFinite(latest)) return false;
-        return (latest - oldest) >= requiredMs;
-    }
-
-    /**
      * Builds the data and trigger props for one channel's `RealTimePlot`.
      *
-     * In a trigger mode with a held trigger it returns mode `"frozen"` with the capture as
-     * `frozenData`; otherwise mode `"continuous"`. `frozenCollecting` is true while the
-     * capture is still filling. If no capture state exists it falls back to comparing
-     * {@link uiNow} with the end of the post-trigger window.
+     * In a trigger mode with a capture it returns mode `"frozen"` with the capture as
+     * `frozenData` and its own pre and post windows; `frozenCollecting` is true while the
+     * capture is still filling. Otherwise mode `"continuous"`.
      *
      * @param channel - LabJack channel number.
      * @returns `mode`, `data` (live snapshot), `frozenData`, `isTriggered`, `triggerTime`
@@ -1287,29 +1071,21 @@
         const mode = channelModes.get(channel) ?? "free_run";
         const liveData = channelDisplayData.get(channel) || [];
         const capture = channelTriggerCaptures.get(channel);
-        const frozenData = capture?.data ?? (frozenDisplayData.get(channel) || []);
-        const isTriggered = channelTriggered.get(channel) || false;
-        const triggerTime = channelTriggerTime.get(channel) || 0;
-        const triggerConfig = triggerSettings.get(channel);
-        const { preWindowSec, postWindowSec } = capture ?? getTriggerWindows(triggerConfig);
-        const isFrozenCollecting =
-            isTriggered &&
-            triggerTime > 0 &&
-            !(capture?.complete ?? (uiNow >= (triggerTime + postWindowSec * 1000)));
 
-        if (isTriggerMode(mode) && isTriggered) {
+        if (isTriggerMode(mode) && capture) {
             return {
                 mode: "frozen" as const,
                 data: liveData,
-                frozenData,
+                frozenData: capture.data,
                 isTriggered: true,
-                triggerTime,
-                frozenPreWindowSec: preWindowSec,
-                frozenPostWindowSec: postWindowSec,
-                frozenCollecting: isFrozenCollecting
+                triggerTime: capture.triggerTime,
+                frozenPreWindowSec: capture.preWindowSec,
+                frozenPostWindowSec: capture.postWindowSec,
+                frozenCollecting: !capture.complete
             };
         }
 
+        const { preWindowSec, postWindowSec } = getTriggerWindows(triggerSettings.get(channel));
         return {
             mode: "continuous" as const,
             data: liveData,
@@ -1321,7 +1097,7 @@
             frozenCollecting: false
         };
     }
-    
+
     /** Does a full page load of `/labjacks`. */
     function goBack() {
         window.location.href = "/labjacks";
@@ -1523,7 +1299,6 @@
     // UI_SNAPSHOT_INTERVAL_MS no matter how fast messages arrive.
     onMount(() => {
         uiNowTimer = setInterval(() => {
-            uiNow = Date.now();
             processPendingVisualizationBatches();
             flushUiSnapshots();
         }, UI_SNAPSHOT_INTERVAL_MS);
