@@ -1,17 +1,7 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    
-    /** One sample of one channel, as the plot page hands it over. */
-    interface DataPoint {
-        /** Sample time, Unix epoch in milliseconds. Positions the point on the time axis. */
-        timestamp: number;
-        /** Sample value in `unit` (already calibrated by the caller). */
-        value: number;
-        /** Source clock time of the sample, Unix epoch ms, or `null` if unknown. */
-        sourceTimestamp?: number | null;
-        /** Browser time the containing message arrived, Unix epoch ms. Used for the lag badge. */
-        receivedAt?: number;
-    }
+    import type { DataPoint } from "$lib/plot/stream";
+    import { downsampleMinMax, latestFinitePoint } from "$lib/plot/render";
     
     /** Component props. See the `@component` block below for each one. */
     interface Props {
@@ -684,56 +674,6 @@
     
     
     /**
-     * Reduces a sorted series to about two points per horizontal pixel, keeping peaks.
-     *
-     * Splits the series into one bucket per pixel of plot width (at least 16) and keeps
-     * each bucket's minimum and maximum sample, in time order. Unlike taking every Nth
-     * sample, this never hides a spike, and it bounds the work per frame regardless of
-     * sample rate. Series that already fit (two points per bucket or fewer) are returned
-     * unchanged.
-     *
-     * @param data - Samples sorted by `timestamp`.
-     * @returns The reduced series, or `data` itself if no reduction was needed or
-     *   possible.
-     */
-    function downsampleMinMax(data: DataPoint[]): DataPoint[] {
-        if (data.length <= 2 || plotWidth <= 0) return data;
-
-        // One bucket per CSS pixel of plot width. Two points per bucket is as much detail
-        // as the screen can show.
-        const bucketCount = Math.max(16, Math.floor(plotWidth - margin.left - margin.right));
-        if (data.length <= bucketCount * 2) return data;
-
-        const bucketSize = Math.ceil(data.length / bucketCount);
-        const reduced: DataPoint[] = [];
-
-        for (let start = 0; start < data.length; start += bucketSize) {
-            const end = Math.min(data.length, start + bucketSize);
-            let minPoint: DataPoint | null = null;
-            let maxPoint: DataPoint | null = null;
-
-            for (let i = start; i < end; i++) {
-                const point = data[i];
-                if (!minPoint || point.value < minPoint.value) minPoint = point;
-                if (!maxPoint || point.value > maxPoint.value) maxPoint = point;
-            }
-
-            if (!minPoint || !maxPoint) continue;
-
-            // Emit min and max in time order so the path does not zigzag backward in x.
-            if (minPoint.timestamp <= maxPoint.timestamp) {
-                reduced.push(minPoint);
-                if (maxPoint !== minPoint) reduced.push(maxPoint);
-            } else {
-                reduced.push(maxPoint);
-                if (maxPoint !== minPoint) reduced.push(minPoint);
-            }
-        }
-
-        return reduced.length > 1 ? reduced : data;
-    }
-
-    /**
      * Returns the samples that fall inside the visible time window.
      *
      * Frozen mode after a trigger keeps `[triggerTime - pre, triggerTime + post]`;
@@ -806,7 +746,12 @@
         const orderedData = isMonotonic
             ? visibleData
             : [...visibleData].sort((a, b) => a.timestamp - b.timestamp);
-        const sampledData = downsampleMinMax(orderedData);
+        // About two points (min and max) per pixel column, so spikes stay visible at any
+        // sample rate; NaN gaps are kept.
+        const sampledData = downsampleMinMax(
+            orderedData,
+            Math.max(16, Math.floor(plotWidth - margin.left - margin.right))
+        );
         
         ctx.beginPath();
         
@@ -818,8 +763,10 @@
         const reconnectThreshold = (plotWidth - margin.left - margin.right) * 0.25;
         
         for (const point of sampledData) {
-            // Validate point before accessing properties
-            if (!point || typeof point.timestamp !== 'number' || typeof point.value !== 'number') {
+            // A NaN value is a missing sample or a gap in the stream: end the line here so
+            // the gap is not bridged.
+            if (!point || !Number.isFinite(point.timestamp) || !Number.isFinite(point.value)) {
+                hasActiveSegment = false;
                 continue;
             }
             
@@ -1051,7 +998,7 @@ Events: none. The component only reads its props.
     {#if (mode === 'continuous' && data.length > 0) || (mode === 'frozen' && frozenData && frozenData.length > 0)}
         {@const plotData = getDisplayData()}
         {@const zeroPoint = getZeroTimePoint(plotData)}
-        {@const latestPoint = plotData[plotData.length - 1]}
+        {@const latestPoint = latestFinitePoint(plotData)}
         {@const zeroSourceTimestamp = (typeof zeroPoint?.sourceTimestamp === 'number' && Number.isFinite(zeroPoint.sourceTimestamp)) ? zeroPoint.sourceTimestamp : null}
         {@const lagReferenceTimestamp = (typeof zeroPoint?.receivedAt === 'number' && Number.isFinite(zeroPoint.receivedAt)) ? zeroPoint.receivedAt : zeroPoint?.timestamp}
         {@const zeroLagMs = zeroSourceTimestamp !== null && typeof lagReferenceTimestamp === 'number' ? Math.max(0, lagReferenceTimestamp - zeroSourceTimestamp) : null}
@@ -1073,7 +1020,7 @@ Events: none. The component only reads its props.
                     </span>
                 {/if}
                 <span class="badge badge-primary badge-sm">
-                    Latest: {latestPoint?.value.toFixed(3)} {unit}
+                    Latest: {latestPoint ? latestPoint.value.toFixed(3) : '--'} {unit}
                 </span>
             </div>
         </div>

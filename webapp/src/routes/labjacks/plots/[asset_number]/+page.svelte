@@ -9,6 +9,14 @@
     import {
         FlatBufferParser
     } from "$lib/flatbuffer-parser";
+    import {
+        ScanMessageQueue,
+        createLiveChannel,
+        drainChannelQueue,
+        snapshotNewest,
+        type DataPoint,
+        type LiveChannel
+    } from "$lib/plot/stream";
 
     
     /** `sensor_settings` object of a LabJack config in KV. See the KV config reference. */
@@ -127,30 +135,6 @@
     }
     
     /**
-     * One decoded, calibrated sample as stored in the rolling buffers and passed to
-     * `RealTimePlot`.
-     */
-    interface DataPoint {
-        /**
-         * Sample time in Unix milliseconds, from the `Scan` start time plus the sample
-         * interval.
-         */
-        timestamp: number;
-        /** Sample value after the channel's calibration. */
-        value: number;
-        /**
-         * Source sample time in Unix milliseconds. This page sets it equal to
-         * `timestamp`.
-         */
-        sourceTimestamp?: number | null;
-        /**
-         * Browser time in Unix milliseconds when the NATS message arrived. Used for the
-         * lag readout.
-         */
-        receivedAt?: number;
-    }
-
-    /**
      * Plot mode of one channel.
      *
      * `free_run` scrolls continuously. `trigger_normal` freezes a capture on each threshold
@@ -215,14 +199,6 @@
         complete: boolean;
     }
 
-    /** Newest undecoded live message for one channel, waiting for the next UI tick. */
-    interface PendingScanBatch {
-        /** Raw FlatBuffer `Scan` bytes from the NATS message. */
-        payload: ArrayBuffer | Uint8Array;
-        /** Browser time in Unix milliseconds when the message arrived. */
-        receivedAt: number;
-    }
-
     /**
      * Samples the automatic X window aims to show; the window is this count divided by
      * the scan rate.
@@ -238,6 +214,13 @@
      * never empty.
      */
     const SNAPSHOT_OVERSCAN_FACTOR = 1.25;
+    /**
+     * Most undecoded messages held per channel between ticks. Normally a tick finds a
+     * handful; this is reached only if decoding stalls for a long time (for example a
+     * background tab whose timers the browser throttles). Then the oldest are dropped,
+     * counted, shown in Data Statistics, and appear as a gap in the plot.
+     */
+    const MAX_QUEUED_MESSAGES_PER_CHANNEL = 5000;
     
     /** `asset_number` route parameter. 0 when missing; a non-number gives `NaN`. */
     let assetNumber = $state<number>(0);
@@ -310,20 +293,27 @@
     /** Final size in bytes. Set only after the download completes; `null` while it runs. */
     let exportTotal = $state<number | null>(null);
     /**
-     * Rolling live buffers, one per channel. Not reactive: they are changed in place on
-     * every message and copied into {@link channelData} once per tick.
+     * Rolling live buffers and stream state, one per channel. Not reactive: they are
+     * changed in place on every message and copied into {@link channelData} once per
+     * tick. Buffers are sorted by sample time with no duplicates (see `$lib/plot/stream`).
      */
-    let channelBuffers = new Map<number, DataPoint[]>();
+    let liveChannels = new Map<number, LiveChannel>();
     /**
      * Frozen trigger captures, one per channel. Not reactive; copied into {@link
      * frozenChannelData}.
      */
     let frozenChannelBuffers = new Map<number, DataPoint[]>();
     /**
-     * Newest undecoded message per channel. A message that arrives before the previous one
-     * was decoded replaces it, so at most one message per channel is plotted per tick.
+     * Every received, not yet decoded message per selected channel, in arrival order.
+     * Drained completely on each tick.
      */
-    let pendingScanBatches = new Map<number, PendingScanBatch>();
+    let scanQueue = new ScanMessageQueue(MAX_QUEUED_MESSAGES_PER_CHANNEL);
+    /**
+     * Per-channel stream counters shown in Data Statistics: messages dropped because the
+     * queue overflowed, gaps (missing time between messages), timeline resets, samples
+     * skipped as duplicates, and undecodable payloads.
+     */
+    let channelStreamStatus = $state<Map<number, { dropped: number; gaps: number; resets: number; skipped: number; decodeErrors: number }>>(new Map());
     /** Channels chosen for plotting, at most two. Only these are decoded. */
     let selectedPlotChannels = $state<Set<number>>(new Set());
     /**
@@ -373,7 +363,7 @@
      *
      * The window is the largest of: twice {@link timeWindow}, twice each channel's X window
      * (at least 0.1 s), and each channel's pre plus post trigger window. It is multiplied by
-     * the scan rate. Then trims the live buffers and marks the snapshot dirty. Does nothing
+     * the scan rate, plus 10 % and one read of headroom. Then trims the live buffers and marks the snapshot dirty. Does nothing
      * before the config is loaded.
      */
     function updateMaxDataPoints() {
@@ -390,7 +380,11 @@
             requiredSeconds = Math.max(requiredSeconds, windows.preWindowSec + windows.postWindowSec);
         }
 
-        maxDataPoints = Math.ceil(sr * requiredSeconds);
+        // 10 % and one read of headroom: the actual scan rate can be slightly above the
+        // configured one, and gap markers take a slot each. Without it a trigger capture
+        // could find the start of its pre-trigger window already trimmed.
+        const scansPerRead = Math.max(1, labjackConfig.sensor_settings.scans_per_read || 1);
+        maxDataPoints = Math.ceil(sr * requiredSeconds * 1.1) + scansPerRead;
         trimAllChannelBuffers();
         markUiSnapshotDirty();
         console.log(`Max data points in rolling buffer: ${maxDataPoints}`);
@@ -437,7 +431,8 @@
      * maxDataPoints}.
      */
     function trimAllChannelBuffers() {
-        for (const data of channelBuffers.values()) {
+        for (const live of liveChannels.values()) {
+            const data = live.buffer;
             const excess = data.length - maxDataPoints;
             if (excess > 0) {
                 data.splice(0, excess);
@@ -446,40 +441,18 @@
     }
 
     /**
-     * Finds the first point at or after a time by binary search.
-     *
-     * @param data - Points sorted by `timestamp`, oldest first.
-     * @param startTime - Time in Unix milliseconds.
-     * @returns Index of the first point with `timestamp >= startTime`, or `data.length`.
-     */
-    function findFirstTimestampIndex(data: DataPoint[], startTime: number): number {
-        let low = 0;
-        let high = data.length;
-
-        while (low < high) {
-            const mid = Math.floor((low + high) / 2);
-            if (data[mid].timestamp < startTime) {
-                low = mid + 1;
-            } else {
-                high = mid;
-            }
-        }
-
-        return low;
-    }
-
-    /**
      * Copies the newest part of a channel's live buffer for the plot.
      *
      * Keeps the X window times {@link SNAPSHOT_OVERSCAN_FACTOR}, at least 0.25 s. In the
      * trigger modes it keeps at least the pre-trigger window plus 0.25 s. The span is
-     * measured back from the newest point's timestamp, not from the clock.
+     * measured back from the newest point's timestamp, not from the clock, and one point
+     * before the span is kept so the line reaches the left edge.
      *
      * @param channel - LabJack channel number.
      * @returns A new array, empty when the buffer is empty.
      */
     function snapshotLiveChannelData(channel: number): DataPoint[] {
-        const data = channelBuffers.get(channel) || [];
+        const data = liveChannels.get(channel)?.buffer ?? [];
         if (data.length === 0) return [];
 
         const axisWindowSec = axisSettings.get(channel)?.xWindowSec ?? timeWindow;
@@ -494,10 +467,7 @@
             }
         }
 
-        const endTime = data[data.length - 1]?.timestamp ?? 0;
-        const startTime = endTime - (keepSeconds * 1000);
-        const startIndex = findFirstTimestampIndex(data, startTime);
-        return data.slice(startIndex);
+        return snapshotNewest(data, keepSeconds * 1000);
     }
 
     /**
@@ -519,7 +489,24 @@
 
         channelData = liveSnapshots;
         frozenChannelData = frozenSnapshots;
+        refreshStreamStatus();
         uiSnapshotDirty = false;
+    }
+
+    /** Copies the per-channel stream counters into {@link channelStreamStatus}. */
+    function refreshStreamStatus() {
+        const next = new Map<number, { dropped: number; gaps: number; resets: number; skipped: number; decodeErrors: number }>();
+        for (const channel of labjackConfig?.sensor_settings.channels_enabled ?? []) {
+            const stats = liveChannels.get(channel)?.stats;
+            next.set(channel, {
+                dropped: scanQueue.droppedMessages.get(channel) ?? 0,
+                gaps: stats?.gaps ?? 0,
+                resets: stats?.resets ?? 0,
+                skipped: stats?.skippedSamples ?? 0,
+                decodeErrors: stats?.decodeErrors ?? 0
+            });
+        }
+        channelStreamStatus = next;
     }
 
     /**
@@ -598,67 +585,45 @@
     }
 
     /**
-     * Decodes the pending message of each selected channel and appends it to the buffer.
+     * Decodes every queued message of each selected channel, in arrival order, and
+     * appends the samples to the channel's buffer.
      *
-     * For each selected channel with a pending message: parses the FlatBuffer `Scan`, gives
-     * sample `i` the time `firstSampleUnixNs + i * sampleIntervalNs` (converted to ms),
-     * applies the channel's calibration from `sensor_settings.calibrations`, and passes the
-     * points to {@link addDataChunk}. Pending messages of unselected channels stay in
-     * {@link pendingScanBatches} and are not decoded. Called once per tick.
+     * Each sample gets the time `firstSampleUnixNs + i * sampleIntervalNs` from its
+     * `Scan`, and the channel's calibration from `sensor_settings.calibrations`. A `NaN`
+     * or LJM `-9999` sample is kept as a `NaN` point, drawn as a gap; every other value
+     * is plotted whatever its size. Missing time between messages gets a gap marker,
+     * repeated or late messages are skipped, and a timeline that jumps backward starts a
+     * new buffer (see `drainChannelQueue` in `$lib/plot/stream`). After each message the
+     * trigger logic runs on the new points. Called once per tick.
      */
     function processPendingVisualizationBatches() {
         if (!labjackConfig) return;
 
         for (const channel of labjackConfig.sensor_settings.channels_enabled) {
-            const pending = pendingScanBatches.get(channel);
-            if (!pending) continue;
-            const shouldProcess = selectedPlotChannels.has(channel);
-            if (!shouldProcess) continue;
+            if (!selectedPlotChannels.has(channel) || scanQueue.size(channel) === 0) continue;
 
-            pendingScanBatches.delete(channel);
-
-            try {
-                const scanData = flatBufferParser.parse(pending.payload);
-                if (!scanData) continue;
-
-                const firstSampleMs = Number(scanData.firstSampleUnixNs) / 1_000_000;
-                const sampleIntervalMs = Number(scanData.sampleIntervalNs) / 1_000_000;
-                const calibrationSpec = normalizeCalibration(
-                    labjackConfig.sensor_settings.calibrations?.[String(channel)]
-                );
-
-                const newPoints: DataPoint[] = [];
-                let timestamp = firstSampleMs;
-                for (let i = 0; i < scanData.values.length; i++) {
-                    // Drop non-finite values and raw values with magnitude 100 or more,
-                    // checked before calibration. The timestamp still advances so later
-                    // samples keep their times.
-                    const rawValue = scanData.values[i];
-
-                    if (
-                        typeof rawValue === "number" &&
-                        Number.isFinite(rawValue) &&
-                        Number.isFinite(timestamp) &&
-                        Math.abs(rawValue) < 100
-                    ) {
-                        const calibrated = applyCalibration(calibrationSpec, rawValue);
-                        newPoints.push({
-                            timestamp,
-                            value: calibrated,
-                            sourceTimestamp: timestamp,
-                            receivedAt: pending.receivedAt
-                        });
-                    }
-
-                    timestamp += sampleIntervalMs;
-                }
-
-                if (newPoints.length > 0) {
-                    addDataChunk(channel, newPoints);
-                }
-            } catch (err) {
-                console.error(`Error processing pending batch for channel ${channel}:`, err);
+            let live = liveChannels.get(channel);
+            if (!live) {
+                live = createLiveChannel();
+                liveChannels.set(channel, live);
             }
+            const calibrationSpec = normalizeCalibration(
+                labjackConfig.sensor_settings.calibrations?.[String(channel)]
+            );
+
+            const liveChannel = live;
+            drainChannelQueue(
+                scanQueue,
+                channel,
+                liveChannel,
+                (payload) => flatBufferParser.parse(payload),
+                calibrationSpec,
+                maxDataPoints,
+                (chunkStartIndex, reset, chunk) => {
+                    handleNewChunk(channel, liveChannel.buffer, chunkStartIndex, reset, chunk);
+                }
+            );
+            markUiSnapshotDirty();
         }
     }
 
@@ -798,12 +763,12 @@
         const newChannelTriggerTime = new Map<number, number>();
         const newChannelPrebufferReady = new Map<number, boolean>();
         const newChannelTriggerCaptures = new Map<number, TriggerCaptureState>();
-        const newChannelBuffers = new Map<number, DataPoint[]>();
+        const newLiveChannels = new Map<number, LiveChannel>();
         const newFrozenBuffers = new Map<number, DataPoint[]>();
         labjackConfig.sensor_settings.channels_enabled.forEach(channel => {
             newChannelData.set(channel, []);
             newFrozenChannelData.set(channel, []);
-            newChannelBuffers.set(channel, []);
+            newLiveChannels.set(channel, createLiveChannel());
             newFrozenBuffers.set(channel, []);
             newChannelModes.set(channel, 'free_run');
             newAxisSettings.set(channel, {
@@ -834,9 +799,10 @@
         channelTriggerTime = newChannelTriggerTime;
         channelPrebufferReady = newChannelPrebufferReady;
         channelTriggerCaptures = newChannelTriggerCaptures;
-        channelBuffers = newChannelBuffers;
+        liveChannels = newLiveChannels;
         frozenChannelBuffers = newFrozenBuffers;
-        pendingScanBatches = new Map<number, PendingScanBatch>();
+        scanQueue.clear();
+        channelStreamStatus = new Map();
         selectedPlotChannels = pickInitialPlotChannels(
             labjackConfig.sensor_settings.channels_enabled,
             selectedPlotChannels
@@ -910,12 +876,15 @@
                 subscriptions.push(subscription);
                 
                 // One reader loop per subscription, not awaited. It ends when the
-                // subscription is unsubscribed. It only stores the newest payload;
-                // decoding waits for the UI tick.
+                // subscription is unsubscribed. It queues every payload of a selected
+                // channel, in arrival order; decoding waits for the UI tick. Messages of
+                // unselected channels are not kept (the plot shows a gap if the channel
+                // is selected again later).
                 (async () => {
                     for await (const msg of subscription) {
                         try {
-                            pendingScanBatches.set(channel, {
+                            if (!selectedPlotChannels.has(channel)) continue;
+                            scanQueue.push(channel, {
                                 payload: msg.data instanceof ArrayBuffer
                                     ? msg.data
                                     : (msg.data as Uint8Array),
@@ -935,36 +904,33 @@
     }
     
     /**
-     * Appends decoded points to a channel's live buffer and runs the trigger logic.
+     * Runs the trigger logic after a batch was appended to a channel's live buffer.
      *
-     * Trims the buffer to {@link maxDataPoints}. In a trigger mode it calls
-     * {@link processTriggerMode}; in free run it marks the pre-buffer as ready.
+     * In a trigger mode it calls {@link processTriggerMode}; in free run it marks the
+     * pre-buffer as ready.
      *
      * @param channel - LabJack channel number.
-     * @param chunk - Points from one `Scan`, oldest first.
+     * @param buffer - The channel's live buffer, already including `chunk`.
+     * @param chunkStartIndex - Index in `buffer` of the chunk's first point.
+     * @param reset - The buffer was emptied before this chunk (timeline jumped back).
+     * @param chunk - Points just appended, oldest first.
      */
-    function addDataChunk(channel: number, chunk: DataPoint[]) {
-        const currentData = channelBuffers.get(channel) || [];
-        for (const point of chunk) {
-            currentData.push(point);
-        }
-        const excess = currentData.length - maxDataPoints;
-        if (excess > 0) {
-            currentData.splice(0, excess);
-        }
-        channelBuffers.set(channel, currentData);
-
+    function handleNewChunk(
+        channel: number,
+        buffer: DataPoint[],
+        chunkStartIndex: number,
+        reset: boolean,
+        chunk: DataPoint[]
+    ) {
         const channelMode = channelModes.get(channel) ?? "free_run";
         if (channelMode === "trigger_normal" || channelMode === "trigger_single") {
-            processTriggerMode(channel, channelMode, currentData, chunk);
+            processTriggerMode(channel, channelMode, buffer, chunk);
         } else {
             if (!(channelPrebufferReady.get(channel) ?? false)) {
                 channelPrebufferReady.set(channel, true);
                 channelPrebufferReady = new Map(channelPrebufferReady);
             }
         }
-
-        markUiSnapshotDirty();
     }
 
     /**
@@ -1607,10 +1573,11 @@ page) and opens its own connection to central NATS. Shows an error if either is 
 Live data: subscribes to one subject per enabled channel, built by
 `liveLabJackChannelSubject`: `avenars.<site>.<box>.<source>.live.chNN` for structured
 configs or `<root>.<asset>.data.chNN` for legacy ones. Each message is a FlatBuffer
-`Scan`. Only the newest undecoded message per channel is kept. Every 100 ms a timer
-decodes it for the channels selected for plotting (at most two), applies the channel's
-calibration, appends to a rolling buffer, runs the trigger logic and copies the buffers
-into reactive state. Each channel can run in Free Run, Trigger Normal or Trigger Single.
+`Scan`. Every message of the channels selected for plotting (at most two) is queued
+(bounded; overflow drops the oldest and is shown in Data Statistics). Every 100 ms a
+timer decodes all queued messages in order, applies the channel's calibration, appends
+to a rolling buffer sorted by sample time (NaN and missing time become gaps; duplicates
+are skipped), runs the trigger logic and copies the buffers into reactive state. Each channel can run in Free Run, Trigger Normal or Trigger Single.
 
 Hands off to one `RealTimePlot` per selected channel, passing the live snapshot, the
 frozen trigger capture, axis settings and trigger state.
@@ -1737,8 +1704,23 @@ progress and saves the result through a temporary download link.
                                 -->
                                 {#each Array.from(channelData.entries()) as [ch, data]}
                                     {@const latest = data[data.length - 1]}
-                                    {@const rate = data.length > 1 ? Math.round(1000 / ((latest?.timestamp - data[0]?.timestamp) / data.length)) : 0}
+                                    {@const rate = data.length > 1 ? Math.round(1000 * (data.length - 1) / (latest?.timestamp - data[0]?.timestamp)) : 0}
+                                    {@const status = channelStreamStatus.get(ch)}
                                     <span class="badge badge-outline badge-xs">Ch{ch}: {data.length} pts ({rate} Hz)</span>
+                                    <!--
+                                        Stream problems since the page loaded: messages
+                                        dropped because decoding fell behind, gaps in the
+                                        received data, timeline resets, samples skipped as
+                                        duplicates, undecodable messages.
+                                    -->
+                                    {#if status && status.dropped > 0}
+                                        <span class="badge badge-error badge-xs">Ch{ch}: {status.dropped} msgs dropped (overload)</span>
+                                    {/if}
+                                    {#if status && (status.gaps > 0 || status.resets > 0 || status.skipped > 0 || status.decodeErrors > 0)}
+                                        <span class="badge badge-warning badge-xs">
+                                            Ch{ch}: {status.gaps} gaps{status.resets > 0 ? `, ${status.resets} resets` : ''}{status.skipped > 0 ? `, ${status.skipped} dup samples` : ''}{status.decodeErrors > 0 ? `, ${status.decodeErrors} bad msgs` : ''}
+                                        </span>
+                                    {/if}
                                 {/each}
                             </div>
                         </div>
