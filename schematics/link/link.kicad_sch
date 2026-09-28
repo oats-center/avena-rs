@@ -9741,7 +9741,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "1nF"
+		(property "Value" "1nF / 200V"
 			(at 48.26 146.0562 0)
 			(show_name no)
 			(do_not_autoplace no)
