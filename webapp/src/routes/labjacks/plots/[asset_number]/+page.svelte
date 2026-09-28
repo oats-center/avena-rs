@@ -6,6 +6,7 @@
     import { applyCalibration, normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
     import { archiveExportRequestSubject, liveLabJackChannelPattern, liveLabJackChannelSubject } from "$lib/subjects";
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
+    import { parseAssetNumberParam } from "$lib/plot/route";
     import {
         FlatBufferParser
     } from "$lib/flatbuffer-parser";
@@ -192,7 +193,7 @@
      */
     const MAX_QUEUED_MESSAGES_PER_CHANNEL = 5000;
     
-    /** `asset_number` route parameter. 0 when missing; a non-number gives `NaN`. */
+    /** `asset_number` route parameter; `NaN` when it is not a non-negative integer. */
     let assetNumber = $state<number>(0);
     let labjackConfig = $state<LabJackConfig | null>(null);
     let loading = $state<boolean>(true);
@@ -296,17 +297,16 @@
     let uiSnapshotDirty = false;
     
     /**
-     * Reads `asset_number` and `key` from the URL and loads the config when the asset number
-     * is positive. Runs again when the page store changes.
+     * Reads `asset_number` and `key` from the URL and loads the config; an asset number
+     * that is not a non-negative integer is reported as an error by
+     * {@link loadLabJackConfig}. Runs again when the page store changes.
      */
     $effect(() => {
-        const nextAssetNumber = parseInt($page.params.asset_number || '0');
+        const nextAssetNumber = parseAssetNumberParam($page.params.asset_number);
         const nextConfigKey = $page.url.searchParams.get('key')?.trim() || "";
-        assetNumber = nextAssetNumber;
-        if (nextAssetNumber > 0) {
-            console.log("Loading plot config", { assetNumber: nextAssetNumber, key: nextConfigKey });
-            untrack(() => loadLabJackConfig());
-        }
+        assetNumber = nextAssetNumber ?? Number.NaN;
+        console.log("Loading plot config", { assetNumber: nextAssetNumber, key: nextConfigKey });
+        untrack(() => loadLabJackConfig());
     });
 
     /**
@@ -612,7 +612,7 @@
     /**
      * Loads the config for {@link assetNumber} and starts the live subscriptions.
      *
-     * Steps: unsubscribes old subscriptions; reads `serverName` and `credentialsContent` from
+     * Steps: closes the old connection; checks the asset number; reads `serverName` and `credentialsContent` from
      * sessionStorage and opens a new connection; reads the `key` query parameter from bucket
      * `avenabox` and uses it if its `asset_number` matches; otherwise reads every
      * `*.*.*.config` key in turn and takes the first match. Then resets channel state,
@@ -633,6 +633,13 @@
         isConnected = false;
 
         closeLiveConnection();
+
+        if (!Number.isSafeInteger(assetNumber) || assetNumber < 0) {
+            labjackConfig = null;
+            error = `"${$page.params.asset_number ?? ""}" is not a valid asset number. Open a LabJack's plots from the LabJacks page.`;
+            loading = false;
+            return;
+        }
         
         try {
             const serverName = sessionStorage.getItem("serverName");
@@ -698,6 +705,7 @@
                 flushUiSnapshots(true);
                 await startDataSubscription(generation);
             } else {
+                labjackConfig = null;
                 error = `LabJack with asset number ${assetNumber} not found`;
             }
         } catch (err) {
@@ -1370,8 +1378,8 @@
 Live plot page for one LabJack, with a form to download archived data as CSV.
 
 URL: `/labjacks/plots/[asset_number]?key=<kv key>`
-- `asset_number`: the config's `asset_number`. If it is not a positive number the page
-  loads nothing and keeps showing the loading spinner.
+- `asset_number`: the config's `asset_number`. If it is not a non-negative integer the
+  page shows an error instead of loading.
 - `key` (optional): KV key of the config in bucket `avenabox`, such as
   `<site>.<box>.<source>.config`. It is used only when that config's `asset_number`
   matches. Otherwise the page reads every `*.*.*.config` key and takes the first config
@@ -1428,8 +1436,10 @@ progress and saves the result through a temporary download link.
                     <p class="text-base-content/70 text-sm">
                         {#if labjackConfig}
                             {labjackConfig.labjack_name} (Asset #{labjackConfig.asset_number})
-                        {:else}
+                        {:else if loading}
                             Loading...
+                        {:else}
+                            No LabJack loaded
                         {/if}
                     </p>
                 </div>
