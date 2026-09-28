@@ -2,7 +2,7 @@
     import { onMount, onDestroy } from "svelte";
     import { connect, getKeys, getKeyValue, updateConfig, deleteKey } from "$lib/nats.svelte";
     import { normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
-    import { labjackConfigKey } from "$lib/subjects";
+    import { planConfigSave } from "$lib/plot/config-key";
     import LabJackConfigModal from "$lib/components/LabJackConfigModal.svelte";
     
     /** `sensor_settings` object of a LabJack config in KV. See the KV config reference. */
@@ -397,11 +397,20 @@
     /**
      * Writes a config from the modal to KV and updates the card list.
      *
-     * The config is cleaned with {@link sanitizeLabJackConfig}. A new config is stored
-     * under `labjackConfigKey(config)`, i.e. `<site>.<box>.<source>.config`. An edited
-     * config is stored under its original key, even if its site, box or source changed.
-     * `updateConfig` opens its own short-lived connection. On success the modal closes; on
-     * failure `error` is set and the modal stays open.
+     * The config is cleaned with {@link sanitizeLabJackConfig}. The key comes from
+     * `planConfigSave`: a new config goes to `<site>.<box>.<source>.config`; an edit that
+     * keeps site, box and source stays under the key it was loaded from; an edit that
+     * changes any of them moves to the key of the new identity. Saving onto a key that
+     * already holds another config is refused.
+     *
+     * A move asks for confirmation, writes the new key, and only after that write
+     * succeeds deletes the old key, so a failed write never loses the config. If the
+     * delete fails, both keys remain and `error` says so. Edge boxes read the key named
+     * in their `CFG_KEY` setting and ignore deletes, so a box keeps running its last
+     * config until `CFG_KEY` is changed to the new key.
+     *
+     * `updateConfig` and `deleteKey` open their own short-lived connections. On success
+     * the modal closes; on failure `error` is set and the modal stays open.
      *
      * @param config - Config returned by `LabJackConfigModal`.
      */
@@ -416,13 +425,46 @@
             }
             
             const sanitizedConfig = sanitizeLabJackConfig(config);
-            const key = isAddingNew ? labjackConfigKey(sanitizedConfig) : editingKey;
+            const plan = planConfigSave({
+                isAddingNew,
+                editingKey,
+                original: labjacks.get(editingKey) ?? null,
+                updated: sanitizedConfig,
+                existingKeys: labjacks.keys()
+            });
+            const key = plan.key;
+
+            if (plan.conflict) {
+                error = `Not saved: another configuration already uses key "${key}". Change the site, box or source.`;
+                return;
+            }
+            if (
+                plan.previousKey &&
+                !confirm(
+                    `Site, box or source changed, so this configuration moves from "${plan.previousKey}" to "${key}".\n\n` +
+                    `An edge box reads the key named in its CFG_KEY setting. Until that is changed to "${key}", ` +
+                    `the box keeps running its last configuration and does not see this edit.\n\nContinue?`
+                )
+            ) {
+                return;
+            }
+
             const success = await updateConfig(serverName, credentialsContent, "avenabox", key, sanitizedConfig);
             
             if (success) {
                 // Update local state
                 const newLabJacks = new Map(labjacks);
                 newLabJacks.set(key, sanitizedConfig);
+
+                // Remove the old key only after the new one is stored.
+                if (plan.previousKey) {
+                    const deleted = await deleteKey(serverName, credentialsContent, "avenabox", plan.previousKey);
+                    if (deleted) {
+                        newLabJacks.delete(plan.previousKey);
+                    } else {
+                        error = `Saved under "${key}", but the old key "${plan.previousKey}" could not be deleted. Delete it by hand.`;
+                    }
+                }
                 labjacks = newLabJacks;
                 
                 showModal = false;
@@ -524,8 +566,9 @@ error with a link back to `/`.
 KV bucket `avenabox`:
 - Reads every key matching `*.*.*.config` (one LabJack config each, shown as a card)
   and every key matching `calibration.*` (calibration presets).
-- Writes a config to `<site>.<box>.<source>.config` on save, deletes a config key on
-  delete, and writes `calibration.<id>` when a preset is saved from the modal. Writes
+- Writes a config to `<site>.<box>.<source>.config` on save (an edit that changes site,
+  box or source moves it to the new key and then deletes the old one), deletes a config
+  key on delete, and writes `calibration.<id>` when a preset is saved from the modal. Writes
   and deletes go through `updateConfig` and `deleteKey`, which each open their own
   short-lived connection.
 
