@@ -774,17 +774,19 @@ impl ParquetLogger {
     /// * `timestamp_unix_ns` - Sample time in Unix nanoseconds.
     /// * `val` - Raw sample value.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if writing the row group fails (see [`Self::flush`]).
-    fn write_row(&mut self, timestamp_unix_ns: i64, val: f64) {
+    /// Returns an error if writing the full row group fails (see [`Self::flush`]).
+    /// The file is then unusable and should be dropped without closing it.
+    fn write_row(&mut self, timestamp_unix_ns: i64, val: f64) -> Result<(), DynError> {
         self.first_timestamp_unix_ns
             .get_or_insert(timestamp_unix_ns);
         self.timestamps.push(timestamp_unix_ns);
         self.values.push(val);
         if self.timestamps.len() >= self.max_rows {
-            self.flush();
+            self.flush()?;
         }
+        Ok(())
     }
 
     /// Writes the current buffer as a Parquet row group.
@@ -793,39 +795,42 @@ impl ParquetLogger {
     /// columns, closes the row group and clears the buffer. The data is not synced to
     /// disk here; that happens in [`Self::close`].
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the Parquet writer fails to write or close the row group or a column.
-    fn flush(&mut self) {
+    /// Returns an error if the Parquet writer fails to start, write or close the row
+    /// group or one of its columns. The buffer is left as it was, and the file should
+    /// be treated as broken.
+    fn flush(&mut self) -> Result<(), DynError> {
         if self.timestamps.is_empty() {
-            return;
+            return Ok(());
         }
-        let mut rg = self.writer.next_row_group().unwrap();
+        let mut rg = self.writer.next_row_group()?;
 
         // column 0: timestamps
         {
-            let mut scw = rg.next_column().unwrap().expect("timestamp col");
+            let mut scw = rg.next_column()?.ok_or("missing timestamp column")?;
             let mut cw = scw.untyped();
             if let ColumnWriter::Int64ColumnWriter(typed) = &mut cw {
-                typed.write_batch(&self.timestamps, None, None).unwrap();
+                typed.write_batch(&self.timestamps, None, None)?;
             }
-            scw.close().unwrap();
+            scw.close()?;
         }
 
         // column 1: values
         {
-            let mut scw = rg.next_column().unwrap().expect("value col");
+            let mut scw = rg.next_column()?.ok_or("missing value column")?;
             let mut cw = scw.untyped();
             if let ColumnWriter::DoubleColumnWriter(typed) = &mut cw {
-                typed.write_batch(&self.values, None, None).unwrap();
+                typed.write_batch(&self.values, None, None)?;
             }
-            scw.close().unwrap();
+            scw.close()?;
         }
 
-        rg.close().unwrap();
+        rg.close()?;
         self.row_groups_written += 1;
         self.timestamps.clear();
         self.values.clear();
+        Ok(())
     }
 
     /// Returns whether the next source sample belongs in a new file.
@@ -867,29 +872,60 @@ impl ParquetLogger {
     /// power cut. The steps are: write remaining rows, write the footer, fsync the
     /// file, rename `.parquet.inprogress` to `.parquet`, then fsync the directory.
     ///
+    /// A failed directory fsync is logged but does not fail the close; see
+    /// [`sync_directory_after_publish`] for why.
+    ///
     /// # Returns
     ///
     /// The final `.parquet` path.
     ///
     /// # Errors
     ///
-    /// Returns an error if writing the footer, syncing the file, renaming it, or
-    /// opening or syncing the directory fails. When only the directory sync fails, the
-    /// file has already been renamed.
-    ///
-    /// # Panics
-    ///
-    /// Panics if writing the remaining buffered rows fails (see [`Self::flush`]).
+    /// Returns an error if writing the remaining rows or the footer, syncing the file,
+    /// or renaming it fails. The file then keeps its `.inprogress` name, so it is never
+    /// read and is quarantined at the next start.
     fn close(mut self) -> Result<PathBuf, DynError> {
-        self.flush();
+        self.flush()?;
         let file = self.writer.into_inner()?;
         file.sync_all()?;
         drop(file);
         fs::rename(&self.inprogress_path, &self.final_path)?;
         if let Some(dir) = self.final_path.parent() {
-            fs::File::open(dir)?.sync_all()?;
+            sync_directory_after_publish(dir);
         }
         Ok(self.final_path)
+    }
+}
+
+/// Fsyncs the directory of a file that has just been renamed into place.
+///
+/// A failure is logged and otherwise ignored. By the time this runs the file's
+/// contents, footer included, have been fsynced and the rename has succeeded, so
+/// readers already see a complete `.parquet` file. Reporting the close as failed at
+/// this point would leave its messages unacked, and JetStream would redeliver them
+/// into a second file, duplicating every sample in the archive. Treating it as a
+/// success risks less: the rename can only be lost if power fails before the
+/// filesystem commits it on its own (a few seconds on ext4), and even then the
+/// complete file survives under its `.inprogress` name and is kept by
+/// [`quarantine_incomplete_files`] rather than deleted.
+///
+/// # Arguments
+///
+/// * `dir` - Directory holding the published file.
+///
+/// # Returns
+///
+/// `true` if the directory was synced, `false` if opening or syncing it failed.
+fn sync_directory_after_publish(dir: &Path) -> bool {
+    match fs::File::open(dir).and_then(|d| d.sync_all()) {
+        Ok(()) => true,
+        Err(err) => {
+            eprintln!(
+                "[logger] Published file in {} but failed to fsync the directory: {err}",
+                dir.display()
+            );
+            false
+        }
     }
 }
 
@@ -1119,7 +1155,9 @@ impl CloseOutcome {
 ///
 /// Sequence gaps and resets are logged but do not stop the write. A payload that is
 /// not a valid FlatBuffer `Scan` is logged and writes nothing. If a sample timestamp
-/// overflows, the rest of that payload is dropped.
+/// overflows, the rest of that payload is dropped. If closing a file or writing a row
+/// group fails, the failure is counted in the outcome and the rest of the payload is
+/// skipped, since the message will be redelivered.
 ///
 /// # Arguments
 ///
@@ -1140,8 +1178,8 @@ impl CloseOutcome {
 ///
 /// # Panics
 ///
-/// Panics if a new file cannot be created or a row group cannot be written (see
-/// [`ParquetLogger::new`], [`ParquetLogger::flush`] and [`next_file_index`]).
+/// Panics if a new file cannot be created (see [`ParquetLogger::new`] and
+/// [`next_file_index`]).
 fn process_scan_payload(
     payload: &[u8],
     channel: u8,
@@ -1206,6 +1244,12 @@ fn process_scan_payload(
                 {
                     if let Some(l) = logger.take() {
                         outcome.record(l.close(), channel, *file_index);
+                        if outcome.failed > 0 {
+                            // This message stays unacked and is redelivered whole,
+                            // so writing the rest of it now would store those
+                            // samples twice.
+                            return outcome;
+                        }
                     }
                     *file_index = next_file_index(parquet_root, asset, channel, sample_date);
                     *logger = Some(ParquetLogger::new(
@@ -1218,8 +1262,17 @@ fn process_scan_payload(
                     ));
                 }
 
-                if let Some(log) = logger.as_mut() {
-                    log.write_row(timestamp_unix_ns, v);
+                let written = match logger.as_mut() {
+                    Some(log) => log.write_row(timestamp_unix_ns, v),
+                    None => Ok(()),
+                };
+                if let Err(err) = written {
+                    // The half-written file is dropped without a footer. It keeps
+                    // its `.inprogress` name, is quarantined at the next start, and
+                    // its samples come back through redelivery.
+                    outcome.record(Err(err), channel, *file_index);
+                    *logger = None;
+                    return outcome;
                 }
             }
         }
@@ -1893,7 +1946,9 @@ mod tests {
         let root = temporary_parquet_root("finalize");
         let date = NaiveDate::from_ymd_opt(2026, 8, 5).expect("valid date");
         let mut logger = ParquetLogger::new(1001, 11, 1, date, CalibrationSpec::default(), &root);
-        logger.write_row(1_754_395_200_000_000_000, 1.25);
+        logger
+            .write_row(1_754_395_200_000_000_000, 1.25)
+            .expect("row should buffer");
 
         let final_path = logger.close().expect("writer should finalize");
         assert!(final_path.exists());
@@ -1902,6 +1957,89 @@ mod tests {
         let file = fs::File::open(&final_path).expect("final file should open");
         let reader = SerializedFileReader::new(file).expect("final file should be readable");
         assert_eq!(reader.metadata().file_metadata().num_rows(), 1);
+        fs::remove_dir_all(root).expect("temporary directory should be removable");
+    }
+
+    /// A writer failure during close is returned as an error instead of panicking, and
+    /// the file is not published.
+    #[test]
+    fn failed_close_returns_error_and_leaves_file_unpublished() {
+        let root = temporary_parquet_root("failed-close");
+        let date = NaiveDate::from_ymd_opt(2026, 8, 5).expect("valid date");
+        let mut logger = ParquetLogger::new(1001, 11, 1, date, CalibrationSpec::default(), &root);
+        logger
+            .write_row(1_754_395_200_000_000_000, 1.25)
+            .expect("row should buffer");
+        // Finishing the writer early makes the buffered row group fail to write.
+        logger.writer.finish().expect("footer should write");
+        let inprogress_path = logger.inprogress_path.clone();
+        let final_path = logger.final_path.clone();
+
+        let mut outcome = CloseOutcome::default();
+        outcome.record(logger.close(), 11, 1);
+        assert_eq!(
+            outcome,
+            CloseOutcome {
+                closed: 0,
+                failed: 1
+            }
+        );
+        assert!(inprogress_path.exists());
+        assert!(!final_path.exists());
+        fs::remove_dir_all(root).expect("temporary directory should be removable");
+    }
+
+    /// A failed row group write mid-payload is counted as a failure, drops the broken
+    /// file and skips the rest of the payload.
+    #[test]
+    fn failed_row_group_write_is_reported_and_stops_the_payload() {
+        let root = temporary_parquet_root("failed-flush");
+        let first_ns = 1_754_395_200_000_000_000_u64;
+        let date = timestamp_ns_to_utc_date(first_ns as i64);
+        let mut logger = ParquetLogger::new(1001, 3, 1, date, CalibrationSpec::default(), &root);
+        logger
+            .write_row(first_ns as i64, 0.5)
+            .expect("row should buffer");
+        logger.max_rows = 2;
+        logger.writer.finish().expect("footer should write");
+        let mut logger = Some(logger);
+        let mut file_index = 1;
+        let mut last_sequence = None;
+
+        let payload = scan_payload(first_ns + 1_000, 1_000, 7, &[1.0, 2.0, 3.0]);
+        let outcome = process_scan_payload(
+            &payload,
+            3,
+            1001,
+            &root,
+            &CalibrationSpec::default(),
+            300,
+            &mut logger,
+            &mut file_index,
+            &mut last_sequence,
+        );
+        assert_eq!(
+            outcome,
+            CloseOutcome {
+                closed: 0,
+                failed: 1
+            }
+        );
+        assert!(logger.is_none());
+        assert_eq!(
+            file_index, 1,
+            "no new file should be opened for the rest of the payload"
+        );
+        fs::remove_dir_all(root).expect("temporary directory should be removable");
+    }
+
+    /// A directory that cannot be synced is reported but does not panic.
+    #[test]
+    fn directory_sync_failure_is_reported_without_failing() {
+        let root = temporary_parquet_root("dir-sync");
+        fs::create_dir_all(&root).expect("temporary directory should be creatable");
+        assert!(sync_directory_after_publish(&root));
+        assert!(!sync_directory_after_publish(&root.join("missing")));
         fs::remove_dir_all(root).expect("temporary directory should be removable");
     }
 
@@ -1915,7 +2053,7 @@ mod tests {
         assert_eq!(window_start % 300_000_000_000, 0);
         let start = window_start + 10_000_000_000;
         let mut logger = ParquetLogger::new(1001, 0, 1, date, CalibrationSpec::default(), &root);
-        logger.write_row(start, 1.0);
+        logger.write_row(start, 1.0).expect("row should buffer");
 
         // Same window: no rotation, even 289.999 s after the first sample.
         assert!(!logger.should_rotate_before(window_start + 299_999_999_999, 300));
@@ -1961,7 +2099,7 @@ mod tests {
             })
             .collect();
         for (ts, v) in &expected {
-            logger.write_row(*ts, *v);
+            logger.write_row(*ts, *v).expect("row should buffer");
         }
         let path = logger.close().expect("writer should finalize");
 
