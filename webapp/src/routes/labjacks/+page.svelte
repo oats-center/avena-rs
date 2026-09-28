@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onMount, onDestroy } from "svelte";
     import { connect, getKeys, getKeyValue, updateConfig, deleteKey } from "$lib/nats.svelte";
     import { normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
     import { labjackConfigKey } from "$lib/subjects";
@@ -168,10 +168,14 @@
      */
     let isAddingNew = $state<boolean>(false);
     /**
-     * Connection opened by {@link loadLabJacks} and used for KV reads. Not closed by this
-     * page.
+     * Connection opened by {@link loadLabJacks} and used for KV reads. Closed before each
+     * reload and when the page is destroyed.
      */
     let natsService: any = null;
+    /** Incremented by each {@link loadLabJacks} call; older calls see they are stale. */
+    let loadGeneration = 0;
+    /** Set in `onDestroy`, so a load that finishes afterwards closes its connection. */
+    let destroyed = false;
     /**
      * Calibration presets from `calibration.*` keys, keyed by preset id, offered in the
      * modal.
@@ -181,6 +185,23 @@
     onMount(async () => {
         await loadLabJacks();
     });
+
+    onDestroy(() => {
+        destroyed = true;
+        closeConnection();
+    });
+
+    /** Closes this page's connection, if any, without waiting. */
+    function closeConnection() {
+        const service = natsService;
+        natsService = null;
+        if (!service) return;
+        try {
+            service.connection.close().catch((err: unknown) => console.error("Error closing NATS connection:", err));
+        } catch (err) {
+            console.error("Error closing NATS connection:", err);
+        }
+    }
     
     /**
      * Connects to central NATS and loads all LabJack configs and calibration presets.
@@ -193,12 +214,16 @@
      * the connection fails or listing fails; the promise does not reject.
      *
      * @remarks
-     * Also used by the Retry button. Each call opens a new connection and does not close
-     * the previous one.
+     * Also used by the Retry button. Each call first closes the previous connection. If
+     * a newer call starts, or the page is destroyed, while this one is waiting, this one
+     * closes the connection it opened and changes nothing.
      */
     async function loadLabJacks() {
+        const generation = ++loadGeneration;
+        const superseded = () => generation !== loadGeneration || destroyed;
         loading = true;
         error = "";
+        closeConnection();
         
         try {
             const serverName = sessionStorage.getItem("serverName");
@@ -210,17 +235,22 @@
                 return;
             }
             
-            natsService = await connect(serverName, credentialsContent);
-            if (!natsService) {
+            const service = await connect(serverName, credentialsContent);
+            if (superseded()) {
+                service?.connection.close().catch(() => {});
+                return;
+            }
+            if (!service) {
                 error = "Failed to connect to NATS server";
                 loading = false;
                 return;
             }
+            natsService = service;
             
-            await loadCalibrations();
+            await loadCalibrations(service);
 
             // Get all LabJack config keys from avenabox bucket
-            const keys = await getKeys(natsService, "avenabox", "*.*.*.config");
+            const keys = await getKeys(service, "avenabox", "*.*.*.config");
             console.log("Found keys:", keys);
             
             const newLabJacks = new Map<string, LabJackConfig>();
@@ -228,7 +258,7 @@
             // Load each LabJack configuration
             for (const key of keys) {
                 try {
-                    const configStr = await getKeyValue(natsService, "avenabox", key);
+                    const configStr = await getKeyValue(service, "avenabox", key);
                     const config = normalizeLabJackConfig(JSON.parse(configStr));
                     if (config) newLabJacks.set(key, config);
                 } catch (err) {
@@ -236,12 +266,14 @@
                 }
             }
             
+            if (superseded()) return;
             labjacks = newLabJacks;
         } catch (err) {
+            if (superseded()) return;
             console.error("Error loading LabJacks:", err);
             error = "Failed to load LabJack configurations";
         } finally {
-            loading = false;
+            if (!superseded()) loading = false;
         }
     }
 
@@ -251,14 +283,16 @@
      * Each value is passed through `normalizeCalibration`. The preset id is the value's `id`
      * field, or the key without the `calibration.` prefix. Errors are logged; a failure to
      * list keys leaves {@link availableCalibrations} unchanged.
+     *
+     * @param service - Connection to read from.
      */
-    async function loadCalibrations() {
+    async function loadCalibrations(service: any) {
         try {
-            const keys = await getKeys(natsService, "avenabox", "calibration.*");
+            const keys = await getKeys(service, "avenabox", "calibration.*");
             const presets = new Map<string, CalibrationSpec>();
             for (const key of keys) {
                 try {
-                    const raw = await getKeyValue(natsService, "avenabox", key);
+                    const raw = await getKeyValue(service, "avenabox", key);
                     const parsed = normalizeCalibration(JSON.parse(raw));
                     const id = parsed.id ?? key.replace(/^calibration\./, "");
                     presets.set(id, { ...parsed, id });
@@ -484,7 +518,7 @@
 LabJack config list at `/labjacks`. It takes no URL parameters.
 
 Reads `serverName` and `credentialsContent` from sessionStorage (written by the login
-page) and opens a connection to central NATS. If either item is missing it shows an
+page) and opens a connection to central NATS, closed on retry and when leaving the page. If either item is missing it shows an
 error with a link back to `/`.
 
 KV bucket `avenabox`:

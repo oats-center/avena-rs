@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount, onDestroy } from "svelte";
+    import { onMount, onDestroy, untrack } from "svelte";
     import { page } from "$app/stores";
     import { connect, getKeyValue, getKeys } from "$lib/nats.svelte";
     import { downloadExportViaNats, type ExportRequestPayload } from "$lib/exporter";
@@ -198,9 +198,14 @@
     let loading = $state<boolean>(true);
     let error = $state<string>("");
     /**
-     * Connection used for live subscriptions and export requests. Closed in `onDestroy`.
+     * Connection used for live subscriptions and export requests. Closed before each
+     * reload and in `onDestroy`.
      */
     let natsService: any = null;
+    /** Incremented by each {@link loadLabJackConfig} call; older calls see they are stale. */
+    let loadGeneration = 0;
+    /** Set in `onDestroy`, so a load that finishes afterwards closes its connection. */
+    let destroyed = false;
     /** One live-data subscription per enabled channel. */
     let subscriptions: any[] = [];
     /**
@@ -300,7 +305,7 @@
         assetNumber = nextAssetNumber;
         if (nextAssetNumber > 0) {
             console.log("Loading plot config", { assetNumber: nextAssetNumber, key: nextConfigKey });
-            loadLabJackConfig();
+            untrack(() => loadLabJackConfig());
         }
     });
 
@@ -615,24 +620,19 @@
      * missing login data, connection failure or no match; the promise does not reject.
      *
      * @remarks
-     * Also used by the Retry button. It lists all config keys even when the `key` config
-     * matches. Each call opens a new connection and does not close the previous one.
+     * Also used by the Retry button and when the URL changes. It lists all config keys
+     * even when the `key` config matches. Each call first closes the previous connection
+     * and its subscriptions. If a newer call starts, or the page is destroyed, while this
+     * one is waiting, this one closes the connection it opened and changes nothing.
      */
     async function loadLabJackConfig() {
+        const generation = ++loadGeneration;
+        const superseded = () => generation !== loadGeneration || destroyed;
         loading = true;
         error = "";
         isConnected = false;
 
-        if (subscriptions.length > 0) {
-            subscriptions.forEach((sub) => {
-                try {
-                    sub.unsubscribe();
-                } catch (err) {
-                    console.error("Error unsubscribing old subscription:", err);
-                }
-            });
-            subscriptions = [];
-        }
+        closeLiveConnection();
         
         try {
             const serverName = sessionStorage.getItem("serverName");
@@ -644,20 +644,25 @@
                 return;
             }
             
-            natsService = await connect(serverName, credentialsContent);
-            if (!natsService) {
+            const service = await connect(serverName, credentialsContent);
+            if (superseded()) {
+                closeService(service);
+                return;
+            }
+            if (!service) {
                 error = "Failed to connect to NATS server";
                 loading = false;
                 return;
             }
+            natsService = service;
             
             const preferredKey = $page.url.searchParams.get('key')?.trim() || "";
-            const keys = await getKeys(natsService, "avenabox", "*.*.*.config");
+            const keys = await getKeys(service, "avenabox", "*.*.*.config");
             let foundConfig: LabJackConfig | null = null;
 
             if (preferredKey) {
                 try {
-                    const configStr = await getKeyValue(natsService, "avenabox", preferredKey);
+                    const configStr = await getKeyValue(service, "avenabox", preferredKey);
                     const config = normalizeLabJackConfig(JSON.parse(configStr));
                     if (config && config.asset_number === assetNumber) {
                         foundConfig = config;
@@ -670,7 +675,7 @@
             if (!foundConfig) {
                 for (const key of keys) {
                     try {
-                        const configStr = await getKeyValue(natsService, "avenabox", key);
+                        const configStr = await getKeyValue(service, "avenabox", key);
                         const config = normalizeLabJackConfig(JSON.parse(configStr));
                         if (!config) continue;
                         if (config.asset_number === assetNumber) {
@@ -683,21 +688,59 @@
                 }
             }
             
+            // A newer load has closed this connection; leave its state alone.
+            if (superseded()) return;
+
             if (foundConfig) {
                 labjackConfig = foundConfig;
                 updateMaxDataPoints();
                 initializeChannelData();
                 flushUiSnapshots(true);
-                await startDataSubscription();
+                await startDataSubscription(generation);
             } else {
                 error = `LabJack with asset number ${assetNumber} not found`;
             }
         } catch (err) {
+            if (superseded()) return;
             console.error("Error loading LabJack config:", err);
             error = "Failed to load LabJack configuration";
         } finally {
-            loading = false;
+            if (!superseded()) loading = false;
         }
+    }
+
+    /**
+     * Closes a connection without waiting, logging any error.
+     *
+     * @param service - Connection to close, or `null`.
+     */
+    function closeService(service: { connection: { close(): Promise<void> } } | null) {
+        if (!service) return;
+        try {
+            service.connection.close().catch((err) => console.error("Error closing NATS connection:", err));
+        } catch (err) {
+            console.error("Error closing NATS connection:", err);
+        }
+    }
+
+    /**
+     * Unsubscribes every live subscription and closes this page's connection. Their
+     * reader loops end; any message they still hold is ignored (see
+     * {@link startDataSubscription}).
+     */
+    function closeLiveConnection() {
+        for (const sub of subscriptions) {
+            try {
+                sub.unsubscribe();
+            } catch (err) {
+                console.error("Error unsubscribing:", err);
+            }
+        }
+        subscriptions = [];
+        isConnected = false;
+        const service = natsService;
+        natsService = null;
+        closeService(service);
     }
     
     /**
@@ -823,8 +866,11 @@
      * `<root>.<asset>.data.chNN` for legacy ones. All enabled channels are subscribed, not
      * only the selected ones. Sets {@link isConnected} when all subscriptions exist, or
      * `error` if subscribing throws.
+     *
+     * @param generation - The {@link loadGeneration} of the load that owns the
+     *   subscriptions; reader loops stop once a newer load starts.
      */
-    async function startDataSubscription() {
+    async function startDataSubscription(generation: number) {
         if (!natsService || !labjackConfig) return;
         
         try {
@@ -840,6 +886,8 @@
                 // is selected again later).
                 (async () => {
                     for await (const msg of subscription) {
+                        // A reload replaced this subscription; stop feeding the queue.
+                        if (generation !== loadGeneration) break;
                         try {
                             if (!selectedPlotChannels.has(channel)) continue;
                             scanQueue.push(channel, {
@@ -1305,28 +1353,15 @@
     });
     
     // Stop the timer, unsubscribe and close this page's connection when leaving the page.
+    // A load still in progress sees `destroyed` and closes its own connection.
     onDestroy(() => {
+        destroyed = true;
         if (uiNowTimer) {
             clearInterval(uiNowTimer);
             uiNowTimer = null;
         }
-
-        // Clean up subscriptions
-        subscriptions.forEach(sub => {
-            try {
-                sub.unsubscribe();
-            } catch (err) {
-                console.error("Error unsubscribing:", err);
-            }
-        });
-        
-        if (natsService) {
-            try {
-                natsService.connection.close();
-            } catch (err) {
-                console.error("Error closing NATS connection:", err);
-            }
-        }
+        closeLiveConnection();
+        scanQueue.clear();
     });
 </script>
 
