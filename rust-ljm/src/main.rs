@@ -1460,6 +1460,7 @@ async fn sample_with_config(
         &cfg.nats_stream,
         &subjects::live_labjack_stream_subject(
             &cfg.nats_subject,
+            cfg.asset_number,
             cfg.site_id.as_deref(),
             cfg.box_id.as_deref(),
             Some(&cfg.labjack_name),

@@ -15,8 +15,9 @@
 //! # Configuration
 //!
 //! * `NATS_SUBJECT` - Subject root. Default: `avenabox`.
-//! * `ASSET_NUMBER` - Asset number used in CSV file names. Unparseable values fall
-//!   back to the default. Default: `1`.
+//! * `ASSET_NUMBER` - Asset number used in CSV file names, and in the structured
+//!   layout as the source when neither `SOURCE_ID` nor `LABJACK_NAME` is set.
+//!   Unparseable values fall back to the default. Default: `1`.
 //! * `SITE_ID` - Site ID for the structured subject layout.
 //! * `BOX_ID` - Box ID for the structured subject layout.
 //! * `LABJACK_NAME` - LabJack name, used as the source when `SOURCE_ID` is unset.
@@ -164,6 +165,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Subscribe to all per-channel subjects for this asset
     let wildcard = subjects::live_labjack_stream_subject(
         &subject_prefix,
+        asset_number,
         site_id.as_deref(),
         box_id.as_deref(),
         labjack_name.as_deref(),

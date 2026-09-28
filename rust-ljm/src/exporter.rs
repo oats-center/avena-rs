@@ -41,8 +41,14 @@
 //! * `EXPORT_BOX_ID` - Worker mode. Box token of the request subject; falls back to
 //!   `BOX_ID`. One of the two is required in worker mode.
 //! * `BOX_ID` - Worker mode. Used when `EXPORT_BOX_ID` is unset.
-//! * `SOURCE_ID` - Worker mode. Source token of the request subject. Default:
-//!   `unknown-source`.
+//! * `SOURCE_ID` - Worker mode. Source token of the request subject. When it is
+//!   unset or empty the token falls back to `LABJACK_NAME`, then `asset<ASSET_NUMBER>`,
+//!   then `unknown-source`, the same order the streamer and the webapp use (see
+//!   `subjects::archive_export_request_subject`).
+//! * `LABJACK_NAME` - Worker mode. The source's LabJack name, used only when
+//!   `SOURCE_ID` is not set.
+//! * `ASSET_NUMBER` - Worker mode. The source's asset number, used only when neither
+//!   `SOURCE_ID` nor `LABJACK_NAME` is set.
 //! * `SOURCE_TYPE` - Worker mode. Read and passed to the subject builder, which
 //!   currently ignores it. Default: `labjack`.
 //!
@@ -390,7 +396,7 @@ fn sanitize_token(raw: &str) -> String {
 /// Runs exporter worker mode by subscribing to one NATS request subject.
 ///
 /// Connects with [`connect_nats_from_env`] and subscribes to
-/// `<NATS_SUBJECT>.<SITE_ID>.<box>.<SOURCE_ID>.export.request` built by
+/// `<NATS_SUBJECT>.<SITE_ID>.<box>.<source>.export.request` built by
 /// [`subjects::archive_export_request_subject`]. Each incoming request is handled in
 /// its own Tokio task, with no limit on concurrent exports, and answered on the
 /// message's reply subject by [`process_nats_request`]. Requests without a reply
@@ -420,13 +426,19 @@ async fn run_worker(parquet_root: PathBuf) -> Result<()> {
     let site_id = std::env::var("SITE_ID").unwrap_or_else(|_| "unknown-site".to_string());
     let box_id = worker_box_id_from_env()?;
     let source_type = std::env::var("SOURCE_TYPE").unwrap_or_else(|_| "labjack".to_string());
-    let source_id = std::env::var("SOURCE_ID").unwrap_or_else(|_| "unknown-source".to_string());
+    let source_id = std::env::var("SOURCE_ID").ok();
+    let labjack_name = std::env::var("LABJACK_NAME").ok();
+    let asset = std::env::var("ASSET_NUMBER")
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u32>().ok());
     let subject = subjects::archive_export_request_subject(
         &nats_subject,
+        asset,
         Some(&site_id),
         Some(&box_id),
+        labjack_name.as_deref(),
         Some(&source_type),
-        Some(&source_id),
+        source_id.as_deref(),
     );
     let mut subscriber = client
         .subscribe(subject.clone())
