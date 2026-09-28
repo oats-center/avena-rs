@@ -64,7 +64,17 @@
 //!   [`read_matching_rows`] skips row groups whose range lies outside the request
 //!   without decoding them, and reads the two columns with typed readers rather than
 //!   building a row object per sample.
-//! * Rows within a file are in time order, so [`Rfc3339Formatter`] builds the date
+//! * The archive can hold more than one copy of a sample: an archiver fed the same
+//!   JetStream messages again writes them into new part files, sometimes with other
+//!   window boundaries or another calibration. Each channel-day's files are grouped
+//!   by overlapping time spans ([`overlapping_file_groups`]), found from the footer
+//!   statistics. A file that overlaps nothing is read in one pass, as before.
+//!   Overlapping files are read together in five-minute slices so memory stays
+//!   bounded by one slice rather than a day. Either way the rows are sorted by time
+//!   and each exact `(timestamp, raw value)` pair is sent once ([`read_merged_rows`]);
+//!   a clean file in time order comes out exactly as stored. Rows with the same
+//!   timestamp but different values are all kept.
+//! * Rows are sent in time order, so [`Rfc3339Formatter`] builds the date
 //!   and time up to the second with chrono once per second and appends only the
 //!   fractional part per row. This is faster than a full chrono format per row and
 //!   produces identical text to chrono's `to_rfc3339`.
@@ -105,7 +115,7 @@ mod calibration;
 mod nats_config;
 mod subjects;
 
-use calibration::CalibrationSpec;
+use calibration::{CalibrationFormula, CalibrationSpec};
 
 /// NATS header whose value names the frame type of each worker-mode reply message.
 const EXPORT_FRAME_HEADER: &str = "Avena-Export-Frame";
@@ -1145,11 +1155,13 @@ impl NatsCsvStreamer {
 
     /// Streams all Parquet files for one asset/channel over the requested date range.
     ///
-    /// For each UTC date from the start date to the end date inclusive, lists
-    /// `<root>/assetNNN/YYYY-MM-DD/chNN/` (skipping days whose directory does not
-    /// exist) and processes its `.parquet` files in file-name order with
-    /// [`Self::stream_parquet_file`]. A file that fails to read or stream is logged
-    /// and skipped, and the export continues.
+    /// For each UTC date from the start date to the end date inclusive, groups the
+    /// `.parquet` files in `<root>/assetNNN/YYYY-MM-DD/chNN/` (skipping days whose
+    /// directory does not exist) with [`overlapping_file_groups`], and sends each
+    /// group's rows in time order with every exact duplicate sample sent once (see
+    /// [`read_merged_rows`]). For an archive without overlapping files this is the
+    /// same output as sending each file's rows in turn. A file that fails to read is
+    /// logged and skipped, and the export continues.
     ///
     /// # Arguments
     ///
@@ -1162,8 +1174,11 @@ impl NatsCsvStreamer {
     ///
     /// # Errors
     ///
-    /// Returns an error if an existing day directory cannot be listed.
+    /// Returns an error if an existing day directory cannot be listed or a row cannot
+    /// be sent.
     async fn stream_channel(&mut self, root: &Path, channel: u8) -> Result<bool> {
+        let start_ns = datetime_to_unix_ns(self.start);
+        let end_ns = datetime_to_unix_ns(self.end);
         let mut found = false;
         for day in date_range(self.start.date_naive(), self.end.date_naive()) {
             let day_dir = root
@@ -1174,66 +1189,44 @@ impl NatsCsvStreamer {
                 continue;
             }
 
-            let mut files: Vec<PathBuf> = fs::read_dir(&day_dir)?
-                .filter_map(|entry| entry.ok())
-                .map(|entry| entry.path())
-                .filter(|path| {
-                    path.file_name()
-                        .and_then(|name| name.to_str())
-                        .map(|name| name.ends_with(".parquet"))
-                        .unwrap_or(false)
-                })
-                .collect();
-            files.sort();
-
-            for path in files {
-                if let Err(err) = self.stream_parquet_file(&path, channel, &mut found).await {
-                    eprintln!("[exporter] skipping {} due to error: {err}", path.display());
+            for group in overlapping_file_groups(&day_dir, start_ns, end_ns)? {
+                for (from_ns, to_ns) in merge_slices(&group, start_ns, end_ns) {
+                    let merged = read_merged_rows(&group, from_ns, to_ns);
+                    self.stream_rows(merged, channel, &mut found).await?;
                 }
             }
         }
         Ok(found)
     }
 
-    /// Reads one Parquet file and emits matching rows as CSV records.
+    /// Emits merged rows as CSV records.
     ///
-    /// Uses [`read_matching_rows`] to load the rows in the range, applies the file's
-    /// calibration to each raw value, and formats timestamps with a fresh
-    /// [`Rfc3339Formatter`]. Rows keep the order in which they are stored.
+    /// Applies each row's calibration to its raw value and formats timestamps with a
+    /// fresh [`Rfc3339Formatter`].
     ///
     /// # Arguments
     ///
-    /// * `path` - Parquet file to read.
+    /// * `merged` - Rows from [`read_merged_rows`].
     /// * `channel` - LabJack channel number written in each row.
     /// * `found` - Set to `true` when at least one row is emitted; never reset.
     ///
     /// # Errors
     ///
-    /// Returns an error if [`read_matching_rows`] fails or a row cannot be sent.
-    async fn stream_parquet_file(
+    /// Returns an error if a row cannot be sent.
+    async fn stream_rows(
         &mut self,
-        path: &Path,
+        merged: MergedRows,
         channel: u8,
         found: &mut bool,
     ) -> Result<()> {
-        let matched = read_matching_rows(
-            path,
-            datetime_to_unix_ns(self.start),
-            datetime_to_unix_ns(self.end),
-        )?;
         let mut formatter = Rfc3339Formatter::new();
-        for (timestamp_unix_ns, raw_value) in matched.rows {
+        for (timestamp_unix_ns, raw_value, calibration) in merged.rows {
+            let (spec, calibration_id) = &merged.calibrations[calibration];
             let ts = formatter.format(timestamp_unix_ns);
-            let calibrated_value = matched.calibration.apply(raw_value);
+            let calibrated_value = spec.apply(raw_value);
             *found = true;
-            self.push_record(
-                ts,
-                channel,
-                raw_value,
-                calibrated_value,
-                &matched.calibration_id,
-            )
-            .await?;
+            self.push_record(ts, channel, raw_value, calibrated_value, calibration_id)
+                .await?;
         }
         Ok(())
     }
@@ -1371,11 +1364,13 @@ impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
 
     /// Streams all Parquet files for one asset/channel over the requested date range.
     ///
-    /// For each UTC date from the start date to the end date inclusive, lists
-    /// `<root>/assetNNN/YYYY-MM-DD/chNN/` (skipping days whose directory does not
-    /// exist) and processes its `.parquet` files in file-name order with
-    /// [`Self::stream_parquet_file`]. A file that fails to read or stream is logged
-    /// and skipped, and the export continues.
+    /// For each UTC date from the start date to the end date inclusive, groups the
+    /// `.parquet` files in `<root>/assetNNN/YYYY-MM-DD/chNN/` (skipping days whose
+    /// directory does not exist) with [`overlapping_file_groups`], and sends each
+    /// group's rows in time order with every exact duplicate sample sent once (see
+    /// [`read_merged_rows`]). For an archive without overlapping files this is the
+    /// same output as sending each file's rows in turn. A file that fails to read is
+    /// logged and skipped, and the export continues.
     ///
     /// # Arguments
     ///
@@ -1388,8 +1383,11 @@ impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
     ///
     /// # Errors
     ///
-    /// Returns an error if an existing day directory cannot be listed.
+    /// Returns an error if an existing day directory cannot be listed or a row cannot
+    /// be sent.
     async fn stream_channel(&mut self, root: &Path, channel: u8) -> Result<bool> {
+        let start_ns = datetime_to_unix_ns(self.start);
+        let end_ns = datetime_to_unix_ns(self.end);
         let mut found = false;
         for day in date_range(self.start.date_naive(), self.end.date_naive()) {
             let day_dir = root
@@ -1400,66 +1398,44 @@ impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
                 continue;
             }
 
-            let mut files: Vec<PathBuf> = fs::read_dir(&day_dir)?
-                .filter_map(|entry| entry.ok())
-                .map(|entry| entry.path())
-                .filter(|path| {
-                    path.file_name()
-                        .and_then(|name| name.to_str())
-                        .map(|name| name.ends_with(".parquet"))
-                        .unwrap_or(false)
-                })
-                .collect();
-            files.sort();
-
-            for path in files {
-                if let Err(err) = self.stream_parquet_file(&path, channel, &mut found).await {
-                    eprintln!("[exporter] skipping {} due to error: {err}", path.display());
+            for group in overlapping_file_groups(&day_dir, start_ns, end_ns)? {
+                for (from_ns, to_ns) in merge_slices(&group, start_ns, end_ns) {
+                    let merged = read_merged_rows(&group, from_ns, to_ns);
+                    self.stream_rows(merged, channel, &mut found).await?;
                 }
             }
         }
         Ok(found)
     }
 
-    /// Reads one Parquet file and emits matching rows as CSV records.
+    /// Emits merged rows as CSV records.
     ///
-    /// Uses [`read_matching_rows`] to load the rows in the range, applies the file's
-    /// calibration to each raw value, and formats timestamps with a fresh
-    /// [`Rfc3339Formatter`]. Rows keep the order in which they are stored.
+    /// Applies each row's calibration to its raw value and formats timestamps with a
+    /// fresh [`Rfc3339Formatter`].
     ///
     /// # Arguments
     ///
-    /// * `path` - Parquet file to read.
+    /// * `merged` - Rows from [`read_merged_rows`].
     /// * `channel` - LabJack channel number written in each row.
     /// * `found` - Set to `true` when at least one row is emitted; never reset.
     ///
     /// # Errors
     ///
-    /// Returns an error if [`read_matching_rows`] fails or a row cannot be sent.
-    async fn stream_parquet_file(
+    /// Returns an error if a row cannot be sent.
+    async fn stream_rows(
         &mut self,
-        path: &Path,
+        merged: MergedRows,
         channel: u8,
         found: &mut bool,
     ) -> Result<()> {
-        let matched = read_matching_rows(
-            path,
-            datetime_to_unix_ns(self.start),
-            datetime_to_unix_ns(self.end),
-        )?;
         let mut formatter = Rfc3339Formatter::new();
-        for (timestamp_unix_ns, raw_value) in matched.rows {
+        for (timestamp_unix_ns, raw_value, calibration) in merged.rows {
+            let (spec, calibration_id) = &merged.calibrations[calibration];
             let ts = formatter.format(timestamp_unix_ns);
-            let calibrated_value = matched.calibration.apply(raw_value);
+            let calibrated_value = spec.apply(raw_value);
             *found = true;
-            self.push_record(
-                ts,
-                channel,
-                raw_value,
-                calibrated_value,
-                &matched.calibration_id,
-            )
-            .await?;
+            self.push_record(ts, channel, raw_value, calibrated_value, calibration_id)
+                .await?;
         }
         Ok(())
     }
@@ -1757,6 +1733,327 @@ fn read_calibration_from_metadata(
     }
 }
 
+/// Length of the time slices in which overlapping files are merged (300 s).
+///
+/// Slices start at multiples of this length since the Unix epoch, the same windows
+/// the archiver uses for its part files, so a slice of current data lines up with one
+/// file. Only one slice of rows from each overlapping file is held in memory at a time.
+const MERGE_SLICE_NS: i64 = 300 * 1_000_000_000;
+
+/// Timestamp span of one archived part file, read from its footer.
+struct FileSpan {
+    /// Path of the part file.
+    path: PathBuf,
+    /// Earliest timestamp in the file, Unix nanoseconds.
+    min_ns: i64,
+    /// Latest timestamp in the file, Unix nanoseconds.
+    max_ns: i64,
+}
+
+/// Rows of one or more files, sorted by time with exact duplicates removed.
+struct MergedRows {
+    /// Calibration and CSV calibration id of each file that contributed rows.
+    calibrations: Vec<(CalibrationSpec, String)>,
+    /// `(timestamp_unix_ns, raw_value, calibration index)` in timestamp order.
+    rows: Vec<(i64, f64, usize)>,
+}
+
+/// Finds the earliest and latest timestamp in one archived file.
+///
+/// Uses the min/max statistics of the timestamp column in each row group, so
+/// normally only the footer is read. A row group without usable statistics has its
+/// timestamp column decoded instead.
+///
+/// # Arguments
+///
+/// * `path` - Parquet file to inspect.
+///
+/// # Returns
+///
+/// `(min_ns, max_ns)`, or `None` if the file has no rows.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be opened or parsed, or a row group without
+/// statistics cannot be read.
+fn file_time_span(path: &Path) -> Result<Option<(i64, i64)>> {
+    let file = fs::File::open(path)
+        .with_context(|| format!("failed to open parquet file {}", path.display()))?;
+    let reader = SerializedFileReader::new(file)
+        .with_context(|| format!("failed to create reader for {}", path.display()))?;
+    let mut span: Option<(i64, i64)> = None;
+    let mut widen = |min: i64, max: i64| {
+        span = Some(match span {
+            Some((lo, hi)) => (lo.min(min), hi.max(max)),
+            None => (min, max),
+        });
+    };
+    for index in 0..reader.num_row_groups() {
+        let meta = reader.metadata().row_group(index);
+        if meta.num_rows() == 0 {
+            continue;
+        }
+        let from_statistics = match meta.column(0).statistics() {
+            Some(Statistics::Int64(stats)) => stats.min_opt().zip(stats.max_opt()),
+            _ => None,
+        };
+        if let Some((min, max)) = from_statistics {
+            widen(*min, *max);
+            continue;
+        }
+        let row_group = reader.get_row_group(index)?;
+        let timestamps = read_column::<Int64Type>(row_group.as_ref(), 0)?;
+        if let (Some(min), Some(max)) = (timestamps.iter().min(), timestamps.iter().max()) {
+            widen(*min, *max);
+        }
+    }
+    Ok(span)
+}
+
+/// Lists one channel-day folder and groups its files by overlapping time spans.
+///
+/// Files are found the same way the export always has: every name ending in
+/// `.parquet`. Files with no rows, or whose span lies outside `[start_ns, end_ns]`,
+/// are left out. A file whose span cannot be read is logged and skipped, and the
+/// export continues.
+///
+/// The remaining files are grouped so that files whose spans overlap (or touch at the
+/// same nanosecond) share a group, directly or through other files. The aligned
+/// five-minute files the archiver writes never overlap, so each is a group of its own.
+/// Duplicate copies written by a replayed backlog overlap the originals and end up in
+/// one group, whatever their boundaries, which is what lets [`read_merged_rows`] drop
+/// the copies.
+///
+/// # Arguments
+///
+/// * `day_dir` - `<root>/assetNNN/YYYY-MM-DD/chNN/` folder.
+/// * `start_ns` - Inclusive range start, Unix nanoseconds.
+/// * `end_ns` - Inclusive range end, Unix nanoseconds.
+///
+/// # Returns
+///
+/// The groups in time order. Files inside a group are in file-name order.
+///
+/// # Errors
+///
+/// Returns an error if the folder cannot be listed.
+fn overlapping_file_groups(
+    day_dir: &Path,
+    start_ns: i64,
+    end_ns: i64,
+) -> Result<Vec<Vec<FileSpan>>> {
+    let mut spans = Vec::new();
+    for entry in fs::read_dir(day_dir)?.filter_map(|entry| entry.ok()) {
+        let path = entry.path();
+        let is_parquet = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| name.ends_with(".parquet"))
+            .unwrap_or(false);
+        if !is_parquet {
+            continue;
+        }
+        match file_time_span(&path) {
+            Ok(Some((min_ns, max_ns))) if max_ns >= start_ns && min_ns <= end_ns => {
+                spans.push(FileSpan {
+                    path,
+                    min_ns,
+                    max_ns,
+                });
+            }
+            Ok(_) => {}
+            Err(err) => {
+                eprintln!("[exporter] skipping {} due to error: {err}", path.display());
+            }
+        }
+    }
+    spans.sort_by(|a, b| (a.min_ns, &a.path).cmp(&(b.min_ns, &b.path)));
+
+    let mut groups: Vec<Vec<FileSpan>> = Vec::new();
+    let mut group_max = i64::MIN;
+    for span in spans {
+        match groups.last_mut() {
+            Some(group) if span.min_ns <= group_max => {
+                group_max = group_max.max(span.max_ns);
+                group.push(span);
+            }
+            _ => {
+                group_max = span.max_ns;
+                groups.push(vec![span]);
+            }
+        }
+    }
+    for group in &mut groups {
+        group.sort_by(|a, b| a.path.cmp(&b.path));
+    }
+    Ok(groups)
+}
+
+/// Splits the export range covered by one file group into merge slices.
+///
+/// A group of one file is read in a single pass, as before, since it holds no
+/// copies of another file's rows. A group of overlapping files is read in slices
+/// aligned to [`MERGE_SLICE_NS`], so memory is bounded by one slice of each file
+/// instead of the whole group.
+///
+/// # Arguments
+///
+/// * `group` - Files from [`overlapping_file_groups`].
+/// * `start_ns` - Inclusive range start, Unix nanoseconds.
+/// * `end_ns` - Inclusive range end, Unix nanoseconds.
+///
+/// # Returns
+///
+/// Inclusive `(from_ns, to_ns)` slices in time order, together covering the part of
+/// `[start_ns, end_ns]` that the group spans.
+fn merge_slices(group: &[FileSpan], start_ns: i64, end_ns: i64) -> Vec<(i64, i64)> {
+    let group_min = group.iter().map(|f| f.min_ns).min().unwrap_or(i64::MAX);
+    let group_max = group.iter().map(|f| f.max_ns).max().unwrap_or(i64::MIN);
+    let from = group_min.max(start_ns);
+    let to = group_max.min(end_ns);
+    if from > to {
+        return Vec::new();
+    }
+    if group.len() == 1 {
+        return vec![(from, to)];
+    }
+
+    let mut slices = Vec::new();
+    let mut slice = from.div_euclid(MERGE_SLICE_NS);
+    loop {
+        let slice_start = slice.saturating_mul(MERGE_SLICE_NS).max(from);
+        let slice_end = slice
+            .saturating_add(1)
+            .saturating_mul(MERGE_SLICE_NS)
+            .saturating_sub(1)
+            .min(to);
+        slices.push((slice_start, slice_end));
+        if slice_end >= to {
+            break;
+        }
+        slice += 1;
+    }
+    slices
+}
+
+/// Returns how strongly a copy's calibration is preferred when copies collide.
+///
+/// Higher wins. The archiver writes an unnamed identity calibration
+/// (`{"id":null,"type":"identity"}`) when a channel has no calibration configured,
+/// so identity there means "no calibration known" rather than a deliberate choice.
+/// The same raw sample has been found archived once that way and once with the
+/// channel's real sensor calibration (for example `{"id":"tp3586","type":"linear",..}`),
+/// when a backlog was archived again after the calibration was set. Both copies hold
+/// the same raw value, so the calibrated one loses nothing and turns volts into the
+/// sensor's units, while picking identity would report volts as if they were
+/// calibrated and make the calibrated column jump between copies. Between two
+/// non-identity calibrations there is no such rule, and the copy from the earliest
+/// file (by name, which is the order the archiver wrote them) is kept.
+///
+/// # Arguments
+///
+/// * `spec` - Calibration of one copy.
+fn calibration_preference(spec: &CalibrationSpec) -> u8 {
+    match spec.formula {
+        CalibrationFormula::Identity => 0,
+        _ => 1,
+    }
+}
+
+/// Sorts rows by timestamp and removes exact duplicates.
+///
+/// Two rows are duplicates when their timestamps are equal and their values have the
+/// same bit pattern (`f64::to_bits`), so NaN copies collapse too. Rows with the same
+/// timestamp but different values are all kept, in their original order. The sort
+/// is stable and skipped when the rows are already in order, so rows of a single
+/// clean file come out exactly as stored.
+///
+/// When duplicates carry different calibrations, the kept row takes the most
+/// preferred one (see [`calibration_preference`]); on a tie the earliest row's
+/// calibration stays.
+///
+/// # Arguments
+///
+/// * `rows` - `(timestamp_unix_ns, raw_value, calibration index)` rows, in file
+///   order; replaced by the result.
+/// * `calibrations` - Calibrations the indices refer to.
+fn sort_and_drop_duplicates(
+    rows: &mut Vec<(i64, f64, usize)>,
+    calibrations: &[(CalibrationSpec, String)],
+) {
+    if !rows.is_sorted_by_key(|row| row.0) {
+        rows.sort_by_key(|row| row.0);
+    }
+    // The usual case, a clean file: no timestamp repeats, so nothing to drop.
+    if rows.windows(2).all(|pair| pair[0].0 != pair[1].0) {
+        return;
+    }
+    let preference = |index: usize| calibration_preference(&calibrations[index].0);
+
+    let mut kept: Vec<(i64, f64, usize)> = Vec::with_capacity(rows.len());
+    let mut run_start = 0;
+    while run_start < rows.len() {
+        let timestamp = rows[run_start].0;
+        let mut run_end = run_start + 1;
+        while run_end < rows.len() && rows[run_end].0 == timestamp {
+            run_end += 1;
+        }
+        let first_kept = kept.len();
+        for &(ts, value, calibration) in &rows[run_start..run_end] {
+            // Runs are a handful of copies at most, so a linear search is enough.
+            match kept[first_kept..]
+                .iter_mut()
+                .find(|row| row.1.to_bits() == value.to_bits())
+            {
+                Some(row) => {
+                    if preference(calibration) > preference(row.2) {
+                        row.2 = calibration;
+                    }
+                }
+                None => kept.push((ts, value, calibration)),
+            }
+        }
+        run_start = run_end;
+    }
+    *rows = kept;
+}
+
+/// Reads one slice of a file group, merged into time order without duplicates.
+///
+/// Each file whose span overlaps the slice is read with [`read_matching_rows`], and
+/// the rows are combined with [`sort_and_drop_duplicates`]. A file that fails to read
+/// is logged and skipped, and the other files are still used.
+///
+/// # Arguments
+///
+/// * `group` - Files from [`overlapping_file_groups`], in file-name order.
+/// * `from_ns` - Inclusive slice start, Unix nanoseconds.
+/// * `to_ns` - Inclusive slice end, Unix nanoseconds.
+fn read_merged_rows(group: &[FileSpan], from_ns: i64, to_ns: i64) -> MergedRows {
+    let mut calibrations = Vec::new();
+    let mut rows = Vec::new();
+    for file in group {
+        if file.max_ns < from_ns || file.min_ns > to_ns {
+            continue;
+        }
+        match read_matching_rows(&file.path, from_ns, to_ns) {
+            Ok(matched) => {
+                let index = calibrations.len();
+                calibrations.push((matched.calibration, matched.calibration_id));
+                rows.extend(matched.rows.into_iter().map(|(ts, v)| (ts, v, index)));
+            }
+            Err(err) => {
+                eprintln!(
+                    "[exporter] skipping {} due to error: {err}",
+                    file.path.display()
+                );
+            }
+        }
+    }
+    sort_and_drop_duplicates(&mut rows, &calibrations);
+    MergedRows { calibrations, rows }
+}
+
 /// Parses an RFC 3339 start/end range into UTC instants.
 ///
 /// Does not check the order of the two instants; callers do that.
@@ -1806,7 +2103,7 @@ mod tests {
     use super::*;
     use parquet::{
         column::writer::ColumnWriter,
-        file::{properties::WriterProperties, writer::SerializedFileWriter},
+        file::{metadata::KeyValue, properties::WriterProperties, writer::SerializedFileWriter},
         record::RowAccessor,
         schema::parser::parse_message_type,
     };
@@ -1866,6 +2163,356 @@ mod tests {
     /// Converts Unix nanoseconds to a UTC instant.
     fn at(ns: i64) -> DateTime<Utc> {
         DateTime::<Utc>::from_timestamp_nanos(ns)
+    }
+
+    /// Export sink that keeps every CSV chunk in memory.
+    #[derive(Default)]
+    struct CollectingSink {
+        /// Chunks in the order they were sent.
+        chunks: Vec<Vec<u8>>,
+    }
+
+    #[async_trait]
+    impl ExportSink for CollectingSink {
+        async fn send_meta(&mut self, _file_name: &str, _content_type: &str) -> Result<()> {
+            Ok(())
+        }
+        async fn send_chunk(&mut self, data: Vec<u8>) -> Result<()> {
+            self.chunks.push(data);
+            Ok(())
+        }
+        async fn send_summary(&mut self, _bytes_sent: usize, _missing: &[u8]) -> Result<()> {
+            Ok(())
+        }
+        async fn send_complete(&mut self) -> Result<()> {
+            Ok(())
+        }
+        async fn send_error(&mut self, _message: &str) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Runs a direct-mode export and returns the CSV chunks it sent.
+    async fn export_chunks(
+        root: &Path,
+        asset: u32,
+        channels: &[u8],
+        start: i64,
+        end: i64,
+    ) -> Vec<Vec<u8>> {
+        let mut sink = CollectingSink::default();
+        let mut streamer = CsvStreamer::new(&mut sink, asset, at(start), at(end));
+        let missing = streamer.stream_channels(root, channels).await.unwrap();
+        streamer.finish(missing).await.unwrap();
+        sink.chunks
+    }
+
+    /// The export before duplicate removal: every file of every day in file-name
+    /// order, rows as stored, each with its own file's calibration.
+    fn export_without_merging(
+        root: &Path,
+        asset: u32,
+        channels: &[u8],
+        start: i64,
+        end: i64,
+    ) -> Vec<u8> {
+        let mut csv = b"timestamp,channel,raw_value,calibrated_value,calibration_id\n".to_vec();
+        for &channel in channels {
+            for day in date_range(at(start).date_naive(), at(end).date_naive()) {
+                let day_dir = root
+                    .join(format!("asset{asset:03}"))
+                    .join(day.format("%Y-%m-%d").to_string())
+                    .join(format!("ch{channel:02}"));
+                let Ok(entries) = fs::read_dir(&day_dir) else {
+                    continue;
+                };
+                let mut files: Vec<PathBuf> = entries
+                    .map(|e| e.unwrap().path())
+                    .filter(|p| p.to_string_lossy().ends_with(".parquet"))
+                    .collect();
+                files.sort();
+                for path in files {
+                    let matched = read_matching_rows(&path, start, end).unwrap();
+                    let mut formatter = Rfc3339Formatter::new();
+                    for (ts, raw) in matched.rows {
+                        let cal = matched.calibration.apply(raw);
+                        let id = &matched.calibration_id;
+                        writeln!(
+                            csv,
+                            "{},ch{channel:02},{raw},{cal},{id}",
+                            formatter.format(ts)
+                        )
+                        .unwrap();
+                    }
+                }
+            }
+        }
+        csv
+    }
+
+    /// Writes one part file with `calibration` metadata into a channel-day folder.
+    fn write_part(dir: &Path, index: usize, rows: &[(i64, f64)], calibration: &str) {
+        fs::create_dir_all(dir).unwrap();
+        let schema = Arc::new(
+            parse_message_type(
+                "message schema { REQUIRED INT64 timestamp_unix_ns; REQUIRED DOUBLE value; }",
+            )
+            .unwrap(),
+        );
+        let props = Arc::new(
+            WriterProperties::builder()
+                .set_key_value_metadata(Some(vec![KeyValue::new(
+                    "calibration".to_string(),
+                    calibration.to_string(),
+                )]))
+                .build(),
+        );
+        let path = dir.join(format!("part-{index:04}.parquet"));
+        let mut writer =
+            SerializedFileWriter::new(fs::File::create(path).unwrap(), schema, props).unwrap();
+        let mut rg = writer.next_row_group().unwrap();
+        let ts: Vec<i64> = rows.iter().map(|(t, _)| *t).collect();
+        let vs: Vec<f64> = rows.iter().map(|(_, v)| *v).collect();
+        let mut col = rg.next_column().unwrap().unwrap();
+        if let ColumnWriter::Int64ColumnWriter(w) = col.untyped() {
+            w.write_batch(&ts, None, None).unwrap();
+        }
+        col.close().unwrap();
+        let mut col = rg.next_column().unwrap().unwrap();
+        if let ColumnWriter::DoubleColumnWriter(w) = col.untyped() {
+            w.write_batch(&vs, None, None).unwrap();
+        }
+        col.close().unwrap();
+        rg.close().unwrap();
+        writer.close().unwrap();
+    }
+
+    /// Unix nanoseconds of 2026-09-21T00:00:00Z, a five-minute boundary.
+    const DAY_START: i64 = 1_790_035_200_000_000_000;
+    /// Sample interval of the test data (10 Hz).
+    const STEP: i64 = 100_000_000;
+    /// Identity calibration as the archiver writes it with nothing configured.
+    const IDENTITY: &str = r#"{"id":null,"type":"identity"}"#;
+    /// A real sensor calibration.
+    const LINEAR: &str = r#"{"id":"tp3586","type":"linear","a":62.5,"b":-25.0}"#;
+
+    /// `count` samples from sample index `from` of the test day.
+    fn samples(from: i64, count: i64) -> Vec<(i64, f64)> {
+        (from..from + count)
+            .map(|i| (DAY_START + i * STEP, 0.4 + (i % 997) as f64 * 1e-4))
+            .collect()
+    }
+
+    /// Without overlapping files the export is byte for byte what it was before
+    /// duplicate removal, chunk boundaries included.
+    #[tokio::test]
+    async fn export_without_overlaps_is_unchanged() {
+        let root = std::env::temp_dir().join(format!("exporter-clean-{}", uuid::Uuid::new_v4()));
+        let day = |d: i64| {
+            let date = at(DAY_START + d * 86_400_000_000_000).date_naive();
+            root.join("asset1001")
+                .join(date.format("%Y-%m-%d").to_string())
+        };
+        // Three aligned five-minute files on channel 8, one calibrated, plus a file
+        // on the next day and one on channel 9.
+        let window = 3_000; // samples per five minutes at 10 Hz
+        write_part(&day(0).join("ch08"), 1, &samples(0, window), IDENTITY);
+        write_part(&day(0).join("ch08"), 2, &samples(window, window), LINEAR);
+        write_part(
+            &day(0).join("ch08"),
+            3,
+            &samples(2 * window, 1_000),
+            IDENTITY,
+        );
+        write_part(&day(1).join("ch08"), 1, &samples(864_000, 500), IDENTITY);
+        write_part(&day(0).join("ch09"), 1, &samples(100, 700), LINEAR);
+
+        for (start, end) in [
+            (DAY_START - STEP, DAY_START + 2 * 86_400_000_000_000),
+            (DAY_START + 1_234 * STEP, DAY_START + 7_000 * STEP),
+            (DAY_START + 3_000 * STEP, DAY_START + 3_000 * STEP),
+        ] {
+            let chunks = export_chunks(&root, 1001, &[8, 9], start, end).await;
+            let want = export_without_merging(&root, 1001, &[8, 9], start, end);
+            assert!(
+                want.len() > 3 * CsvStreamer::<CollectingSink>::CHUNK_SIZE || start > DAY_START
+            );
+            assert_eq!(chunks.concat(), want, "range {start}..{end}");
+            // Chunk boundaries depend only on the bytes, so they match too.
+            let sizes: Vec<usize> = chunks.iter().map(Vec::len).collect();
+            let mut expected_sizes = Vec::new();
+            let mut pending = 0;
+            for line in want.split_inclusive(|b| *b == b'\n') {
+                pending += line.len();
+                if pending >= CsvStreamer::<CollectingSink>::CHUNK_SIZE {
+                    expected_sizes.push(pending);
+                    pending = 0;
+                }
+            }
+            if pending > 0 {
+                expected_sizes.push(pending);
+            }
+            assert_eq!(sizes, expected_sizes);
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    /// Overlapping copies with other boundaries and other calibrations are sent once,
+    /// in time order, preferring the real calibration; conflicting values are kept.
+    #[tokio::test]
+    async fn overlapping_duplicate_files_are_exported_once() {
+        let root = std::env::temp_dir().join(format!("exporter-dupes-{}", uuid::Uuid::new_v4()));
+        let date = at(DAY_START).date_naive();
+        let dir = root
+            .join("asset1001")
+            .join(date.format("%Y-%m-%d").to_string())
+            .join("ch08");
+        let window = 3_000;
+        // Originals: two aligned windows without calibration.
+        write_part(&dir, 1, &samples(0, window), IDENTITY);
+        write_part(&dir, 2, &samples(window, window), IDENTITY);
+        // A replayed backlog copied the second half of window 0 and the first half
+        // of window 1 into one file, after the calibration was set.
+        write_part(&dir, 3, &samples(1_500, window), LINEAR);
+        // A second identity copy of window 1, with one sample whose value differs.
+        let mut copy = samples(window, window);
+        copy[10].1 = 9.75;
+        write_part(&dir, 4, &copy, IDENTITY);
+        // A later, separate file that overlaps nothing.
+        write_part(&dir, 5, &samples(4 * window, 100), LINEAR);
+
+        let chunks = export_chunks(
+            &root,
+            1001,
+            &[8],
+            DAY_START,
+            DAY_START + 86_399 * 1_000_000_000,
+        )
+        .await;
+        let csv = String::from_utf8(chunks.concat()).unwrap();
+        let lines: Vec<&str> = csv.lines().skip(1).collect();
+
+        let mut expected: Vec<(i64, f64, &str)> = Vec::new();
+        for (ts, v) in samples(0, 2 * window) {
+            let index = (ts - DAY_START) / STEP;
+            let calibration = if (1_500..4_500).contains(&index) {
+                LINEAR
+            } else {
+                IDENTITY
+            };
+            expected.push((ts, v, calibration));
+            if index == window + 10 {
+                expected.push((ts, 9.75, IDENTITY));
+            }
+        }
+        for (ts, v) in samples(4 * window, 100) {
+            expected.push((ts, v, LINEAR));
+        }
+        assert_eq!(lines.len(), expected.len());
+        let mut formatter = Rfc3339Formatter::new();
+        for (line, (ts, raw, calibration)) in lines.iter().zip(&expected) {
+            let spec: CalibrationSpec = serde_json::from_str(calibration).unwrap();
+            let want = format!(
+                "{},ch08,{raw},{},{}",
+                formatter.format(*ts),
+                spec.apply(*raw),
+                spec.id_or_default()
+            );
+            assert_eq!(*line, want);
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    /// Duplicate removal keeps order, conflicts and the preferred calibration.
+    #[test]
+    fn duplicates_are_dropped_by_timestamp_and_value_bits() {
+        let calibrations = vec![
+            (CalibrationSpec::default(), "identity".to_string()),
+            (
+                serde_json::from_str::<CalibrationSpec>(LINEAR).unwrap(),
+                "tp3586".to_string(),
+            ),
+        ];
+        let mut rows = vec![
+            (30, 1.0, 0),
+            (10, 1.0, 0),
+            (20, 2.0, 0),
+            (20, 3.0, 0),
+            (10, 1.0, 1),
+            (20, 2.0, 1),
+            (20, f64::NAN, 0),
+            (20, f64::NAN, 1),
+            (30, 1.0, 0),
+        ];
+        sort_and_drop_duplicates(&mut rows, &calibrations);
+        let got: Vec<(i64, u64, usize)> =
+            rows.iter().map(|(t, v, c)| (*t, v.to_bits(), *c)).collect();
+        assert_eq!(
+            got,
+            vec![
+                (10, 1.0f64.to_bits(), 1),
+                (20, 2.0f64.to_bits(), 1),
+                (20, 3.0f64.to_bits(), 0),
+                (20, f64::NAN.to_bits(), 1),
+                (30, 1.0f64.to_bits(), 0),
+            ]
+        );
+    }
+
+    /// Overlapping files form one group read in aligned slices; others stay whole.
+    #[test]
+    fn overlapping_files_are_grouped_and_sliced() {
+        let span = |name: &str, min_ns: i64, max_ns: i64| FileSpan {
+            path: PathBuf::from(name),
+            min_ns,
+            max_ns,
+        };
+        let single = [span("a", DAY_START + 5, DAY_START + MERGE_SLICE_NS * 2)];
+        assert_eq!(
+            merge_slices(&single, i64::MIN, i64::MAX),
+            vec![(DAY_START + 5, DAY_START + MERGE_SLICE_NS * 2)]
+        );
+        let pair = [
+            span("a", DAY_START + 5, DAY_START + MERGE_SLICE_NS),
+            span("b", DAY_START + 10, DAY_START + MERGE_SLICE_NS + 7),
+        ];
+        assert_eq!(
+            merge_slices(&pair, i64::MIN, DAY_START + MERGE_SLICE_NS + 3),
+            vec![
+                (DAY_START + 5, DAY_START + MERGE_SLICE_NS - 1),
+                (DAY_START + MERGE_SLICE_NS, DAY_START + MERGE_SLICE_NS + 3),
+            ]
+        );
+
+        let root = std::env::temp_dir().join(format!("exporter-groups-{}", uuid::Uuid::new_v4()));
+        write_part(&root, 1, &samples(0, 3_000), IDENTITY);
+        write_part(&root, 2, &samples(3_000, 3_000), IDENTITY);
+        write_part(&root, 3, &samples(2_999, 2), IDENTITY);
+        write_part(&root, 4, &samples(9_000, 10), IDENTITY);
+        let groups = overlapping_file_groups(&root, i64::MIN, i64::MAX).unwrap();
+        let names: Vec<Vec<String>> = groups
+            .iter()
+            .map(|g| {
+                g.iter()
+                    .map(|f| f.path.file_name().unwrap().to_string_lossy().into_owned())
+                    .collect()
+            })
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                vec![
+                    "part-0001.parquet",
+                    "part-0002.parquet",
+                    "part-0003.parquet"
+                ],
+                vec!["part-0004.parquet"],
+            ]
+        );
+        // A range that misses a file leaves it out.
+        let groups = overlapping_file_groups(&root, DAY_START + 9_000 * STEP, i64::MAX).unwrap();
+        assert_eq!(groups.len(), 1);
+        fs::remove_dir_all(root).unwrap();
     }
 
     /// Checks the typed reader against the row-iterator reference for many ranges.
