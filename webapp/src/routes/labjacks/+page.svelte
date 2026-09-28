@@ -276,8 +276,8 @@
      * Opens the modal to edit an existing config.
      *
      * @param key - KV key of the config. Saves go back to this key.
-     * @param config - Config to edit. The modal receives a shallow copy, so
-     *   `sensor_settings` is still shared with the card's object.
+     * @param config - Config to edit. The modal deep-copies it, so edits never reach the
+     *   card's object until they are saved.
      */
     function handleEdit(key: string, config: LabJackConfig) {
         editingKey = key;
