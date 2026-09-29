@@ -5,12 +5,14 @@
     import { downloadExportViaNats, isExportCancelled } from "$lib/exporter";
     import { normalizeCalibration } from "$lib/calibration";
     import { normalizeLabJackConfig, type LabJackConfig } from "$lib/labjack-config";
-    import { archiveExportRequestSubject, liveLabJackChannelPattern, liveLabJackChannelSubject } from "$lib/subjects";
+    import { archiveExportRequestSubject, liveLabJackChannelSubject } from "$lib/subjects";
     import type { Subscription } from "@nats-io/nats-core";
     import ChannelCard from "$lib/components/ChannelCard.svelte";
+    import ConnectionBanner from "$lib/components/ConnectionBanner.svelte";
+    import ExportDialog from "$lib/components/ExportDialog.svelte";
+    import StatsPanel from "$lib/components/StatsPanel.svelte";
     import { parseAssetNumberParam } from "$lib/plot/route";
     import {
-        connectionBadgeClass,
         connectionDotClass,
         connectionLabel,
         nextConnectionState,
@@ -22,19 +24,10 @@
         pickInitialPlotChannels,
         requiredBufferPoints,
         snapshotKeepMs,
-        snapshotRateHz,
-        streamProblemText,
         togglePlotSelection
     } from "$lib/plot/channel";
     import { ChannelView } from "$lib/plot/channel-view.svelte";
-    import {
-        buildExportRequest,
-        defaultExportRange,
-        describeLocalTimeZone,
-        formatBytes,
-        formatUtcPreview,
-        missingChannelsWarning
-    } from "$lib/plot/export-form";
+    import { buildExportRequest, defaultExportRange, missingChannelsWarning } from "$lib/plot/export-form";
     import { channelUnitInfo } from "$lib/plot/units";
     import { FlatBufferParser } from "$lib/flatbuffer-parser";
     import {
@@ -1041,18 +1034,8 @@ subscription is released and nothing is saved.
         {/if}
 
         <!-- Lost connection banner -->
-        {#if labjackConfig && !loading && connectionState === "reconnecting"}
-            <div class="alert alert-warning mb-6" role="status">
-                <span class="loading loading-spinner loading-sm"></span>
-                <span>Connection to NATS lost. Reconnecting... The plots resume by themselves; the missing time shows as a gap.</span>
-            </div>
-        {:else if labjackConfig && !loading && connectionState === "disconnected" && !error}
-            <div class="alert alert-error mb-6" role="alert">
-                <span>Disconnected from NATS{connectionLostReason ? `: ${connectionLostReason}` : ""}. Live data has stopped.</span>
-                <div>
-                    <button onclick={loadLabJackConfig} class="btn btn-sm">Reconnect</button>
-                </div>
-            </div>
+        {#if labjackConfig && !loading && (connectionState === "reconnecting" || (connectionState === "disconnected" && !error))}
+            <ConnectionBanner state={connectionState} reason={connectionLostReason} onreconnect={loadLabJackConfig} />
         {/if}
 
         <!-- Loading State -->
@@ -1062,72 +1045,13 @@ subscription is released and nothing is saved.
                 <span class="ml-4 text-lg text-base-content">Loading LabJack configuration...</span>
             </div>
         {:else if labjackConfig}
-            <!-- Data Statistics -->
-            <div class="card bg-base-100 shadow-xl mb-6">
-                <div class="card-body">
-                    <h4 class="card-title text-base-content">Data Statistics</h4>
-                    <div class="text-sm text-base-content/70 space-y-1">
-                        <div class="flex justify-between">
-                            <span>Asset Number:</span>
-                            <span class="badge badge-primary badge-sm">{assetNumber}</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span>Scans / Read:</span>
-                            <span class="badge badge-info badge-sm">{labjackConfig.sensor_settings.scans_per_read}</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span>Scan Rate:</span>
-                            <span class="badge badge-info badge-sm">{labjackConfig.sensor_settings.scan_rate_hz} Hz</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span>Auto X Window:</span>
-                            <span class="badge badge-info badge-sm">{deriveAutoTimeWindowSec(labjackConfig.sensor_settings.scan_rate_hz).toFixed(3)} s</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span>Enabled Channels:</span>
-                            <span class="badge badge-secondary badge-sm">{labjackConfig.sensor_settings.channels_enabled.join(', ')}</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span>NATS Subject Pattern:</span>
-                            <span class="badge badge-accent badge-sm font-mono h-auto break-all">{liveLabJackChannelPattern(labjackConfig)}</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span>Channel Data Status:</span>
-                            <div class="flex flex-wrap gap-1">
-                                <!--
-                                    Rate is the average sample rate of the current
-                                    snapshot: points divided by its time span.
-                                -->
-                                {#each renderableChannels as ch (ch)}
-                                    {@const data = channelViews.get(ch)?.liveData ?? []}
-                                    {@const rate = snapshotRateHz(data)}
-                                    {@const status = channelViews.get(ch)?.streamStatus}
-                                    {@const problems = streamProblemText(ch, status)}
-                                    <span class="badge badge-outline badge-xs">Ch{ch}: {data.length} pts ({rate} Hz)</span>
-                                    <!--
-                                        Stream problems since the page loaded: messages
-                                        dropped because decoding fell behind, gaps in the
-                                        received data, timeline resets, samples skipped as
-                                        duplicates, undecodable messages.
-                                    -->
-                                    {#if status && status.dropped > 0}
-                                        <span class="badge badge-error badge-xs">Ch{ch}: {status.dropped} msgs dropped (overload)</span>
-                                    {/if}
-                                    {#if problems}
-                                        <span class="badge badge-warning badge-xs">{problems}</span>
-                                    {/if}
-                                {/each}
-                            </div>
-                        </div>
-                        <div class="flex justify-between">
-                            <span>Connection Status:</span>
-                            <span class="badge {connectionBadgeClass(connectionState)} badge-sm">
-                                {connectionLabel(connectionState)}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <StatsPanel
+                config={labjackConfig}
+                {assetNumber}
+                channels={renderableChannels}
+                views={channelViews}
+                {connectionState}
+            />
 
             <div class="flex justify-end mb-6">
                 <button
@@ -1192,130 +1116,20 @@ subscription is released and nothing is saved.
             </div>
 
             {#if showExportModal}
-                <div class="modal modal-open">
-                    <div class="modal-box max-w-2xl">
-                        <h3 class="font-bold text-lg text-base-content mb-4">Export Historical Data</h3>
-                        <form class="space-y-5" onsubmit={handleExportSubmit}>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div class="form-control">
-                                    <label class="label" for="export-start">
-                                        <span class="label-text">Start Time</span>
-                                    </label>
-                                    <input
-                                        id="export-start"
-                                        type="datetime-local"
-                                        class="input input-bordered"
-                                        step="1"
-                                        bind:value={exportStart}
-                                        max={exportEnd || undefined}
-                                        required
-                                        disabled={exporting}
-                                    />
-                                </div>
-                                <div class="form-control">
-                                    <label class="label" for="export-end">
-                                        <span class="label-text">End Time</span>
-                                    </label>
-                                    <input
-                                        id="export-end"
-                                        type="datetime-local"
-                                        class="input input-bordered"
-                                        step="1"
-                                        bind:value={exportEnd}
-                                        min={exportStart || undefined}
-                                        required
-                                        disabled={exporting}
-                                    />
-                                </div>
-                            </div>
-
-                            <p class="text-sm text-base-content/70">
-                                Times are in your browser's time zone, {describeLocalTimeZone()}.
-                                {#if formatUtcPreview(exportStart) && formatUtcPreview(exportEnd)}
-                                    Requested range: {formatUtcPreview(exportStart)} to {formatUtcPreview(exportEnd)}.
-                                {/if}
-                            </p>
-
-                            <div>
-                                <h4 class="font-semibold text-base-content mb-2">Channels</h4>
-                                <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
-                                    {#each labjackConfig.sensor_settings.channels_enabled as ch}
-                                        <label class="flex items-center space-x-2 text-sm">
-                                            <input
-                                                type="checkbox"
-                                                class="checkbox checkbox-warning checkbox-sm"
-                                                checked={exportChannels.has(ch)}
-                                                onchange={(event) => toggleExportChannel(ch, (event.target as HTMLInputElement).checked)}
-                                                disabled={exporting}
-                                            />
-                                            <span>Channel {ch}</span>
-                                        </label>
-                                    {/each}
-                                </div>
-                            </div>
-
-                            {#if exportError}
-                                <div class="alert alert-error text-sm">
-                                    <span>{exportError}</span>
-                                </div>
-                            {/if}
-
-                            {#if exportWarning}
-                                <div class="alert alert-warning text-sm">
-                                    <span>{exportWarning}</span>
-                                </div>
-                            {/if}
-
-                            {#if exporting}
-                                <div class="space-y-2">
-                                    <progress
-                                        class="progress progress-warning w-full"
-                                        value={exportProgress}
-                                        max={exportTotal ?? Math.max(exportProgress, 1)}
-                                    ></progress>
-                                    <p class="text-sm text-base-content/70">
-                                        Downloaded {formatBytes(exportProgress)}
-                                        {#if exportTotal}
-                                            / {formatBytes(exportTotal)}
-                                        {/if}
-                                    </p>
-                                </div>
-                            {/if}
-
-                            <div class="modal-action">
-                                <button
-                                    type="button"
-                                    class="btn btn-ghost"
-                                    onclick={closeExportModal}
-                                >
-                                    {exporting ? "Cancel Download" : "Cancel"}
-                                </button>
-                                <button
-                                    type="submit"
-                                    class="btn btn-warning"
-                                    disabled={exporting}
-                                >
-                                    {exporting ? "Downloading..." : "Start Download"}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                    <div
-                        class="modal-backdrop bg-black/40"
-                        role="button"
-                        tabindex="0"
-                        onclick={() => {
-                            // While downloading, only the Cancel Download button stops it.
-                            if (!exporting) closeExportModal();
-                        }}
-                        onkeydown={(event) => {
-                            if (!exporting && (event.key === "Escape" || event.key === "Enter" || event.key === " ")) {
-                                event.preventDefault();
-                                closeExportModal();
-                            }
-                        }}
-                    ></div>
-                </div>
+                <ExportDialog
+                    channels={labjackConfig.sensor_settings.channels_enabled}
+                    selected={exportChannels}
+                    bind:start={exportStart}
+                    bind:end={exportEnd}
+                    error={exportError}
+                    warning={exportWarning}
+                    {exporting}
+                    progress={exportProgress}
+                    total={exportTotal}
+                    ontoggle={toggleExportChannel}
+                    onsubmit={handleExportSubmit}
+                    onclose={closeExportModal}
+                />
             {/if}
         {/if}
     </div>
