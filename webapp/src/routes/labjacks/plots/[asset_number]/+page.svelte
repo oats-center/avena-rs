@@ -4,6 +4,14 @@
     import { connect, getKeyValue, getKeys, type NatsService } from "$lib/nats.svelte";
     import { isExportCancelled } from "$lib/exporter";
     import { runExportOnOwnConnection } from "$lib/plot/export-run";
+    import {
+        isPickerCancelled,
+        pickSaveFile,
+        saveBlobViaLink,
+        suggestedExportFileName,
+        tapExportChunks,
+        type SaveFileWritable
+    } from "$lib/plot/export-sink";
     import { normalizeCalibration } from "$lib/calibration";
     import { normalizeLabJackConfig, type LabJackConfig } from "$lib/labjack-config";
     import { archiveExportRequestSubject, liveLabJackChannelSubject } from "$lib/subjects";
@@ -812,6 +820,13 @@
      * each chunk, and this function updates the progress bar and the missing-channel
      * warning from its callbacks. Errors are shown in the form.
      *
+     * Where the browser has a save dialog (`showSaveFilePicker`), it is opened here,
+     * synchronously, before the first `await` (browsers allow it only during the
+     * click), and every chunk is written to the chosen file as it arrives, before it is
+     * acknowledged (see `tapExportChunks`). Closing the dialog without a file starts no
+     * export. Elsewhere (Firefox, Safari) the finished CSV is saved through a download
+     * link. A cancelled or failed export discards what was written.
+     *
      * @param event - Form `submit` event. Its default action is prevented.
      */
     async function handleExportSubmit(event: Event) {
@@ -830,6 +845,14 @@
             return;
         }
 
+        // Before any await: the save dialog needs the user's click.
+        let picking: ReturnType<typeof pickSaveFile> = null;
+        try {
+            picking = pickSaveFile(suggestedExportFileName(request.payload));
+        } catch (err) {
+            console.error("Save dialog unavailable, falling back to a download link:", err);
+        }
+
         exporting = true;
         exportError = "";
         exportWarning = "";
@@ -837,8 +860,23 @@
         exportTotal = null;
         const abort = new AbortController();
         exportAbort = abort;
+        let writable: SaveFileWritable | null = null;
 
         try {
+            if (picking) {
+                let handle;
+                try {
+                    handle = await picking;
+                } catch (err) {
+                    // The user closed the save dialog: no export.
+                    if (isPickerCancelled(err)) return;
+                    throw err;
+                }
+                if (abort.signal.aborted) return;
+                writable = await handle.createWritable();
+            }
+            const file = writable;
+
             const result = await runExportOnOwnConnection({
                 openConnection: () => connect(serverName, credentialsContent),
                 subject: archiveExportRequestSubject(config),
@@ -850,20 +888,18 @@
                 onSummary: (missing) => {
                     exportWarning = missingChannelsWarning(missing);
                 },
+                wrapConnection: file ? (service) => tapExportChunks(service, (data) => file.write(data)) : undefined,
             });
 
             exportTotal = result.size;
             exportProgress = result.size;
 
-            // Save the Blob through a temporary download link, then release the object URL.
-            const url = URL.createObjectURL(result.blob);
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = result.fileName;
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            URL.revokeObjectURL(url);
+            if (file) {
+                writable = null;
+                await file.close();
+            } else {
+                saveBlobViaLink(result.blob, result.fileName);
+            }
 
             showExportModal = false;
             exportWarning = "";
@@ -873,6 +909,8 @@
             console.error("Export failed", err);
             exportError = err instanceof Error ? err.message : "Export failed";
         } finally {
+            // Discard a partly written file (the original file, if one was replaced, stays).
+            writable?.abort().catch((err) => console.error("Error discarding the export file:", err));
             if (exportAbort === abort) {
                 exportAbort = null;
                 exporting = false;
