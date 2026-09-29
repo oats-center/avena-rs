@@ -77,16 +77,20 @@
      */
     const MAX_QUEUED_MESSAGES_PER_CHANNEL = 5000;
 
-    /** `asset_number` route parameter; `NaN` when it is not a non-negative integer. */
+    /**
+     * `asset_number` route parameter. Always a non-negative integer: `+page.ts` answers
+     * any other value with a 404 before the page loads.
+     */
     let assetNumber = $state<number>(0);
     let labjackConfig = $state<LabJackConfig | null>(null);
     let loading = $state<boolean>(true);
     let error = $state<string>("");
     /**
-     * What the error banner offers: `retry` (loading again can succeed), `login` (no
-     * login data in this tab), or `none` (an invalid asset number, which cannot load).
+     * What the error banner offers: `retry` (loading again can succeed) or `login` (no
+     * login data in this tab). An invalid asset number never gets here: `+page.ts`
+     * answers it with a 404.
      */
-    let errorAction = $state<"retry" | "login" | "none">("retry");
+    let errorAction = $state<"retry" | "login">("retry");
     /**
      * Connection used for the config and the live subscriptions. Closed before each
      * reload and in `onDestroy`. Exports open a connection of their own (see
@@ -167,9 +171,8 @@
     let renderableChannels = $derived(getRenderablePlotChannels());
 
     /**
-     * Reads `asset_number` and `key` from the URL and loads the config; an asset number
-     * that is not a non-negative integer is reported as an error by
-     * {@link loadLabJackConfig}. Runs again when the page store changes.
+     * Reads `asset_number` and `key` from the URL and loads the config. Runs again when
+     * the page store changes.
      */
     $effect(() => {
         const nextAssetNumber = parseAssetNumberParam($page.params.asset_number);
@@ -382,7 +385,7 @@
     /**
      * Loads the config for {@link assetNumber} and starts the live subscriptions.
      *
-     * Steps: closes the old connection; checks the asset number; reads `serverName` and `credentialsContent` from
+     * Steps: closes the old connection; reads `serverName` and `credentialsContent` from
      * sessionStorage and opens a new connection; reads the `key` query parameter from bucket
      * `avenabox` and uses it if its `asset_number` matches; otherwise reads every
      * `*.*.*.config` key in turn and takes the first match. Then resets channel state,
@@ -403,14 +406,6 @@
         errorAction = "retry";
 
         closeLiveConnection();
-
-        if (!Number.isSafeInteger(assetNumber) || assetNumber < 0) {
-            labjackConfig = null;
-            error = `"${$page.params.asset_number ?? ""}" is not a valid asset number. Open a LabJack's plots from the LabJacks page.`;
-            errorAction = "none";
-            loading = false;
-            return;
-        }
 
         try {
             const serverName = sessionStorage.getItem("serverName");
@@ -1080,13 +1075,9 @@ subscription is released and nothing is saved.
                             Retry
                         </button>
                     </div>
-                {:else if errorAction === "login"}
-                    <div>
-                        <a href="/" class="btn btn-sm btn-error">Log in</a>
-                    </div>
                 {:else}
                     <div>
-                        <a href="/labjacks" class="btn btn-sm btn-error">LabJacks</a>
+                        <a href="/" class="btn btn-sm btn-error">Log in</a>
                     </div>
                 {/if}
             </div>

@@ -4,11 +4,11 @@
     import {
         computeValueRange,
         downsampleMinMax,
+        fitTimeTicks,
         formatTimeTick,
         latestFinitePoint,
         selectTimeWindow,
         thresholdLabelBox,
-        timeAxisTicks
     } from "$lib/plot/render";
     
     /** Component props. See the `@component` block below for each one. */
@@ -38,7 +38,7 @@
         frozenPostWindowSec?: number;
         /** True while post-trigger samples are still being collected. */
         frozenCollecting?: boolean;
-        /** Draws the trigger threshold line and LEVEL badge. */
+        /** Draws the trigger threshold line and its level label. */
         showTriggerThreshold?: boolean;
         /** Trigger level, in `unit`. */
         triggerThreshold?: number;
@@ -104,7 +104,10 @@
     const TITLE_BAND = 18;
     /** Gap between the y-axis title and the value labels, and between labels and axis. */
     const LABEL_GAP = 8;
-    /** Smallest space kept between two time labels, CSS pixels. */
+    /**
+     * Preferred space between two time ticks, CSS pixels. Narrow plots may place ticks
+     * closer, as long as their labels do not overlap (see `fitTimeTicks`).
+     */
     const MIN_TIME_TICK_SPACING = 70;
     /** Running min/max of every value seen in continuous autoscale. Only grows until reset. */
     let stickyAutoExtrema: { min: number; max: number } | null = null;
@@ -430,16 +433,24 @@
 
     /**
      * Returns the time ticks of this frame: round steps (1, 2 or 5 times a power of
-     * ten) anchored at 0, spaced at least {@link MIN_TIME_TICK_SPACING} px apart. All
-     * labels use one unit, given in the axis title.
+     * ten) anchored at 0, about {@link MIN_TIME_TICK_SPACING} px apart; on a narrow plot
+     * closer, down to what the measured labels need (at least four ticks where they
+     * fit). All labels use one unit, given in the axis title.
      *
      * @returns Each tick's x in CSS pixels and its label, plus the label unit.
      */
     function getTimeTicks(): { ticks: { x: number; label: string }[]; unit: 'ms' | 's' } {
         const { start, end } = getTimeAxisRange();
         const width = Math.max(0, plotWidth - margin.left - margin.right);
-        const maxTicks = Math.max(2, Math.floor(width / MIN_TIME_TICK_SPACING) + 1);
-        const axis = timeAxisTicks(start, end, maxTicks);
+        const measure = (label: string) => {
+            if (!ctx) return label.length * 8;
+            ctx.save();
+            ctx.font = TICK_FONT;
+            const w = ctx.measureText(label).width;
+            ctx.restore();
+            return w;
+        };
+        const axis = fitTimeTicks(start, end, width, measure, { preferredSpacingPx: MIN_TIME_TICK_SPACING });
         const frozen = mode === 'frozen' && isTriggered;
         const ticks = axis.values.map((value) => ({
             // Continuous mode maps a sample's age; an axis value of -2 s is age 2 s.
@@ -531,8 +542,8 @@
     }
 
     /**
-     * Draws a dashed amber horizontal line at `triggerThreshold`, with a `Trig` label in
-     * the top margin (see {@link drawThresholdLabel}).
+     * Draws a dashed amber horizontal line at `triggerThreshold`. Its level is labelled
+     * once, in the top margin, by `render` (see {@link drawThresholdLabel}).
      *
      * Skipped unless `showTriggerThreshold` is set and the threshold is a number inside
      * the current y range.
@@ -557,7 +568,6 @@
         ctx.stroke();
         ctx.setLineDash([]);
 
-        drawThresholdLabel(`Trig ${triggerThreshold.toFixed(3)} ${unit}`);
     }
 
     /**
@@ -620,8 +630,9 @@
     }
 
     /**
-     * Stacks status badges in the top right corner of the plot area: LEVEL (threshold
-     * shown), PREBUFFERING, and FROZEN or COLLECTING (frozen mode after a trigger).
+     * Stacks status badges in the top right corner of the plot area: PREBUFFERING, and
+     * FROZEN or COLLECTING (frozen mode after a trigger). The trigger level has its own
+     * label in the top margin.
      */
     function drawCanvasBadges() {
         if (!ctx) return;
@@ -629,10 +640,6 @@
         let top = margin.top + 6;
         const right = plotWidth - margin.right - 6;
 
-        if (showTriggerThreshold && typeof triggerThreshold === 'number' && Number.isFinite(triggerThreshold)) {
-            drawBadge(`LEVEL ${triggerThreshold.toFixed(3)} ${unit}`, right, top, 'rgba(234, 179, 8, 0.18)', 'rgba(234, 179, 8, 0.8)');
-            top += 22;
-        }
 
         if (prebuffering) {
             drawBadge('PREBUFFERING', right, top, 'rgba(59, 130, 246, 0.18)', 'rgba(59, 130, 246, 0.8)');
@@ -897,6 +904,11 @@
         }
 
         drawThresholdLine(range);
+        // The trigger level is labelled once, in the top margin, even when the line is
+        // outside the y range.
+        if (showTriggerThreshold && typeof triggerThreshold === 'number' && Number.isFinite(triggerThreshold)) {
+            drawThresholdLabel(`Trig level ${triggerThreshold.toFixed(3)} ${unit}`);
+        }
         
         // Draw trigger line
         drawTriggerLine();
@@ -1026,7 +1038,8 @@ Props:
 - `frozenPreWindowSec?: number`: seconds before the trigger. Default `timeWindow`.
 - `frozenPostWindowSec?: number`: seconds after the trigger. Default `timeWindow`.
 - `frozenCollecting?: boolean`: shows COLLECTING instead of FROZEN. Default `false`.
-- `showTriggerThreshold?: boolean`: draws the threshold line and LEVEL badge.
+- `showTriggerThreshold?: boolean`: draws the threshold line and a `Trig level` label in
+  the top margin.
   Default `false`.
 - `triggerThreshold?: number`: trigger level, in `unit`. No default.
 - `prebuffering?: boolean`: shows the PREBUFFERING badge. Default `false`.
