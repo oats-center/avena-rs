@@ -325,6 +325,15 @@ export class ScanMessageQueue {
         return this.queues.get(channel)?.length ?? 0;
     }
 
+    /**
+     * Drops the queued messages and the drop counter of one channel, for a channel that
+     * starts over (for example after it is selected again).
+     */
+    clearChannel(channel: number): void {
+        this.queues.delete(channel);
+        this.droppedMessages.delete(channel);
+    }
+
     /** Drops every queued message and resets the drop counters. */
     clear(): void {
         this.queues.clear();

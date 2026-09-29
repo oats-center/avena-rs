@@ -117,6 +117,17 @@ describe('queue and decode order', () => {
         );
     });
 
+    it('clears one channel without touching the others', () => {
+        const streamer = new FakeStreamer(100, 10);
+        const queue = new ScanMessageQueue(2);
+        for (let m = 0; m < 3; m++) queue.push(1, { payload: streamer.nextBatch().payload, receivedAt: 0 });
+        queue.push(2, { payload: streamer.nextBatch().payload, receivedAt: 0 });
+        queue.clearChannel(1);
+        expect(queue.size(1)).toBe(0);
+        expect(queue.droppedMessages.get(1)).toBeUndefined();
+        expect(queue.size(2)).toBe(1);
+    });
+
     it('counts undecodable payloads without stopping the queue', () => {
         const streamer = new FakeStreamer(100, 10);
         const queue = new ScanMessageQueue();

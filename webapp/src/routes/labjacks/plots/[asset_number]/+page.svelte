@@ -5,6 +5,7 @@
     import { downloadExportViaNats, type ExportRequestPayload } from "$lib/exporter";
     import { normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
     import { archiveExportRequestSubject, liveLabJackChannelPattern, liveLabJackChannelSubject } from "$lib/subjects";
+    import type { Subscription } from "@nats-io/nats-core";
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
     import { parseAssetNumberParam } from "$lib/plot/route";
     import { applyAxisLimitInput, parseFiniteInput, type AxisLimits } from "$lib/plot/axis";
@@ -209,8 +210,11 @@
     let loadGeneration = 0;
     /** Set in `onDestroy`, so a load that finishes afterwards closes its connection. */
     let destroyed = false;
-    /** One live-data subscription per enabled channel. */
-    let subscriptions: any[] = [];
+    /**
+     * One live-data subscription per selected channel, kept in step with the selection
+     * by {@link syncChannelSubscriptions}.
+     */
+    let channelSubscriptions = new Map<number, Subscription>();
     /**
      * Copy of the live buffers the template reads, refreshed by {@link flushUiSnapshots}.
      */
@@ -432,7 +436,7 @@
     }
 
     /**
-     * Copies the live and frozen buffers of every enabled channel into {@link channelData}
+     * Copies the live and frozen buffers of every selected channel into {@link channelData}
      * and {@link frozenChannelData}, which triggers a redraw.
      *
      * @param force - Copy even when nothing is marked dirty.
@@ -443,7 +447,7 @@
         const liveSnapshots = new Map<number, DataPoint[]>();
         const frozenSnapshots = new Map<number, DataPoint[]>();
 
-        for (const channel of labjackConfig?.sensor_settings.channels_enabled ?? []) {
+        for (const channel of getRenderablePlotChannels()) {
             liveSnapshots.set(channel, snapshotLiveChannelData(channel));
             frozenSnapshots.set(channel, [...(frozenChannelBuffers.get(channel) || [])]);
         }
@@ -457,7 +461,7 @@
     /** Copies the per-channel stream counters into {@link channelStreamStatus}. */
     function refreshStreamStatus() {
         const next = new Map<number, { dropped: number; gaps: number; resets: number; skipped: number; decodeErrors: number }>();
-        for (const channel of labjackConfig?.sensor_settings.channels_enabled ?? []) {
+        for (const channel of getRenderablePlotChannels()) {
             const stats = liveChannels.get(channel)?.stats;
             next.set(channel, {
                 dropped: scanQueue.droppedMessages.get(channel) ?? 0,
@@ -524,9 +528,11 @@
     }
 
     /**
-     * Adds or removes a channel from the plot selection.
+     * Adds or removes a channel from the plot selection and subscribes or unsubscribes
+     * its live subject.
      *
-     * Adding is ignored when two channels are already selected.
+     * Adding is ignored when two channels are already selected. The channel's stream
+     * state is reset either way, so a channel selected again starts a fresh trace.
      *
      * @param channel - LabJack channel number.
      * @param checked - New checkbox state.
@@ -542,6 +548,12 @@
         }
 
         selectedPlotChannels = next;
+        resetChannelStream(channel);
+        try {
+            syncChannelSubscriptions();
+        } catch (err) {
+            console.error(`Error updating the subscription of channel ${channel}:`, err);
+        }
         markUiSnapshotDirty();
     }
 
@@ -751,14 +763,9 @@
      * {@link startDataSubscription}).
      */
     function closeLiveConnection() {
-        for (const sub of subscriptions) {
-            try {
-                sub.unsubscribe();
-            } catch (err) {
-                console.error("Error unsubscribing:", err);
-            }
+        for (const channel of Array.from(channelSubscriptions.keys())) {
+            unsubscribeChannel(channel);
         }
-        subscriptions = [];
         connectionState = "disconnected";
         connectionLostReason = "";
         const service = natsService;
@@ -836,14 +843,9 @@
     }
 
     /**
-     * Subscribes to the live subject of every enabled channel.
-     *
-     * The subject comes from `liveLabJackChannelSubject`:
-     * `avenars.<site>.<box>.<source>.live.chNN` for structured configs, or
-     * `<root>.<asset>.data.chNN` for legacy ones. All enabled channels are subscribed, not
-     * only the selected ones. Sets {@link connectionState} to `connected` when all
-     * subscriptions exist and the client is still connected, or
-     * `error` if subscribing throws.
+     * Subscribes to the live subjects of the selected channels (see
+     * {@link syncChannelSubscriptions}). Sets {@link connectionState} to `connected`
+     * when the subscriptions exist, or `error` if subscribing throws.
      *
      * @param generation - The {@link loadGeneration} of the load that owns the
      *   subscriptions; reader loops stop once a newer load starts.
@@ -852,39 +854,102 @@
         if (!natsService || !labjackConfig) return;
         
         try {
-            for (const channel of labjackConfig.sensor_settings.channels_enabled) {
-                const subject = liveLabJackChannelSubject(labjackConfig, channel);
-                const subscription = natsService.connection.subscribe(subject);
-                subscriptions.push(subscription);
-                
-                // One reader loop per subscription, not awaited. It ends when the
-                // subscription is unsubscribed. It queues every payload of a selected
-                // channel, in arrival order; decoding waits for the UI tick. Messages of
-                // unselected channels are not kept (the plot shows a gap if the channel
-                // is selected again later).
-                (async () => {
-                    for await (const msg of subscription) {
-                        // A reload replaced this subscription; stop feeding the queue.
-                        if (generation !== loadGeneration) break;
-                        try {
-                            if (!selectedPlotChannels.has(channel)) continue;
-                            scanQueue.push(channel, {
-                                payload: msg.data instanceof ArrayBuffer
-                                    ? msg.data
-                                    : (msg.data as Uint8Array),
-                                receivedAt: Date.now()
-                            });
-                        } catch (err) {
-                            console.error(`Error processing message for channel ${channel}:`, err);
-                        }
-                    }
-                })();
-            }
+            syncChannelSubscriptions(generation);
             if (connectionState === "connecting") connectionState = "connected";
         } catch (err) {
             console.error("Error starting data subscription:", err);
             error = "Failed to start data subscription";
         }
+    }
+
+    /**
+     * Subscribes to every selected channel that has no subscription and unsubscribes
+     * every channel that is no longer selected, so only the plotted channels are
+     * received.
+     *
+     * The subject comes from `liveLabJackChannelSubject`:
+     * `avenars.<site>.<box>.<source>.live.chNN` for structured configs, or
+     * `<root>.<asset>.data.chNN` for legacy ones.
+     *
+     * @param generation - The {@link loadGeneration} the new subscriptions belong to.
+     * @throws If subscribing throws (for example on a closed connection).
+     */
+    function syncChannelSubscriptions(generation: number = loadGeneration) {
+        if (!natsService || !labjackConfig) return;
+        for (const channel of Array.from(channelSubscriptions.keys())) {
+            if (!selectedPlotChannels.has(channel)) unsubscribeChannel(channel);
+        }
+        for (const channel of labjackConfig.sensor_settings.channels_enabled) {
+            if (selectedPlotChannels.has(channel) && !channelSubscriptions.has(channel)) {
+                subscribeChannel(channel, generation);
+            }
+        }
+    }
+
+    /**
+     * Subscribes to one channel's live subject and starts its reader loop.
+     *
+     * The loop, not awaited, queues every payload in arrival order; decoding waits for
+     * the next frame. It stops when the subscription is unsubscribed, when a reload
+     * starts, or when this subscription is no longer the channel's current one (the
+     * channel was deselected and selected again), so an old loop never feeds the
+     * channel's fresh stream.
+     *
+     * @param channel - LabJack channel number.
+     * @param generation - The {@link loadGeneration} this subscription belongs to.
+     */
+    function subscribeChannel(channel: number, generation: number) {
+        if (!natsService || !labjackConfig) return;
+        const subject = liveLabJackChannelSubject(labjackConfig, channel);
+        const subscription: Subscription = natsService.connection.subscribe(subject);
+        channelSubscriptions.set(channel, subscription);
+
+        (async () => {
+            for await (const msg of subscription) {
+                if (generation !== loadGeneration || channelSubscriptions.get(channel) !== subscription) break;
+                try {
+                    scanQueue.push(channel, {
+                        payload: msg.data instanceof ArrayBuffer
+                            ? msg.data
+                            : (msg.data as Uint8Array),
+                        receivedAt: Date.now()
+                    });
+                } catch (err) {
+                    console.error(`Error processing message for channel ${channel}:`, err);
+                }
+            }
+        })();
+    }
+
+    /**
+     * Unsubscribes one channel and forgets its subscription.
+     *
+     * @param channel - LabJack channel number.
+     */
+    function unsubscribeChannel(channel: number) {
+        const subscription = channelSubscriptions.get(channel);
+        channelSubscriptions.delete(channel);
+        if (!subscription) return;
+        try {
+            subscription.unsubscribe();
+        } catch (err) {
+            console.error("Error unsubscribing:", err);
+        }
+    }
+
+    /**
+     * Empties a channel's buffer, stream state, counters, queued messages and trigger
+     * capture, so its next data starts a fresh trace instead of joining data from
+     * before it was deselected.
+     *
+     * @param channel - LabJack channel number.
+     */
+    function resetChannelStream(channel: number) {
+        liveChannels.set(channel, createLiveChannel());
+        scanQueue.clearChannel(channel);
+        clearTriggerState(channel);
+        channelPrebufferReady.set(channel, false);
+        channelPrebufferReady = new Map(channelPrebufferReady);
     }
     
     /**
@@ -1413,10 +1478,12 @@ URL: `/labjacks/plots/[asset_number]?key=<kv key>`
 Reads `serverName` and `credentialsContent` from sessionStorage (written by the login
 page) and opens its own connection to central NATS. Shows an error if either is missing.
 
-Live data: subscribes to one subject per enabled channel, built by
-`liveLabJackChannelSubject`: `avenars.<site>.<box>.<source>.live.chNN` for structured
-configs or `<root>.<asset>.data.chNN` for legacy ones. Each message is a FlatBuffer
-`Scan`. Every message of the channels selected for plotting (at most two) is queued
+Live data: subscribes only to the channels selected for plotting (at most two), one
+subject each, built by `liveLabJackChannelSubject`:
+`avenars.<site>.<box>.<source>.live.chNN` for structured configs or
+`<root>.<asset>.data.chNN` for legacy ones. Selecting a channel subscribes it and
+starts a fresh trace; deselecting unsubscribes it and drops its buffer. Each message
+is a FlatBuffer `Scan`. Every message is queued
 (bounded; overflow drops the oldest and is shown in Data Statistics). Every 100 ms a
 timer decodes all queued messages in order, applies the channel's calibration, appends
 to a rolling buffer sorted by sample time (NaN and missing time become gaps; duplicates
@@ -1611,7 +1678,7 @@ progress and saves the result through a temporary download link.
                         <div>
                             <h4 class="card-title text-base-content">Visible Plot Channels</h4>
                             <p class="text-sm text-base-content/70">
-                                Select up to 2 channels. Only selected channels are parsed and rendered in the browser.
+                                Select up to 2 channels. Only selected channels are received, parsed and rendered in the browser; a newly selected channel starts with an empty plot.
                             </p>
                         </div>
                         <span class="badge badge-info badge-sm">
