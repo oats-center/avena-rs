@@ -384,7 +384,7 @@ Enabled/Disabled badge shows the config's `labjack_on_off` flag, not whether the
 running.
 -->
 <svelte:head>
-    <title>LabJack Management - Avena-OTR</title>
+    <title>LabJack Management - Avena-RS</title>
 </svelte:head>
 
 <div class="min-h-screen bg-base-300">
@@ -402,7 +402,7 @@ running.
                     </div>
                 </div>
                 <div>
-                    <h1 class="text-2xl font-bold text-base-content">Avena-OTR</h1>
+                    <h1 class="text-2xl font-bold text-base-content">Avena-RS</h1>
                     <p class="text-base-content/70 text-sm">LabJack Management Dashboard</p>
                 </div>
             </div>

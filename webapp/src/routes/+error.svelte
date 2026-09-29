@@ -14,7 +14,7 @@ thrown while loading a page. Shows the status code, a short message and links ba
 the login page and the LabJack list. It makes no NATS calls.
 -->
 <svelte:head>
-    <title>{page.status} {heading} - Avena-OTR</title>
+    <title>{page.status} {heading} - Avena-RS</title>
 </svelte:head>
 
 <div class="min-h-screen bg-base-300 flex items-center justify-center p-4">

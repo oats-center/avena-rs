@@ -1539,7 +1539,7 @@ aborts a running export: no more chunks are read or acknowledged, the reply
 subscription is released and nothing is saved.
 -->
 <svelte:head>
-    <title>Real-time Plots - LabJack {assetNumber} - Avena-OTR</title>
+    <title>Real-time Plots - LabJack {assetNumber} - Avena-RS</title>
 </svelte:head>
 
 <div class="min-h-screen bg-base-300">

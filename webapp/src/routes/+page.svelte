@@ -136,7 +136,7 @@ no KV keys. It does not read sessionStorage, so an earlier login in the same tab
 skip this page.
 -->
 <svelte:head>
-    <title>Login - Avena-OTR LabJack Management</title>
+    <title>Login - Avena-RS LabJack Management</title>
 </svelte:head>
 
 <div class="min-h-screen bg-base-300 flex items-center justify-center p-4" data-theme="dark">
@@ -163,7 +163,7 @@ skip this page.
                   </div>
                   
             </div>
-            <h1 class="text-4xl font-bold text-base-content mb-2">Avena-OTR</h1>
+            <h1 class="text-4xl font-bold text-base-content mb-2">Avena-RS</h1>
             <p class="text-base-content/70 text-lg">Roadside Infrastructure Dashboard</p>
         </div>
 

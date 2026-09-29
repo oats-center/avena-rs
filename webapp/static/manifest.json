@@ -1,7 +1,7 @@
 {
-  "name": "Avena-OTR Dashboard",
+  "name": "Avena-RS Dashboard",
   "short_name": "Avena Dashboard",
-  "description": "LabJack device management dashboard for Avena-OTR system",
+  "description": "LabJack device management dashboard for Avena-RS system",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#111827",
