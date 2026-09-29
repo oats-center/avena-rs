@@ -35,6 +35,8 @@ log out or close the tab, and are only used to connect to NATS.
 ## Plot a box
 
 The LabJack page lists every configuration in `avenabox`, one per edge node.
+The Enabled or Disabled badge on each card is the configuration's
+`labjack_on_off` setting, not a live status.
 Opening one shows its live channels. Asset numbers are not guaranteed to be
 unique between boxes, so the plot address carries the configuration key:
 
@@ -60,7 +62,8 @@ field.
 
 ## Download data
 
-Pick a time range and channels in the export dialog. The request goes through
+Pick a time range, to the second and in the time zone you choose, and the
+channels in the export dialog. Cancel stops an export that is running. The request goes through
 central NATS to the exporter on that box, which reads its Parquet archive and
 streams the rows back as CSV. Large ranges take a while: the edge node's
 uplink is usually the limit.

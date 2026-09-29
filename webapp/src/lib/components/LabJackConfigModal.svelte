@@ -73,6 +73,11 @@
      * leaves the caller's object (including `sensor_settings`) untouched.
      */
     let formData = $state<LabJackConfig>($state.snapshot(config) as LabJackConfig);
+    /**
+     * `formData` as JSON when the modal opened (with `calibrations` filled in the same way
+     * the effect below does), used to tell whether there are unsaved edits.
+     */
+    const initialJson = serializeForm(formData);
     /** Validation messages keyed by field name (`labjack_name`, `gains`, ...). */
     let errors = $state<Record<string, string>>({});
     let saving = $state<boolean>(false);
@@ -264,7 +269,8 @@
      * Saves a channel's current calibration as a named preset.
      *
      * Sanitizes the typed id with {@link sanitizeCalibrationId} (and writes the sanitized
-     * form back to the input), then calls `onSaveCalibration`. On success the channel's
+     * form back to the input), asks for confirmation (the preset is written to KV at once,
+     * separately from the form's own save), then calls `onSaveCalibration`. On success the channel's
      * calibration is tagged with the new id. The outcome is shown under the channel.
      *
      * @param channel - Channel number.
@@ -281,6 +287,18 @@
         const current = getCalibration(channel);
         if (sanitized !== raw.trim()) {
             presetIdInputs[String(channel)] = sanitized;
+        }
+        const overwrite = availableCalibrations.has(sanitized)
+            ? ` A preset named '${sanitized}' already exists and will be replaced.`
+            : "";
+        if (
+            !confirm(
+                `Save preset '${sanitized}' to KV now?${overwrite}\n\n` +
+                `The preset is written immediately and shared with every LabJack. ` +
+                `It does not save the rest of this form; use ${isAddingNew ? "Add LabJack" : "Save Changes"} for that.`
+            )
+        ) {
+            return;
         }
         const spec: CalibrationSpec = { ...current, id: sanitized };
         const ok = await onSaveCalibration(spec);
@@ -449,13 +467,55 @@
     
     
     /**
+     * Returns the form as JSON for the unsaved-edits check. A missing `calibrations` is
+     * treated as `{}`.
+     */
+    function serializeForm(data: LabJackConfig): string {
+        const snapshot = $state.snapshot(data) as LabJackConfig;
+        return JSON.stringify({
+            ...snapshot,
+            sensor_settings: { ...snapshot.sensor_settings, calibrations: snapshot.sensor_settings.calibrations ?? {} }
+        });
+    }
+
+    /** True when the form differs from what it was when the modal opened. */
+    function isDirty(): boolean {
+        return serializeForm(formData) !== initialJson;
+    }
+
+    /**
+     * Closes the modal without saving. When the form has unsaved edits it asks first and
+     * does nothing if the user declines.
+     */
+    function requestClose() {
+        if (saving) return;
+        if (isDirty() && !confirm("Discard your unsaved changes to this LabJack configuration?")) {
+            return;
+        }
+        onClose();
+    }
+
+    /**
+     * Handles Escape inside the modal. Stops the event so the window handler does not
+     * ask a second time.
+     *
+     * @param event - Keydown event from the backdrop or the dialog.
+     */
+    function handleModalKeydown(event: KeyboardEvent) {
+        if (event.key === 'Escape') {
+            event.stopPropagation();
+            requestClose();
+        }
+    }
+
+    /**
      * Closes the modal on Escape, from anywhere in the window.
      *
      * @param event - Window keydown event.
      */
     function handleKeyPress(event: KeyboardEvent) {
         if (event.key === 'Escape') {
-            onClose();
+            requestClose();
         }
     }
 </script>
@@ -482,7 +542,9 @@ A channel's calibration can be picked from saved presets or saved as a new prese
 through `onSaveCalibration` (the page stores presets in `avenabox` under
 `calibration.<id>`). Saving runs full validation first; name and asset number
 duplicates are also flagged live while adding. Escape, the close button, Cancel, or a
-click on the backdrop close the modal without saving.
+click on the backdrop close the modal without saving, asking first when the form has
+unsaved edits. "Save Preset to KV Now" writes the preset at once, after a confirmation,
+independently of the form's own save.
 
 Props:
 - `config: LabJackConfig`: document to edit, or the defaults for a new one. Deep-copied
@@ -503,8 +565,8 @@ No props have defaults.
 <svelte:window on:keydown={handleKeyPress} />
 
 <!-- Modal -->
-<div class="modal modal-open" onclick={onClose} role="button" tabindex="0" onkeydown={(e) => e.key === 'Escape' && onClose()}>
-    <div class="modal-box w-11/12 max-w-4xl h-[90vh] flex flex-col bg-base-100 shadow-2xl border border-base-200" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="0" onkeydown={(e) => e.key === 'Escape' && onClose()}>
+<div class="modal modal-open" onclick={requestClose} role="button" tabindex="0" onkeydown={handleModalKeydown}>
+    <div class="modal-box w-11/12 max-w-4xl h-[90vh] flex flex-col bg-base-100 shadow-2xl border border-base-200" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="0" onkeydown={handleModalKeydown}>
         <!-- Modal Header -->
         <div class="flex justify-between items-center mb-6 pb-4 border-b border-base-200 flex-shrink-0">
             <div>
@@ -516,7 +578,7 @@ No props have defaults.
                 </p>
             </div>
             <button
-                onclick={onClose}
+                onclick={requestClose}
                 class="btn btn-sm btn-circle btn-ghost hover:bg-base-200"
                 aria-label="Close modal"
             >
@@ -911,6 +973,7 @@ No props have defaults.
                                             </div>
 
                                             {#if getCalibration(channel).type === "linear"}
+                                                {@const cal = getCalibration(channel)}
                                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                     <div class="form-control">
                                                         <label class="label" for="calibration-linear-a-{channel}">
@@ -920,7 +983,7 @@ No props have defaults.
                                                             id="calibration-linear-a-{channel}"
                                                             type="number"
                                                             step="any"
-                                                            value={getCalibration(channel).type === "linear" ? getCalibration(channel).a : 1}
+                                                            value={cal.type === "linear" ? cal.a : 1}
                                                             oninput={(event) => updateLinearField(channel, "a", Number((event.currentTarget as HTMLInputElement).value))}
                                                             class="input input-bordered w-full focus:input-primary"
                                                         />
@@ -933,13 +996,14 @@ No props have defaults.
                                                             id="calibration-linear-b-{channel}"
                                                             type="number"
                                                             step="any"
-                                                            value={getCalibration(channel).type === "linear" ? getCalibration(channel).b : 0}
+                                                            value={cal.type === "linear" ? cal.b : 0}
                                                             oninput={(event) => updateLinearField(channel, "b", Number((event.currentTarget as HTMLInputElement).value))}
                                                             class="input input-bordered w-full focus:input-primary"
                                                         />
                                                     </div>
                                                 </div>
                                             {:else if getCalibration(channel).type === "polynomial"}
+                                                {@const cal = getCalibration(channel)}
                                                 <div class="form-control">
                                                     <label class="label" for="calibration-poly-{channel}">
                                                         <span class="label-text font-medium">Coefficients (c0, c1, c2...)</span>
@@ -947,7 +1011,7 @@ No props have defaults.
                                                     <input
                                                         id="calibration-poly-{channel}"
                                                         type="text"
-                                                        value={coeffInputs[String(channel)] ?? getCalibration(channel).coeffs.join(", ")}
+                                                        value={coeffInputs[String(channel)] ?? (cal.type === "polynomial" ? cal.coeffs.join(", ") : "")}
                                                         oninput={(event) => updatePolynomialCoeffs(channel, (event.currentTarget as HTMLInputElement).value)}
                                                         class="input input-bordered w-full focus:input-primary"
                                                     />
@@ -971,8 +1035,9 @@ No props have defaults.
                                                     type="button"
                                                     onclick={() => handleSavePreset(channel)}
                                                     class="btn btn-outline btn-primary"
+                                                    title="Writes this calibration to KV as a shared preset right away. It does not save the rest of the form."
                                                 >
-                                                    Save Preset
+                                                    Save Preset to KV Now
                                                 </button>
                                             </div>
                                             {#if calibrationStatus[String(channel)]}
@@ -1001,7 +1066,7 @@ No props have defaults.
         <div class="modal-action pt-4 border-t border-base-200 flex-shrink-0">
             <button
                 type="button"
-                onclick={onClose}
+                onclick={requestClose}
                 class="btn btn-ghost"
             >
                 Cancel

@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { onMount } from "svelte";
     import { goto } from "$app/navigation";
     import { connect } from "$lib/nats.svelte";
     
@@ -15,31 +16,44 @@
     /** Error message shown above the form. Empty hides the alert. */
     let alert = $state<string>("");
     
-    // Debug log
-    console.log("Login page loaded");
+    /** The credentials file input, read again at submit time. */
+    let credentialsInput = $state<HTMLInputElement | null>(null);
+    /** True while a connection attempt is running, so a second submit is ignored. */
+    let connecting = false;
+
+    // A file picked before hydration fired no `change` handler; show its name anyway.
+    onMount(() => {
+        const file = credentialsInput?.files?.[0];
+        if (file && !credentialsFile) credentialsFile = file;
+    });
 
     /**
-     * Reads the chosen credentials file into {@link credentialsContent}.
+     * Remembers the chosen credentials file so its name can be shown.
      *
-     * Clears any earlier alert on success. On a read error it sets an alert and leaves the
-     * previous content in place. Does nothing when no file was chosen.
+     * The file is read at submit time, not here, so a file chosen before the page finished
+     * loading is still used.
      *
      * @param event - `change` event from the file input.
      */
-    async function handleFileUpload(event: Event) {
+    function handleFileUpload(event: Event) {
         const target = event.target as HTMLInputElement;
         const file = target.files?.[0];
-        
         if (file) {
             credentialsFile = file;
-            try {
-                credentialsContent = await file.text();
-                alert = ""; // Clear any previous alerts
-            } catch (error) {
-                alert = "Failed to read credentials file. Please try again.";
-                console.error("Error reading file:", error);
-            }
+            alert = "";
         }
+    }
+
+    /**
+     * Returns the text of the credentials file currently chosen in the input, falling back
+     * to the last file seen by {@link handleFileUpload}. Returns an empty string when no file
+     * has been chosen.
+     */
+    async function readCredentials(): Promise<string> {
+        const file = credentialsInput?.files?.[0] ?? credentialsFile;
+        if (!file) return "";
+        credentialsFile = file;
+        return await file.text();
     }
 
     /**
@@ -51,21 +65,37 @@
      * `goto`, falling back to a full page load if client-side navigation fails. On failure
      * it sets an alert. Errors are caught, so the returned promise does not reject.
      *
+     * The credentials file is read from the input here, at submit time. Only one attempt
+     * runs at a time; a submit while one is running is ignored.
+     *
      * @remarks
      * The credentials are stored as plain text in sessionStorage, so they last for this
      * browser tab only and are visible to any script on the origin.
      */
     async function connectToNats() {
+        if (connecting) return;
         if (!serverName.trim()) {
             alert = "Please enter a server URL";
             return;
         }
-        
+
+        connecting = true;
+        try {
+            credentialsContent = await readCredentials();
+        } catch (error) {
+            connecting = false;
+            alert = "Failed to read credentials file. Please try again.";
+            console.error("Error reading file:", error);
+            return;
+        }
+
         if (!credentialsContent) {
+            connecting = false;
             alert = "Please upload a credentials file";
             return;
         }
-        
+
+        alert = "";
         loading = true;
         try {
             const natsService = await connect(serverName, credentialsContent);
@@ -79,26 +109,12 @@
             } else {
                 alert = "Connection failed. Please check your server URL and credentials file.";
             }
-            loading = false;
         } catch (error) {
-            loading = false;
             alert = "Connection failed. Please check your server URL and credentials file.";
             console.error("Error Initializing NATS Connection:", error);
-        }
-    }
-
-    /**
-     * Calls {@link connectToNats} when Enter is pressed in the server URL field.
-     *
-     * @param event - `keypress` event from the server URL input.
-     *
-     * @remarks
-     * The input is inside the form, so Enter also submits the form, whose handler calls
-     * {@link connectToNats} too. One Enter can start two connection attempts.
-     */
-    function handleKeyPress(event: KeyboardEvent) {
-        if (event.key === 'Enter') {
-            connectToNats();
+        } finally {
+            loading = false;
+            connecting = false;
         }
     }
 </script>
@@ -187,7 +203,6 @@ skip this page.
                                 type="text"
                                 placeholder="ws://nats1.oats:8080"
                                 bind:value={serverName}
-                                onkeypress={handleKeyPress}
                                 class="input input-bordered w-full pl-10"
                                 required
                             />
@@ -209,6 +224,7 @@ skip this page.
                                 id="credentials"
                                 type="file"
                                 accept=".creds,.txt"
+                                bind:this={credentialsInput}
                                 onchange={handleFileUpload}
                                 class="file-input file-input-bordered w-full pl-10"
                             />
@@ -229,6 +245,7 @@ skip this page.
                     <button
                         type="submit"
                         disabled={loading}
+                        aria-busy={loading}
                         class="btn btn-warning w-full"
                     >
                         {#if loading}

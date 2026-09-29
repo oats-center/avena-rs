@@ -11,10 +11,8 @@ code in one place per page and makes the components easy to reason about.
 and passes the samples in.
 
 **Continuous mode** shows the last `timeWindow` seconds with the newest sample
-at the right. The right edge follows the browser clock, unless the newest
-sample lags it by more than 75 ms or a tenth of the window, whichever is
-larger; then it follows the newest sample, so a slow link does not leave a
-blank strip at the edge.
+at the right. The right edge is the newest sample's own time, not the browser
+clock, so a slow link does not leave a blank strip at the edge.
 
 **Frozen mode** is used after a trigger fires. It shows the samples from
 `frozenPreWindowSec` before to `frozenPostWindowSec` after the trigger, with
@@ -27,8 +25,8 @@ samples inside the window and reduces them to one minimum and one maximum per
 pixel column. At 2 kHz a ten-second window holds 20,000 samples for a plot a
 thousand pixels wide, so drawing every sample would be slow, and keeping the
 minimum and maximum (rather than averaging) means a one-sample spike is still
-visible. The line breaks where the data has a gap wider than a quarter of the
-plot. With autoscale on, the y axis snaps to round 1, 2 or 5 steps, and in
+visible. The line breaks wherever a sample is missing or the stream has a
+gap, so a gap is never drawn over. With autoscale on, the y axis snaps to round 1, 2 or 5 steps, and in
 continuous mode it only widens, so the scale does not jump with every frame.
 
 Under the canvas the plot shows the number of samples drawn, the source clock
@@ -37,7 +35,7 @@ of the sample at t = 0, its lag behind the browser, and the latest value.
 | Prop | Type | Default | Meaning |
 |---|---|---|---|
 | `data` | `DataPoint[]` | | Live samples. `timestamp` is Unix epoch milliseconds; the optional `sourceTimestamp` and `receivedAt` (also epoch ms) feed the clock and lag badges. |
-| `unit` | `string` | | Unit label for the axis, threshold and badges |
+| `unit` | `string` | | Unit label for the axis, threshold and badges. The plot page passes the channel's own unit. |
 | `timeWindow` | `number` | | Width of the continuous window, seconds |
 | `mode` | `'continuous' \| 'frozen'` | | Which mode to draw |
 | `isTriggered` | `boolean` | | Whether a trigger has fired |
@@ -70,7 +68,11 @@ channel its format, unit and calibration. A calibration can be chosen from
 saved presets or saved as a new one. Saving validates the whole form first;
 while adding, a name or asset number already used by another configuration
 is flagged as you type. Escape, the close button, Cancel or a click outside
-the form closes it without saving.
+the form closes it without saving; if anything was changed, it asks first.
+
+"Save Preset to KV Now" writes the channel's calibration as a preset straight
+away, after a confirmation. It does not save the rest of the form, and the
+form's own Save does not save presets.
 
 | Prop | Type | Meaning |
 |---|---|---|
