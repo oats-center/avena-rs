@@ -86,6 +86,33 @@
     const measurementUnits = ["V", "°C", "PSI", "A", "Ω", "Pa", "kPa", "bar"];
 
     /**
+     * Unit choices for one channel: {@link measurementUnits}, plus the channel's stored
+     * unit when it is not one of them, so an unusual unit from KV is shown and kept.
+     *
+     * @param index - Position of the channel in `channels_enabled`.
+     * @returns Unit options for the channel's select.
+     */
+    function unitOptions(index: number): string[] {
+        const current = formData.sensor_settings.measurement_units[index];
+        return current && !measurementUnits.includes(current) ? [...measurementUnits, current] : measurementUnits;
+    }
+
+    /**
+     * Whether a channel has a non-identity calibration but its unit is still `V` (or
+     * blank). The config has no separate unit for a calibration: the live plot labels
+     * calibrated values with `measurement_units`, so a calibrated channel left on `V` is
+     * labelled volts.
+     *
+     * @param channel - Channel number.
+     * @param index - Position of the channel in `channels_enabled`.
+     * @returns `true` when the unit should be checked.
+     */
+    function calibratedUnitNeedsCheck(channel: number, index: number): boolean {
+        const unit = (formData.sensor_settings.measurement_units[index] ?? "").trim();
+        return getCalibration(channel).type !== "identity" && (unit === "" || unit === "V");
+    }
+
+    /**
      * Returns the calibration for a channel, normalized to a valid spec.
      *
      * @param channel - Channel number.
@@ -873,11 +900,20 @@ No props have defaults.
                                                     id="measurement-unit-{channel}"
                                                     bind:value={formData.sensor_settings.measurement_units[index]}
                                                     class="select select-bordered w-full focus:select-primary"
+                                                    class:select-warning={calibratedUnitNeedsCheck(channel, index)}
+                                                    aria-describedby={calibratedUnitNeedsCheck(channel, index) ? `measurement-unit-warning-${channel}` : undefined}
                                                 >
-                                                    {#each measurementUnits as unit}
+                                                    {#each unitOptions(index) as unit}
                                                         <option value={unit}>{unit}</option>
                                                     {/each}
                                                 </select>
+                                                {#if calibratedUnitNeedsCheck(channel, index)}
+                                                    <p id="measurement-unit-warning-{channel}" class="text-xs text-warning mt-1" role="status">
+                                                        This channel has a calibration, so its values are probably not volts.
+                                                        Choose the unit the calibration converts to; the live plot labels the
+                                                        calibrated values with this unit.
+                                                    </p>
+                                                {/if}
                                             </div>
                                         </div>
 
