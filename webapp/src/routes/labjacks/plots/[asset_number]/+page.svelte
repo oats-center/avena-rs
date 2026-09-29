@@ -2,7 +2,8 @@
     import { onMount, onDestroy, untrack } from "svelte";
     import { page } from "$app/stores";
     import { connect, getKeyValue, getKeys, type NatsService } from "$lib/nats.svelte";
-    import { downloadExportViaNats, isExportCancelled } from "$lib/exporter";
+    import { isExportCancelled } from "$lib/exporter";
+    import { runExportOnOwnConnection } from "$lib/plot/export-run";
     import { normalizeCalibration } from "$lib/calibration";
     import { normalizeLabJackConfig, type LabJackConfig } from "$lib/labjack-config";
     import { archiveExportRequestSubject, liveLabJackChannelSubject } from "$lib/subjects";
@@ -79,8 +80,9 @@
      */
     let errorAction = $state<"retry" | "login" | "none">("retry");
     /**
-     * Connection used for live subscriptions and export requests. Closed before each
-     * reload and in `onDestroy`.
+     * Connection used for the config and the live subscriptions. Closed before each
+     * reload and in `onDestroy`. Exports open a connection of their own (see
+     * {@link handleExportSubmit}), so a reload does not cut a running export.
      */
     let natsService: any = null;
     /** Incremented by each {@link loadLabJackConfig} call; older calls see they are stale. */
@@ -123,6 +125,11 @@
     /** Maximum points kept in each live buffer. Set by {@link updateMaxDataPoints}. */
     let maxDataPoints = $state<number>(10000);
     let showExportModal = $state<boolean>(false);
+    /**
+     * Config the export dialog was opened for. Kept apart from {@link labjackConfig}, so
+     * the dialog and a running export survive a reload of the page's config.
+     */
+    let exportConfig = $state.raw<LabJackConfig | null>(null);
     /** Export start as a `datetime-local` value (`YYYY-MM-DDTHH:mm:ss`, local time). */
     let exportStart = $state<string>("");
     /** Export end as a `datetime-local` value (`YYYY-MM-DDTHH:mm:ss`, local time). */
@@ -753,6 +760,7 @@
         if (!labjackConfig) return;
         const plotted = getRenderablePlotChannels();
         exportChannels = new Set(plotted.length > 0 ? plotted : labjackConfig.sensor_settings.channels_enabled);
+        exportConfig = $state.snapshot(labjackConfig) as LabJackConfig;
         const range = defaultExportRange(new Date());
         exportEnd = range.end;
         exportStart = range.start;
@@ -795,22 +803,32 @@
     /**
      * Validates the export form, downloads the CSV over NATS and saves it.
      *
-     * The request comes from `buildExportRequest`. It is sent through
-     * `downloadExportViaNats` to `<root>.<site>.<box>.<source>.export.request`. That
-     * helper handles the streamed chunks and the acknowledgement of each chunk; this
-     * function updates the progress bar and the missing-channel warning from its
-     * callbacks. Errors are shown in the form.
+     * The request comes from `buildExportRequest`. The export runs on a NATS connection
+     * of its own, opened with the login data in sessionStorage and closed when the
+     * export completes, fails or is cancelled (see `runExportOnOwnConnection`), so a
+     * reload, Retry or Reconnect of the page's live connection does not cut it. The
+     * request goes to `<root>.<site>.<box>.<source>.export.request`;
+     * `downloadExportViaNats` handles the streamed chunks and the acknowledgement of
+     * each chunk, and this function updates the progress bar and the missing-channel
+     * warning from its callbacks. Errors are shown in the form.
      *
      * @param event - Form `submit` event. Its default action is prevented.
      */
     async function handleExportSubmit(event: Event) {
         event.preventDefault();
-        const request = buildExportRequest(labjackConfig, exportStart, exportEnd, exportChannels);
+        const config = exportConfig;
+        const request = buildExportRequest(config, exportStart, exportEnd, exportChannels);
         if (!request.ok) {
             exportError = request.error;
             return;
         }
-        if (!labjackConfig) return;
+        if (!config) return;
+        const serverName = sessionStorage.getItem("serverName");
+        const credentialsContent = sessionStorage.getItem("credentialsContent");
+        if (!serverName || !credentialsContent) {
+            exportError = "No NATS connection found. Please login first.";
+            return;
+        }
 
         exporting = true;
         exportError = "";
@@ -821,7 +839,10 @@
         exportAbort = abort;
 
         try {
-            const result = await downloadExportViaNats(natsService, archiveExportRequestSubject(labjackConfig), request.payload, {
+            const result = await runExportOnOwnConnection({
+                openConnection: () => connect(serverName, credentialsContent),
+                subject: archiveExportRequestSubject(config),
+                payload: request.payload,
                 signal: abort.signal,
                 onProgress: (received) => {
                     exportProgress = received;
@@ -1114,23 +1135,27 @@ subscription is released and nothing is saved.
                     {/if}
                 {/each}
             </div>
-
-            {#if showExportModal}
-                <ExportDialog
-                    channels={labjackConfig.sensor_settings.channels_enabled}
-                    selected={exportChannels}
-                    bind:start={exportStart}
-                    bind:end={exportEnd}
-                    error={exportError}
-                    warning={exportWarning}
-                    {exporting}
-                    progress={exportProgress}
-                    total={exportTotal}
-                    ontoggle={toggleExportChannel}
-                    onsubmit={handleExportSubmit}
-                    onclose={closeExportModal}
-                />
-            {/if}
         {/if}
     </div>
+
+    <!--
+        Outside the loading and config blocks, so a reload of the config does not close
+        the dialog or hide a running export.
+    -->
+    {#if showExportModal && exportConfig}
+        <ExportDialog
+            channels={exportConfig.sensor_settings.channels_enabled}
+            selected={exportChannels}
+            bind:start={exportStart}
+            bind:end={exportEnd}
+            error={exportError}
+            warning={exportWarning}
+            {exporting}
+            progress={exportProgress}
+            total={exportTotal}
+            ontoggle={toggleExportChannel}
+            onsubmit={handleExportSubmit}
+            onclose={closeExportModal}
+        />
+    {/if}
 </div>
