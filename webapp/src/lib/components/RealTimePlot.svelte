@@ -703,6 +703,31 @@
     }
 
     /**
+     * Counts the samples with a value inside the visible time window (the same window
+     * {@link getVisiblePoints} uses, without the neighbors past each edge and without
+     * gap markers).
+     *
+     * @param dataToPlot - Samples being shown, sorted by time.
+     * @returns Number of samples on screen.
+     */
+    function countVisibleSamples(dataToPlot: DataPoint[]): number {
+        if (dataToPlot.length === 0) return 0;
+        let points: DataPoint[];
+        if (mode === 'frozen' && isTriggered) {
+            const { pre, post } = getFrozenWindow();
+            points = selectTimeWindow(dataToPlot, triggerTime - pre * 1000, triggerTime + post * 1000);
+        } else {
+            const referenceTime = getContinuousReferenceTime(dataToPlot);
+            points = selectTimeWindow(dataToPlot, referenceTime - timeWindow * 1000, referenceTime);
+        }
+        let count = 0;
+        for (const point of points) {
+            if (Number.isFinite(point.value)) count++;
+        }
+        return count;
+    }
+
+    /**
      * Draws the trace for the visible samples, clipped to the plot area.
      *
      * Downsamples to a min/max pair per pixel column (spikes stay visible, gaps are
@@ -940,7 +965,8 @@ pixel column so spikes stay visible at any sample rate. The path breaks at every
 value (missing sample or stream gap) and is clipped to the plot area. With autoscale the y axis snaps to round 1/2/5 grid
 steps and only widens in continuous mode until autoscale is turned off or `data` is
 emptied. Below the canvas: sample count, source clock and lag at t = 0 (the newest
-sample, or the one nearest the trigger when frozen), and the latest value.
+sample, or the one nearest the trigger when frozen; lag is hidden while a capture is
+held), the number of samples inside the visible window, and the latest value.
 
 Props:
 - `data: DataPoint[]`: live samples. `timestamp` is Unix epoch ms; `sourceTimestamp`
@@ -984,8 +1010,8 @@ Events: none. The component only reads its props.
         {@const zeroLagMs = zeroSourceTimestamp !== null && typeof lagReferenceTimestamp === 'number' ? Math.max(0, lagReferenceTimestamp - zeroSourceTimestamp) : null}
         <div class="flex justify-between items-center gap-2 flex-wrap">
             <div class="flex items-center gap-2 flex-wrap">
-                <span class="badge badge-outline badge-sm">
-                    Data Points: {plotData.length}
+                <span class="badge badge-outline badge-sm" title="Samples inside the visible time window">
+                    Data Points: {countVisibleSamples(plotData)}
                 </span>
                 {#if zeroSourceTimestamp !== null}
                     <span class="badge badge-secondary badge-sm">
@@ -994,7 +1020,8 @@ Events: none. The component only reads its props.
                 {/if}
             </div>
             <div class="flex items-center gap-2 flex-wrap justify-end">
-                {#if zeroLagMs !== null}
+                <!-- Lag is meaningful only for live data, not a held capture. -->
+                {#if zeroLagMs !== null && !(mode === 'frozen' && isTriggered)}
                     <span class="badge badge-accent badge-sm">
                         Lag: {formatLag(zeroLagMs)}
                     </span>

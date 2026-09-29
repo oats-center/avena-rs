@@ -1304,11 +1304,6 @@
         return "bg-warning";
     }
 
-    /** Does a full page load of `/labjacks`. */
-    function goBack() {
-        window.location.href = "/labjacks";
-    }
-
     /** Default length of the export range, ending now, in ms. */
     const DEFAULT_EXPORT_RANGE_MS = 2 * 60 * 1000;
 
@@ -1640,8 +1635,8 @@ subscription is released and nothing is saved.
     <div class="navbar bg-base-100 shadow-xl border-b border-base-200">
         <div class="flex-1">
             <div class="flex items-center">
-                <button
-                    onclick={goBack}
+                <a
+                    href="/labjacks"
                     class="btn btn-ghost btn-circle mr-4"
                     title="Back to LabJacks"
                     aria-label="Back to LabJacks"
@@ -1649,7 +1644,7 @@ subscription is released and nothing is saved.
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
                     </svg>
-                </button>
+                </a>
                 <div class="avatar placeholder mr-4">
                     <div class="flex items-center justify-center">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-12 h-12">
@@ -1797,10 +1792,6 @@ subscription is released and nothing is saved.
                             <span class="badge {connectionState === 'connected' ? 'badge-success' : connectionState === 'disconnected' ? 'badge-error' : 'badge-warning'} badge-sm">
                                 {connectionLabel(connectionState)}
                             </span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span>Data Parser:</span>
-                            <span class="badge badge-info badge-sm">Source-time plot + receive-time lag</span>
                         </div>
                     </div>
                 </div>
