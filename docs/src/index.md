@@ -42,10 +42,11 @@ archiver consumes them and writes Parquet files. It acknowledges a message only
 after the file holding its samples has been closed and synced to disk, so if the
 power fails mid-file the messages are delivered again and nothing is lost.
 
-**Configuration.** Which channels to record, how fast, and how to convert volts
-to engineering units live in a JSON document in the central `avenabox` key-value
-bucket. The webapp edits it there. Each streamer mirrors its own key into the
-local bucket and restarts sampling when it changes. The local copy lets an edge
+**Configuration.** Which channels to record, how fast, how to convert volts to
+engineering units, and which noise filters to apply when the data is read are
+kept in a JSON document in the central `avenabox` key-value bucket. The webapp edits it there.
+Each streamer mirrors its own key into the local bucket and restarts sampling
+when the channels or rates change. The local copy lets an edge
 node keep recording through an outage of the central servers.
 
 **Exports.** The webapp sends an export request to
@@ -77,7 +78,7 @@ by hand on a box once it is installed.
 
 | Path | Contents |
 |---|---|
-| `rust-ljm/` | The Rust services: `streamer`, `archiver`, `exporter`, and the `subscriber` and `recompress` tools. |
+| `rust-ljm/` | The Rust services: `streamer`, `archiver`, `exporter`, and the `subscriber`, `recompress` and `dedupe` tools. |
 | `webapp/` | The SvelteKit webapp for live plots, configuration and exports. |
 | `shared/` | Edge node profiles, the renderer that turns a profile into service configuration, container and systemd unit files. |
 | `scripts/` | Installer, status and health-metric scripts, the command-line export client, and the docs build. |

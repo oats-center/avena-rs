@@ -67,6 +67,7 @@ Under the canvas the plot shows:
 | `yAutoScale` | `boolean` | `true` | Fit the y axis to the data |
 | `yMin`, `yMax` | `number` | `-1`, `1` | Fixed y limits when autoscale is off |
 | `invertX`, `invertY` | `boolean` | `false` | Mirror an axis |
+| `tag` | `string` | `""` | Badge naming what is plotted; the channel card passes `FILTERED` while filtered values are drawn |
 
 The component emits no events. It exports one function,
 `getDisplayedYRange()`, which returns the y range of the last drawn frame; the
@@ -79,15 +80,19 @@ The plot page is split into four components. All of them only display and edit
 state the page owns.
 
 - **`ChannelCard`** shows one plotted channel: the header with the data format,
-  the unit tag and the trigger state, the Mode & Axis panel, the Trigger
-  Settings panel in the trigger modes, and its `RealTimePlot`. Props: `view`
+  the unit tag, the trigger state and, for a channel with filters, the Filtered
+  / Raw switch and a line naming the filters (and any that cannot run at the
+  channel's rate), the Mode & Axis panel, the Trigger Settings panel in the
+  trigger modes, and its `RealTimePlot`. Props: `view`
   (the channel's `ChannelView`), `dataFormat`, `unitInfo` and `onchange`,
   called after a change that alters what the plot shows.
 - **`StatsPanel`** is the Data Statistics card. Props: `config`, `assetNumber`,
   `channels` (the plotted ones), `views` and `connectionState`.
 - **`ExportDialog`** is the Export Historical Data form. Props: `channels`,
   `selected`, bindable `start` and `end`, `error`, `warning`, `exporting`,
-  `progress`, `total`, and the callbacks `ontoggle`, `onsubmit` and `onclose`.
+  `progress`, `total`, `filteredChannels` (channels with filters; the "Include
+  filtered values" box shows when there are any), bindable `includeFiltered`,
+  and the callbacks `ontoggle`, `onsubmit` and `onclose`.
 - **`ConnectionBanner`** is the yellow Reconnecting or red Disconnected banner.
   Props: `state`, `reason` and `onreconnect`.
 
@@ -104,7 +109,8 @@ same order the live and export subjects use.
 The form covers every field of the document: the identity fields, the subject
 root and stream, `rotate_secs`, and under `sensor_settings` the scan rate,
 scans per read, gain, on/off switch, enabled channels, and for each enabled
-channel its sensor type, calibration and unit. Saving validates the whole form first;
+channel its sensor type, calibration, unit and noise filters. Saving validates
+the whole form first;
 while adding, a name or asset number already used by another configuration
 is flagged as you type. Escape, the close button, Cancel or a click outside
 the form closes it without saving; if anything was changed, it asks first.
@@ -170,3 +176,14 @@ without `unit` takes the channel's `measurement_units` entry unless it is V.
 If it is V the unit box is empty and yellow, and the form will not save until a
 unit is chosen. The `calibration.*` preset keys that earlier versions wrote are
 no longer read.
+
+### Channel filters
+
+Under each channel's calibration is a Filters box: Remove spikes, Remove 10 Hz
+and Remove 11.9 Hz switches, and High-pass and Low-pass cutoffs in Hz (blank
+turns one off). They are saved in `sensor_settings.filters` (see [LabJack
+configuration](../reference/kv-config.md#filters)). The box names the filters
+that cannot run at the configured scan rate, and how far behind the live plot
+runs because of the despike window. A channel with every filter off has no
+entry, and a configuration with no filters has no `filters` field. Turning a
+channel off drops its filters.

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 500" width="860" height="500" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
   <title id="t">Export request sequence</title>
-  <desc id="d">The client publishes a JSON request with a reply inbox. The exporter answers with a meta frame, then CSV chunks. After every eight chunks it waits for eight acknowledgements on the ack subject. It ends with a summary frame and a complete frame.</desc>
+  <desc id="d">The client publishes a JSON request with a reply inbox. The exporter answers with a meta frame, then CSV chunks. After every eight chunks it waits for eight acknowledgements on the ack subject. It ends with a summary frame and a complete frame. The client can stop the export early by publishing a cancel message on the ack subject.</desc>
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
       <path d="M0,0 L10,5 L0,10 z" fill="#52514e"/>
@@ -50,5 +50,5 @@
   <text class="s" x="430" y="402" text-anchor="middle">complete</text>
 
   <text class="l" x="430" y="450" text-anchor="middle">Every message passes through central NATS and the edge node's leaf link.</text>
-  <text class="l" x="430" y="466" text-anchor="middle">An error frame can end the exchange at any point.</text>
+  <text class="l" x="430" y="466" text-anchor="middle">An error frame can end the exchange at any point, and the client can stop it with a cancel on the ack subject.</text>
 </svg>

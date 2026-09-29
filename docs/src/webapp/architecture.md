@@ -1,7 +1,8 @@
 # How the webapp works
 
-The webapp is three pages, an error page and two components. Every page talks to central
-NATS directly from the browser; there is no application server in between.
+The webapp is three pages, an error page and six components. Every page talks
+to central NATS directly from the browser; there is no application server in
+between.
 
 [![Webapp pages and their NATS traffic](../figures/webapp-flow.svg)](../figures/webapp-flow.svg)
 
@@ -187,8 +188,15 @@ side of the [export protocol](../reference/export-protocol.md). It publishes the
 request with a reply inbox and an ack subject, acknowledges every chunk as it
 arrives, and finishes when the `complete` frame arrives. If no exporter is
 listening (the box is offline), the NATS server says so straight away and the
-export fails with that message. If no message arrives for ten minutes, it gives
-up.
+export fails with "No exporter is listening on …". If no message arrives for
+ten minutes, it gives up.
+
+When any channel has filters in the configuration, the dialog offers "Include
+filtered values", ticked to begin with. Ticked, the request carries the
+configuration's `filters`, and when an exported channel has any, the CSV gets a
+`filtered_value` column, computed on the box with zero-phase filters (see
+[Filtered values](../reference/export-protocol.md#filtered-values)). Raw and
+calibrated values are exported either way.
 
 Each export runs on a NATS connection of its own, opened with the saved
 credentials when you press Start Download and closed when the export completes,

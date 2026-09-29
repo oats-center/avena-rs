@@ -49,7 +49,10 @@ you select, so selecting a channel again starts an empty plot. Each channel
 says whether it shows raw volts or calibrated values and in which unit; a
 calibrated channel also shows its latest raw reading in volts. The unit is the
 one set with the channel's calibration in the configuration form; if a channel
-says "unit not set", edit the configuration and choose it.
+says "unit not set", edit the configuration and choose it. A channel with noise
+filters in its configuration is drawn filtered, with a FILTERED badge; its
+Filtered / Raw switch shows the unfiltered values instead, without saving
+anything.
 
 The connection badge reads Connecting, Connected, Reconnecting or
 Disconnected. When the connection drops, a banner says the page is
@@ -65,20 +68,28 @@ nats --server nats://nats1.oats:4222 --creds apt.creds \
 ## Change what a box records
 
 Editing a configuration in the webapp writes the central key. The box's
-streamer mirrors the change within a moment and restarts sampling with the new
-settings; the archiver starts a new file when a channel's calibration changes.
+streamer mirrors the change within a moment and, if the channels, rates or
+identity changed, restarts sampling with the new settings; the archiver starts
+a new file when a channel's calibration changes.
 Each channel has one calibration, set in the form together with its unit (for
 example kPa for pressure or µε for a strain gauge); a strain gauge's
 calibration can be worked out from its certificate factor, the bridge
-excitation and the amplifier gain with the form's bridge helper.
-The [LabJack configuration reference](../reference/kv-config.md) explains each
-field.
+excitation and the amplifier gain with the form's bridge helper. Each channel
+can also have noise filters (spike removal, 10 Hz and 11.9 Hz removal, high-
+and low-pass); they change only what the plots and exports show, never the
+archive. The [LabJack configuration reference](../reference/kv-config.md)
+explains each field, and [Noise on the I-69 sensor inputs](../noise.md) what
+the filters are for.
 
 ## Download data
 
 The export dialog starts with the plotted channels and the last two minutes.
 Times are to the second in your browser's time zone, which the dialog names,
-and the same range is shown in UTC underneath. Cancel Download stops a running
+and the same range is shown in UTC underneath. If a channel has filters,
+"Include filtered values" adds a `filtered_value` column to the CSV. In Chrome
+and Edge you choose where to save before the export starts, and the file is
+written as the data arrives; other browsers save it as a download at the end.
+Cancel Download stops a running
 export and saves nothing; the box may still send a few more chunks before it
 notices, for up to about 30 seconds. The request goes through
 central NATS to the exporter on that box, which reads its Parquet archive and

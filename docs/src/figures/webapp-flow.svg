@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 460" width="900" height="460" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
   <title id="t">Webapp pages and their NATS traffic</title>
-  <desc id="d">The connect page tests a connection and stores the server and credentials in session storage. The LabJack list page reads configurations from the avenabox bucket and writes them back through the config form. The plot page subscribes to the live channel subjects, draws them with RealTimePlot, and requests exports from the edge exporter.</desc>
+  <desc id="d">The connect page tests a connection and stores the server and credentials in session storage. The LabJack list page reads configurations from the avenabox bucket and writes them back through the config form. The plot page subscribes to the live channel subjects, draws each in a ChannelCard with RealTimePlot, and requests exports from the edge exporter.</desc>
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#52514e"/>
@@ -37,8 +37,8 @@
   <text class="s" x="44" y="347">live plots, triggers, export form</text>
 
   <rect class="comp" x="80" y="378" width="250" height="44" rx="6"/>
-  <text class="t" x="94" y="398">RealTimePlot</text>
-  <text class="s" x="94" y="414">one canvas per plotted channel</text>
+  <text class="t" x="94" y="398">ChannelCard, RealTimePlot</text>
+  <text class="s" x="94" y="414">one card per plotted channel</text>
 
   <line class="ln" x1="180" y1="86" x2="180" y2="102" marker-end="url(#a)"/>
   <line class="ln" x1="180" y1="144" x2="180" y2="162" marker-end="url(#a)"/>
