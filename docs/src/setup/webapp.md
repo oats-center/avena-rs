@@ -44,8 +44,17 @@ unique between boxes, so the plot address carries the configuration key:
 /labjacks/plots/1001?key=i69.i69-mu1.i69-lj2.config
 ```
 
-The plot page shows up to two channels at a time. If a plot stays empty, check
-on the command line that samples are arriving at central NATS:
+The plot page shows up to two channels at a time and receives only the ones
+you select, so selecting a channel again starts an empty plot. Each channel
+says whether it shows raw volts or calibrated values and in which unit; a
+calibrated channel also shows its latest raw reading in volts. If a calibrated
+channel is still labelled V, set its unit in the configuration.
+
+The connection badge reads Connecting, Connected, Reconnecting or
+Disconnected. When the connection drops, a banner says the page is
+reconnecting, and the plots carry on by themselves afterwards with a gap for
+the missing time. If a plot stays empty, check on the command line that samples
+are arriving at central NATS:
 
 ```bash
 nats --server nats://nats1.oats:4222 --creds apt.creds \
@@ -62,8 +71,11 @@ field.
 
 ## Download data
 
-Pick a time range, to the second and in the time zone you choose, and the
-channels in the export dialog. Cancel stops an export that is running. The request goes through
+The export dialog starts with the plotted channels and the last two minutes.
+Times are to the second in your browser's time zone, which the dialog names,
+and the same range is shown in UTC underneath. Cancel Download stops a running
+export and saves nothing; the box may still send a few more chunks before it
+notices, for up to about 30 seconds. The request goes through
 central NATS to the exporter on that box, which reads its Parquet archive and
 streams the rows back as CSV. Large ranges take a while: the edge node's
 uplink is usually the limit.

@@ -10,6 +10,12 @@ code in one place per page and makes the components easy to reason about.
 `<canvas>`. The plot page subscribes to the channel, applies the calibration,
 and passes the samples in.
 
+The time axis puts 0 at the newest sample in continuous mode and at the trigger
+in frozen mode. Its ticks fall on round steps (1, 2 or 5 times a power of ten)
+counted from 0, in seconds or milliseconds, and the title says which: "Time
+(s)", or "Time from trigger (s)" for a capture. The value axis is titled
+"Value (unit)", and the tick labels are kept clear of the title.
+
 **Continuous mode** shows the last `timeWindow` seconds with the newest sample
 at the right. The right edge is the newest sample's own time, not the browser
 clock, so a slow link does not leave a blank strip at the edge.
@@ -29,13 +35,22 @@ visible. The line breaks wherever a sample is missing or the stream has a
 gap, so a gap is never drawn over. With autoscale on, the y axis snaps to round 1, 2 or 5 steps, and in
 continuous mode it only widens, so the scale does not jump with every frame.
 
-Under the canvas the plot shows the number of samples drawn, the source clock
-of the sample at t = 0, its lag behind the browser, and the latest value.
+Under the canvas the plot shows:
+
+- **Data Points**: the samples inside the visible window, not everything held
+  in memory.
+- **t=0 Src**: the source clock of the sample at 0.
+- **Lag**: how long that sample took to reach the browser. It is hidden while a
+  trigger capture is held, since a held capture is not live.
+- **Latest**: the latest value, in `unit`.
+- **Raw**: when `calibrated` is set, the latest reading in volts before
+  calibration.
 
 | Prop | Type | Default | Meaning |
 |---|---|---|---|
 | `data` | `DataPoint[]` | | Live samples. `timestamp` is Unix epoch milliseconds; the optional `sourceTimestamp` and `receivedAt` (also epoch ms) feed the clock and lag badges. |
-| `unit` | `string` | | Unit label for the axis, threshold and badges. The plot page passes the channel's own unit. |
+| `unit` | `string` | | Unit label for the axis, threshold and badges. The plot page passes `V` for an uncalibrated channel and the configured unit for a calibrated one. |
+| `calibrated` | `boolean` | `false` | The values are calibrated; shows the Raw badge. `data` points then carry the reading before calibration in `raw`. |
 | `timeWindow` | `number` | | Width of the continuous window, seconds |
 | `mode` | `'continuous' \| 'frozen'` | | Which mode to draw |
 | `isTriggered` | `boolean` | | Whether a trigger has fired |
@@ -65,7 +80,10 @@ The form covers every field of the document: the identity fields, the subject
 root and stream, `rotate_secs`, and under `sensor_settings` the scan rate,
 scans per read, gain, on/off switch, enabled channels, and for each enabled
 channel its format, unit and calibration. A calibration can be chosen from
-saved presets or saved as a new one. Saving validates the whole form first;
+saved presets or saved as a new one. The configuration has no separate unit
+for a calibration, so when a channel has a calibration but its unit is still
+V, the unit box turns yellow and asks you to pick the unit the calibration
+converts to. Saving validates the whole form first;
 while adding, a name or asset number already used by another configuration
 is flagged as you type. Escape, the close button, Cancel or a click outside
 the form closes it without saving; if anything was changed, it asks first.
