@@ -114,6 +114,8 @@
     const MIN_TIME_TICK_SPACING = 70;
     /** Running min/max of every value seen in continuous autoscale. Only grows until reset. */
     let stickyAutoExtrema: { min: number; max: number } | null = null;
+    /** `tag` the extrema were collected for; a change resets them. */
+    let lastTag = '';
     /** Y range of the last drawn frame, or `null` before data arrives. */
     let lastYRange: { low: number; high: number } | null = null;
 
@@ -988,7 +990,10 @@
      */
     $effect(() => {
         // A new tag (filtered or raw values) is another trace; let autoscale start over.
-        tag;
+        if (tag !== lastTag) {
+            lastTag = tag;
+            stickyAutoExtrema = null;
+        }
         if (!yAutoScale) {
             stickyAutoExtrema = null;
         } else if (mode !== 'frozen' && data.length === 0) {
