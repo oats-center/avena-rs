@@ -87,9 +87,8 @@ To go back, check out the previous commit and run the same commands.
 ## Update the NATS server configuration
 
 The installer does not touch the NATS server. When the rendered
-`nats-leaf.conf` changes (for example `sync_interval: always`, added in
-September 2026 so JetStream syncs every write to disk), install it and restart
-the server with the services stopped:
+`nats-leaf.conf` changes, install it and restart the server with the services
+stopped:
 
 ```bash
 ./shared/render-edge-config.py --config shared/edge-boxes/$(hostname).json \

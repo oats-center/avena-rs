@@ -52,10 +52,6 @@ http: "{nats["monitor_listen"]}"
 jetstream {{
   store_dir: "{nats["jetstream_store_dir"]}"
   domain: "{nats["jetstream_domain"]}"
-  # Flush every write to disk. Without it nats-server renames consumer state
-  # files without an fsync, and a power cut can leave them empty, which makes
-  # the archiver's consumers start again from the beginning of the stream.
-  sync_interval: always
 }}
 
 leafnodes {{

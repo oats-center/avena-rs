@@ -59,14 +59,15 @@ renamed but before the acknowledgements are sent, those samples are written
 again into a second file for the same window. The exporter sends such exact
 copies once.
 
-This protects data between JetStream and Parquet. JetStream's own files are
-protected by `sync_interval: always` in the edge server's configuration: every
-write, including each consumer's progress, is synced to disk as it is made.
-With the default (a sync every two minutes) a power cut could lose that much of
-the newest data, and could also leave a consumer's state file empty, so the
-consumer started again from the beginning of the stream and the archiver wrote
-the whole stream a second time. That happened on both I-69 boxes. The cost is
-more disk writes.
+This protects data between JetStream and Parquet. JetStream itself syncs to
+disk every two minutes (the default). A power cut can therefore lose up to that
+much of the newest data, and can leave a consumer's state file empty, so the
+consumer starts again from the beginning of the stream. That happened on both
+I-69 boxes, and the archiver wrote the whole stream a second time. The
+archiver's checkpoints (below) now stop that from creating duplicates.
+`sync_interval: always` would stop the state loss itself, but it was tried on
+both boxes and raised the SSD writes about 15 times (to 1.4–2.2 MB/s, a rated
+drive life of 3–5 years), so it is not used.
 
 ## A checkpoint of its own in the archiver
 

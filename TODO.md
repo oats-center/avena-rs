@@ -65,11 +65,11 @@ were fixed in #21 and deployed to MU1 and MU2 on 2026-09-29.
 - [x] **Add `wait-for-local-nats` to the installer.** `scripts/wait-for-local-nats.sh`
   and the `10-nats-ready.conf` drop-ins are installed by the installer, and both
   boxes run the repo versions since 2026-09-29.
-- [x] **`sync_interval: always` in `nats-leaf.conf`**, so nats-server syncs consumer
-  state and a power cut cannot reset a consumer. The renderer and
-  `shared/nats-leaf.conf` have it, and it is live on MU1 and MU2 since 2026-09-29
-  (the installer does not install `nats-leaf.conf`; see Everyday tasks).
-- [ ] Watch the disk write load on MU1 and MU2 now that `sync_interval: always` is live.
+- [x] **`sync_interval: always` tried and reverted.** It made JetStream fsync
+  every write, which raised SSD writes about 15 times (MU2 2.2 MB/s, MU1 1.4 MB/s,
+  3–5 years to the drives' rated 220 TB). Back to the default two-minute sync on
+  both boxes on 2026-09-29 (MU2 0.16 MB/s, MU1 0.09 MB/s); the archiver's replay
+  guard covers a lost consumer state.
 - [ ] **Data caveat.** MU1 timestamps from the 2026-09-25 reboot to the
   2026-09-28 21:28 UTC deploy carry the old per-minute re-anchoring jitter
   (plus or minus 60 to 430 ms).

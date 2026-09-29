@@ -80,9 +80,8 @@ quarantined file can be deleted once the new file exists.
 ## The archiver writes old data again
 
 JetStream stores each durable consumer's progress in
-`/home/user/nats/jetstream/.../streams/<stream>/obs/<consumer>/o.dat`. Unless
-`sync_interval: always` is set in `nats-leaf.conf`, the server replaces that
-file without an fsync, so a power cut can leave it empty. The
+`/home/user/nats/jetstream/.../streams/<stream>/obs/<consumer>/o.dat`. The
+server replaces that file without an fsync, so a power cut can leave it empty. The
 consumer then comes back with no progress and, because the archiver's
 consumers deliver the whole stream, every message still in the stream is
 delivered again. A corrupt `o.dat` makes the server drop the consumer (log line
@@ -103,10 +102,9 @@ recreated or ends below the checkpoint; every message is then written as
 before. Set `ARCHIVER_REPLAY_GUARD=off` in the archiver's environment to turn
 the guard off, or `ARCHIVER_STATE_DIR` to keep the checkpoints elsewhere.
 Copies written before the guard existed can be removed with
-[`dedupe`](../reference/tools.md#dedupe). The rendered `nats-leaf.conf` now sets
-`sync_interval: always`, which should stop the loss in the first place; a box
-set up before that needs the updated file (see [Everyday
-tasks](tasks.md#update-the-nats-server-configuration)).
+[`dedupe`](../reference/tools.md#dedupe). Setting `sync_interval: always` in
+`nats-leaf.conf` would stop the loss itself, but it multiplied the SSD writes
+by about 15 on the I-69 boxes, so the checkpoints are relied on instead.
 
 ## The readings themselves look wrong
 
