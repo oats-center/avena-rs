@@ -77,6 +77,9 @@ sudo install -m 0755 \
 sudo install -m 0755 \
   "$REPO_ROOT/scripts/write-edge-health-metrics.sh" \
   /usr/local/libexec/avena-rs/write-edge-health-metrics.sh
+sudo install -m 0755 \
+  "$REPO_ROOT/scripts/wait-for-local-nats.sh" \
+  /usr/local/libexec/avena-rs/wait-for-local-nats
 for binary in streamer archiver exporter; do
   sudo install -m 0755 \
     "$REPO_ROOT/rust-ljm/target/release/$binary" \
@@ -87,6 +90,11 @@ for unit in avena-streamer avena-archiver avena-exporter; do
   sudo install -m 0644 \
     "$REPO_ROOT/shared/systemd/$unit.service" \
     "/etc/systemd/system/$unit.service"
+  # Wait for local JetStream before starting (see scripts/wait-for-local-nats.sh).
+  sudo install -d -m 0755 "/etc/systemd/system/$unit.service.d"
+  sudo install -m 0644 \
+    "$REPO_ROOT/shared/systemd/10-nats-ready.conf" \
+    "/etc/systemd/system/$unit.service.d/10-nats-ready.conf"
 done
 sudo install -m 0644 \
   "$REPO_ROOT/shared/systemd/avena-health-metrics.service" \

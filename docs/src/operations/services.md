@@ -17,7 +17,11 @@ and where its files live. Use it to tell a real fault from normal behavior.
 | `avena-health-metrics.service` | shell script, oneshot | inactive between runs | |
 
 The three Rust services need `nats-leaf` (`Requires=`), so stopping the NATS
-server stops them too. All units start at boot.
+server stops them too. All units start at boot. Before each of them starts,
+the drop-in `10-nats-ready.conf` runs `wait-for-local-nats`, which waits up to
+600 seconds for local JetStream to report healthy; a service shown as
+`activating (start-pre)` is waiting there. `systemctl cat avena-archiver`
+shows the unit with its drop-in.
 
 Two states look like faults but are not:
 
@@ -92,7 +96,7 @@ connection count.
 |---|---|
 | `/etc/avena-rs/` | Installed profile, one `*.env.json` per service, and `apt.creds` |
 | `/usr/local/libexec/avena-rs/` | Installed binaries and service scripts |
-| `/etc/systemd/system/avena-*` | The Avena-RS units |
+| `/etc/systemd/system/avena-*` | The Avena-RS units, and `avena-*.service.d/10-nats-ready.conf` |
 | `/etc/containers/systemd/` | Quadlet container units, `nats-leaf.conf`, `config.alloy`, and `creds/leaf.creds` |
 | `/home/user/nats/` | The local JetStream store. Never delete it while the box is in service. |
 | `rust-ljm/parquet/asset<NNN>/<YYYY-MM-DD>/ch<NN>/` | The archive, one `part-NNNN.parquet` per window |

@@ -301,6 +301,19 @@ credentials in `/etc/avena-rs/`, and the units in `/etc/systemd/system/`. The
 services never run anything from `rust-ljm/target`, so later builds do not
 affect a running box until you install them.
 
+Each of the three units also gets the drop-in
+`/etc/systemd/system/<unit>.service.d/10-nats-ready.conf`, which runs
+`/usr/local/libexec/avena-rs/wait-for-local-nats` before the service starts.
+The script polls `http://127.0.0.1:8222/healthz?js-enabled-only=true` once a
+second for up to 600 seconds, so after a boot or a `nats-leaf` restart the
+services wait for JetStream instead of failing and restarting. Its result is
+in the service log:
+
+```bash
+journalctl -u avena-archiver -b | grep 'Local NATS JetStream'
+# Local NATS JetStream is ready after 4s.
+```
+
 Start the consumers before the producer, so the archiver is attached to the
 stream before the first sample arrives:
 
