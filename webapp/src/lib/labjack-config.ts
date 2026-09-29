@@ -28,16 +28,27 @@ export interface SensorSettings {
 
 /** One LabJack config document. */
 export interface LabJackConfig {
+    /** Display name; must be unique (case-insensitive) when adding. */
     labjack_name: string;
+    /** Asset number, > 0; must be unique when adding. Used in the archive path. */
     asset_number: number;
+    /** Number of inputs offered as channel toggles, 1 to 16. Not used by the streamer. */
     max_channels: number;
+    /** Site name, first subject token. */
     site_id?: string;
+    /** Edge node name, second subject token. */
     box_id?: string;
+    /** Kind of source, normally `labjack`. */
     source_type?: string;
+    /** Name of this LabJack in subjects, third token. */
     source_id?: string;
+    /** Subject root, normally `avenars`. Labeled "NATS Root" in the edit form. */
     nats_subject: string;
+    /** JetStream stream for live samples, normally `labjacks`. */
     nats_stream: string;
+    /** Archive file window, seconds. */
     rotate_secs: number;
+    /** What to record. */
     sensor_settings: SensorSettings;
 }
 

@@ -3,7 +3,8 @@
     import { page } from "$app/stores";
     import { connect, getKeyValue, getKeys, type NatsService } from "$lib/nats.svelte";
     import { downloadExportViaNats, isExportCancelled, type ExportRequestPayload } from "$lib/exporter";
-    import { normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
+    import { normalizeCalibration } from "$lib/calibration";
+    import { normalizeLabJackConfig, type LabJackConfig } from "$lib/labjack-config";
     import { archiveExportRequestSubject, liveLabJackChannelPattern, liveLabJackChannelSubject } from "$lib/subjects";
     import type { Subscription } from "@nats-io/nats-core";
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
@@ -30,121 +31,6 @@
         type TriggerSettings
     } from "$lib/plot/trigger";
 
-    
-    /** `sensor_settings` object of a LabJack config in KV. See the KV config reference. */
-    interface SensorSettings {
-        scans_per_read: number;
-        scan_rate_hz: number;
-        channels_enabled: number[];
-        gains: number;
-        data_formats: string[];
-        measurement_units: string[];
-        labjack_on_off: boolean;
-        calibrations?: Record<string, CalibrationSpec>;
-    }
-    
-    /**
-     * LabJack config document stored in KV bucket `avenabox` under
-     * `<site>.<box>.<source>.config`.
-     */
-    interface LabJackConfig {
-        labjack_name: string;
-        asset_number: number;
-        max_channels: number;
-        site_id?: string;
-        box_id?: string;
-        source_type?: string;
-        source_id?: string;
-        nats_subject: string;
-        nats_stream: string;
-        rotate_secs: number;
-        sensor_settings: SensorSettings;
-    }
-
-    /**
-     * Fallback values used by {@link normalizeSensorSettings} for missing or invalid
-     * fields.
-     */
-    const DEFAULT_SENSOR_SETTINGS: SensorSettings = {
-        scans_per_read: 200,
-        scan_rate_hz: 1000,
-        channels_enabled: [],
-        gains: 1,
-        data_formats: [],
-        measurement_units: [],
-        labjack_on_off: false,
-        calibrations: {}
-    };
-
-    /**
-     * Builds a complete sensor settings object from a raw `sensor_settings` value.
-     *
-     * Reads the older field names `scan_rate` (for `scans_per_read`) and `sampling_rate`
-     * (for `scan_rate_hz`) when the new ones are absent. Missing or non-finite numbers take
-     * the values in {@link DEFAULT_SENSOR_SETTINGS}. `data_formats` and `measurement_units`
-     * are padded with `"voltage"` and `"V"` to one entry per enabled channel. Arrays and
-     * `calibrations` are shallow copies.
-     *
-     * @param rawSensor - Parsed `sensor_settings` from KV. May be `undefined` or partial.
-     * @returns A new settings object with every field set.
-     */
-    function normalizeSensorSettings(rawSensor: any): SensorSettings {
-        const sensor: SensorSettings = {
-            scans_per_read: Number(
-                rawSensor?.scans_per_read ?? rawSensor?.scan_rate ?? DEFAULT_SENSOR_SETTINGS.scans_per_read
-            ),
-            scan_rate_hz: Number(
-                rawSensor?.scan_rate_hz ?? rawSensor?.sampling_rate ?? DEFAULT_SENSOR_SETTINGS.scan_rate_hz
-            ),
-            channels_enabled: Array.isArray(rawSensor?.channels_enabled) ? [...rawSensor.channels_enabled] : [],
-            gains: Number(rawSensor?.gains ?? DEFAULT_SENSOR_SETTINGS.gains),
-            data_formats: Array.isArray(rawSensor?.data_formats) ? [...rawSensor.data_formats] : [],
-            measurement_units: Array.isArray(rawSensor?.measurement_units) ? [...rawSensor.measurement_units] : [],
-            labjack_on_off: Boolean(rawSensor?.labjack_on_off),
-            calibrations:
-                rawSensor?.calibrations && typeof rawSensor.calibrations === "object"
-                    ? { ...rawSensor.calibrations }
-                    : {}
-        };
-
-        if (!Number.isFinite(sensor.scans_per_read)) sensor.scans_per_read = DEFAULT_SENSOR_SETTINGS.scans_per_read;
-        if (!Number.isFinite(sensor.scan_rate_hz)) sensor.scan_rate_hz = DEFAULT_SENSOR_SETTINGS.scan_rate_hz;
-        if (!Number.isFinite(sensor.gains)) sensor.gains = DEFAULT_SENSOR_SETTINGS.gains;
-        while (sensor.data_formats.length < sensor.channels_enabled.length) sensor.data_formats.push("voltage");
-        while (sensor.measurement_units.length < sensor.channels_enabled.length) sensor.measurement_units.push("V");
-
-        return sensor;
-    }
-
-    /**
-     * Fills in defaults for a config read from KV.
-     *
-     * Defaults: `labjack_name` `"unknown"`, `asset_number` 0, `max_channels` 8, empty
-     * `site_id` and `box_id`, `source_type` `"labjack"`, `source_id` falls back to
-     * `labjack_name`, `nats_subject` `"avenars"`, `nats_stream` `"labjacks"`, `rotate_secs`
-     * 60.
-     *
-     * @param raw - Parsed JSON value of a `*.*.*.config` key.
-     * @returns The normalized config, or `null` when `raw` is not an object.
-     */
-    function normalizeLabJackConfig(raw: any): LabJackConfig | null {
-        if (!raw || typeof raw !== "object") return null;
-        const sensor = normalizeSensorSettings(raw.sensor_settings ?? {});
-
-        return {
-            labjack_name: raw.labjack_name ?? "unknown",
-            asset_number: Number(raw.asset_number ?? 0),
-            max_channels: Number(raw.max_channels ?? 8),
-            site_id: raw.site_id ?? "",
-            box_id: raw.box_id ?? "",
-            source_type: raw.source_type ?? "labjack",
-            source_id: raw.source_id ?? raw.labjack_name ?? "",
-            nats_subject: raw.nats_subject ?? "avenars",
-            nats_stream: raw.nats_stream ?? "labjacks",
-            rotate_secs: Number(raw.rotate_secs ?? 60),
-            sensor_settings: sensor
-        };
-    }
     
     /**
      * Plot mode of one channel.
