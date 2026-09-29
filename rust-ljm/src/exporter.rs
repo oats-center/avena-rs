@@ -2577,7 +2577,7 @@ mod tests {
     }
 
     /// A calibration with a unit and no id, serialized as the archiver does, is read
-    /// back from Parquet metadata unchanged.
+    /// back from Parquet metadata unchanged and labelled by its formula type.
     #[test]
     fn calibration_unit_round_trips_through_parquet_metadata() {
         let dir = std::env::temp_dir().join(format!("exporter-unit-{}", uuid::Uuid::new_v4()));
@@ -2590,6 +2590,9 @@ mod tests {
         assert_eq!(read, spec);
         assert_eq!(read.unit.as_deref(), Some("kPa"));
         assert_eq!(read.id, None);
+        let matched = read_matching_rows(&path, 0, 10).unwrap();
+        assert_eq!(matched.calibration_id, "linear");
+        assert_eq!(matched.rows, vec![(1, 1.0)]);
         fs::remove_dir_all(dir).unwrap();
     }
 

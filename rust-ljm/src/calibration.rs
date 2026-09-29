@@ -36,6 +36,19 @@ pub enum CalibrationFormula {
     Polynomial { coeffs: Vec<f64> },
 }
 
+// Only the exporter labels CSV rows, so other binaries never call this.
+#[allow(dead_code)]
+impl CalibrationFormula {
+    /// Returns the formula's serialized `type` tag.
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Self::Identity => "identity",
+            Self::Linear { .. } => "linear",
+            Self::Polynomial { .. } => "polynomial",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 /// Calibration definition for one channel.
 ///
@@ -43,7 +56,8 @@ pub enum CalibrationFormula {
 /// metadata by the exporter. The default is an unnamed identity calibration.
 pub struct CalibrationSpec {
     /// Optional identifier, kept for older configs and files. The exporter writes
-    /// it in the `calibration_id` CSV column (see [`Self::id_or_default`]).
+    /// it in the `calibration_id` CSV column, or the formula's type when it is
+    /// `None` (see [`Self::id_or_default`]).
     #[serde(default)]
     pub id: Option<String>,
     /// Optional engineering unit of the calibrated value, such as `kPa`. Carried
@@ -90,12 +104,14 @@ impl CalibrationSpec {
         }
     }
 
-    /// Returns the configured calibration id, or `identity` when unnamed.
+    /// Returns the configured calibration id, or the formula's type when unnamed.
     ///
-    /// The fallback is the string `identity` even if the formula is not the
-    /// identity.
+    /// The fallback is the formula's `type` tag (`identity`, `linear` or
+    /// `polynomial`), so an unnamed linear calibration is not labelled identity.
     pub fn id_or_default(&self) -> &str {
-        self.id.as_deref().unwrap_or("identity")
+        self.id
+            .as_deref()
+            .unwrap_or_else(|| self.formula.type_name())
     }
 }
 
@@ -138,6 +154,27 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&CalibrationSpec::default()).unwrap(),
             r#"{"id":null,"type":"identity"}"#
+        );
+    }
+
+    /// The CSV label is the id when set and the formula type otherwise.
+    #[test]
+    fn id_or_default_falls_back_to_the_formula_type() {
+        let label = |json: &str| {
+            serde_json::from_str::<CalibrationSpec>(json)
+                .unwrap()
+                .id_or_default()
+                .to_string()
+        };
+        assert_eq!(label(r#"{"id":null,"type":"identity"}"#), "identity");
+        assert_eq!(label(r#"{"type":"linear","a":1.0,"b":0.0}"#), "linear");
+        assert_eq!(
+            label(r#"{"type":"polynomial","coeffs":[1.0]}"#),
+            "polynomial"
+        );
+        assert_eq!(
+            label(r#"{"id":"tp3586","type":"linear","a":1.0,"b":0.0,"unit":"kPa"}"#),
+            "tp3586"
         );
     }
 }
