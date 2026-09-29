@@ -911,6 +911,7 @@ No props have defaults.
                                             </div>
 
                                             {#if getCalibration(channel).type === "linear"}
+                                                {@const cal = getCalibration(channel)}
                                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                     <div class="form-control">
                                                         <label class="label" for="calibration-linear-a-{channel}">
@@ -920,7 +921,7 @@ No props have defaults.
                                                             id="calibration-linear-a-{channel}"
                                                             type="number"
                                                             step="any"
-                                                            value={getCalibration(channel).type === "linear" ? getCalibration(channel).a : 1}
+                                                            value={cal.type === "linear" ? cal.a : 1}
                                                             oninput={(event) => updateLinearField(channel, "a", Number((event.currentTarget as HTMLInputElement).value))}
                                                             class="input input-bordered w-full focus:input-primary"
                                                         />
@@ -933,13 +934,14 @@ No props have defaults.
                                                             id="calibration-linear-b-{channel}"
                                                             type="number"
                                                             step="any"
-                                                            value={getCalibration(channel).type === "linear" ? getCalibration(channel).b : 0}
+                                                            value={cal.type === "linear" ? cal.b : 0}
                                                             oninput={(event) => updateLinearField(channel, "b", Number((event.currentTarget as HTMLInputElement).value))}
                                                             class="input input-bordered w-full focus:input-primary"
                                                         />
                                                     </div>
                                                 </div>
                                             {:else if getCalibration(channel).type === "polynomial"}
+                                                {@const cal = getCalibration(channel)}
                                                 <div class="form-control">
                                                     <label class="label" for="calibration-poly-{channel}">
                                                         <span class="label-text font-medium">Coefficients (c0, c1, c2...)</span>
@@ -947,7 +949,7 @@ No props have defaults.
                                                     <input
                                                         id="calibration-poly-{channel}"
                                                         type="text"
-                                                        value={coeffInputs[String(channel)] ?? getCalibration(channel).coeffs.join(", ")}
+                                                        value={coeffInputs[String(channel)] ?? (cal.type === "polynomial" ? cal.coeffs.join(", ") : "")}
                                                         oninput={(event) => updatePolynomialCoeffs(channel, (event.currentTarget as HTMLInputElement).value)}
                                                         class="input input-bordered w-full focus:input-primary"
                                                     />
