@@ -7,6 +7,7 @@
     import { archiveExportRequestSubject, liveLabJackChannelPattern, liveLabJackChannelSubject } from "$lib/subjects";
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
     import { parseAssetNumberParam } from "$lib/plot/route";
+    import { applyAxisLimitInput, parseFiniteInput, type AxisLimits } from "$lib/plot/axis";
     import {
         FlatBufferParser
     } from "$lib/flatbuffer-parser";
@@ -159,10 +160,10 @@
         yMin: number;
         /**
          * Upper Y limit when `autoY` is false. Kept above `yMin` by {@link
-         * updateAxisSettings}.
+         * commitAxisLimit}.
          */
         yMax: number;
-        /** Width of the X axis in seconds. At least 0.1. */
+        /** Width of the X axis in seconds. Above 0. */
         xWindowSec: number;
         /** Mirrors the X axis. */
         invertX: boolean;
@@ -220,6 +221,8 @@
     let frozenChannelData = $state<Map<number, DataPoint[]>>(new Map());
     let channelModes = $state<Map<number, ChannelPlotMode>>(new Map());
     let axisSettings = $state<Map<number, AxisSettings>>(new Map());
+    /** Per channel, why the last typed axis limit was rejected. */
+    let axisInputErrors = $state<Map<number, string>>(new Map());
     /**
      * True after the live subscriptions were created. Does not track later connection
      * loss.
@@ -775,6 +778,7 @@
         frozenChannelData = newFrozenChannelData;
         channelModes = newChannelModes;
         axisSettings = newAxisSettings;
+        axisInputErrors = new Map();
         triggerSettings = newTriggerSettings;
         channelTriggered = newChannelTriggered;
         channelTriggerTime = newChannelTriggerTime;
@@ -1001,10 +1005,8 @@
     }
 
     /**
-     * Merges changes into a channel's axis settings.
-     *
-     * A missing or non-positive X window is replaced by {@link timeWindow}, and the window
-     * is raised to at least 0.1 s. If `yMax` is not above `yMin` it is set to `yMin + 0.001`.
+     * Merges changes into a channel's axis settings. Numeric limits are checked by
+     * {@link commitAxisLimit} before they get here.
      *
      * @param channel - LabJack channel number.
      * @param updates - Fields to change.
@@ -1013,18 +1015,60 @@
         const current = axisSettings.get(channel);
         if (!current) return;
 
-        const updated = { ...current, ...updates };
-        if (!Number.isFinite(updated.xWindowSec) || updated.xWindowSec <= 0) {
-            updated.xWindowSec = timeWindow;
-        }
-        updated.xWindowSec = Math.max(0.1, updated.xWindowSec);
-        if (updated.yMax <= updated.yMin) {
-            updated.yMax = updated.yMin + 0.001;
-        }
-
-        axisSettings.set(channel, updated);
+        axisSettings.set(channel, { ...current, ...updates });
         axisSettings = new Map(axisSettings);
         markUiSnapshotDirty();
+    }
+
+    /**
+     * Applies a typed Y Min, Y Max or X Window.
+     *
+     * Any finite number is accepted, including 0, as long as Y Min stays below Y Max and
+     * the X window is above 0 (see `applyAxisLimitInput`). Otherwise the input is reset
+     * to the value in use and the reason is shown under the inputs.
+     *
+     * @param channel - LabJack channel number.
+     * @param field - Limit being edited.
+     * @param input - The input element.
+     */
+    function commitAxisLimit(channel: number, field: keyof AxisLimits, input: HTMLInputElement) {
+        const current = axisSettings.get(channel);
+        if (!current) return;
+        const result = applyAxisLimitInput(current, field, input.value);
+        const nextErrors = new Map(axisInputErrors);
+        if (result.ok) {
+            nextErrors.delete(channel);
+            updateAxisSettings(channel, result.limits);
+        } else {
+            nextErrors.set(channel, result.error);
+            input.value = String(current[field]);
+        }
+        axisInputErrors = nextErrors;
+    }
+
+    /**
+     * Applies a typed trigger threshold or post-trigger window. Any finite threshold is
+     * accepted, including 0; the post window must be at least 0.01 s. Otherwise the
+     * input is reset to the value in use.
+     *
+     * @param channel - LabJack channel number.
+     * @param field - Setting being edited.
+     * @param input - The input element.
+     */
+    function commitTriggerNumber(
+        channel: number,
+        field: "threshold" | "postTriggerWindowSec",
+        input: HTMLInputElement
+    ) {
+        const setting = triggerSettings.get(channel);
+        if (!setting) return;
+        const value = parseFiniteInput(input.value);
+        if (value === null || (field === "postTriggerWindowSec" && value < 0.01)) {
+            input.value = String(setting[field]);
+            return;
+        }
+        triggerSettings.set(channel, { ...setting, [field]: value });
+        triggerSettings = new Map(triggerSettings);
     }
 
     /**
@@ -1593,13 +1637,12 @@ progress and saves the result through a temporary download link.
                                         <input
                                             id="x-window-{channel}"
                                             type="number"
-                                            min="0.1"
                                             step="0.1"
                                             class="input input-bordered"
                                             value={channelAxis?.xWindowSec ?? timeWindow}
                                             onchange={(e) => {
                                                 if (e.target instanceof HTMLInputElement) {
-                                                    updateAxisSettings(channel, { xWindowSec: parseFloat(e.target.value) || timeWindow });
+                                                    commitAxisLimit(channel, "xWindowSec", e.target);
                                                 }
                                             }}
                                         />
@@ -1634,7 +1677,7 @@ progress and saves the result through a temporary download link.
                                             disabled={channelAxis?.autoY ?? true}
                                             onchange={(e) => {
                                                 if (e.target instanceof HTMLInputElement) {
-                                                    updateAxisSettings(channel, { yMin: parseFloat(e.target.value) || -1 });
+                                                    commitAxisLimit(channel, "yMin", e.target);
                                                 }
                                             }}
                                         />
@@ -1653,7 +1696,7 @@ progress and saves the result through a temporary download link.
                                             disabled={channelAxis?.autoY ?? true}
                                             onchange={(e) => {
                                                 if (e.target instanceof HTMLInputElement) {
-                                                    updateAxisSettings(channel, { yMax: parseFloat(e.target.value) || 1 });
+                                                    commitAxisLimit(channel, "yMax", e.target);
                                                 }
                                             }}
                                         />
@@ -1691,6 +1734,9 @@ progress and saves the result through a temporary download link.
                                         </label>
                                     </div>
                                 </div>
+                                {#if axisInputErrors.get(channel)}
+                                    <p class="text-sm text-error mt-2">{axisInputErrors.get(channel)}</p>
+                                {/if}
                             </div>
 
                             {#if isTriggerMode(channelMode)}
@@ -1733,15 +1779,10 @@ progress and saves the result through a temporary download link.
                                                 id="trigger-threshold-{channel}"
                                                 type="number"
                                                 step="0.01"
-                                                value={channelTriggerSetting?.threshold || 0}
+                                                value={channelTriggerSetting?.threshold ?? 0}
                                                 onchange={(e) => {
-                                                    const setting = triggerSettings.get(channel);
-                                                    if (setting && e.target instanceof HTMLInputElement) {
-                                                        triggerSettings.set(channel, {
-                                                            ...setting,
-                                                            threshold: parseFloat(e.target.value) || 0
-                                                        });
-                                                        triggerSettings = new Map(triggerSettings);
+                                                    if (e.target instanceof HTMLInputElement) {
+                                                        commitTriggerNumber(channel, "threshold", e.target);
                                                     }
                                                 }}
                                                 class="input input-bordered input-warning"
@@ -1781,16 +1822,10 @@ progress and saves the result through a temporary download link.
                                                 type="number"
                                                 min="0.01"
                                                 step="0.1"
-                                                value={channelTriggerSetting?.postTriggerWindowSec || timeWindow}
+                                                value={channelTriggerSetting?.postTriggerWindowSec ?? timeWindow}
                                                 onchange={(e) => {
-                                                    const setting = triggerSettings.get(channel);
-                                                    if (setting && e.target instanceof HTMLInputElement) {
-                                                        const raw = parseFloat(e.target.value) || 0.01;
-                                                        triggerSettings.set(channel, {
-                                                            ...setting,
-                                                            postTriggerWindowSec: Math.max(0.01, raw)
-                                                        });
-                                                        triggerSettings = new Map(triggerSettings);
+                                                    if (e.target instanceof HTMLInputElement) {
+                                                        commitTriggerNumber(channel, "postTriggerWindowSec", e.target);
                                                     }
                                                 }}
                                                 class="input input-bordered input-warning"
