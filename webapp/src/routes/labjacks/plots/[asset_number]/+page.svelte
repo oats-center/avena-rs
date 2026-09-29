@@ -7,9 +7,8 @@
     import { normalizeLabJackConfig, type LabJackConfig } from "$lib/labjack-config";
     import { archiveExportRequestSubject, liveLabJackChannelPattern, liveLabJackChannelSubject } from "$lib/subjects";
     import type { Subscription } from "@nats-io/nats-core";
-    import RealTimePlot from "$lib/components/RealTimePlot.svelte";
+    import ChannelCard from "$lib/components/ChannelCard.svelte";
     import { parseAssetNumberParam } from "$lib/plot/route";
-    import { applyAxisLimitInput, parseFiniteInput, type AxisLimits } from "$lib/plot/axis";
     import {
         connectionBadgeClass,
         connectionDotClass,
@@ -18,22 +17,16 @@
         type LiveConnectionState
     } from "$lib/plot/connection";
     import {
-        channelStatusLabel,
-        defaultAxisSettings,
-        defaultTriggerSettings,
         deriveAutoTimeWindowSec,
         isTriggerMode,
         pickInitialPlotChannels,
-        plotConfigFor,
         requiredBufferPoints,
         snapshotKeepMs,
         snapshotRateHz,
         streamProblemText,
-        togglePlotSelection,
-        type AxisSettings,
-        type ChannelPlotMode,
-        type ChannelStreamStatus
+        togglePlotSelection
     } from "$lib/plot/channel";
+    import { ChannelView } from "$lib/plot/channel-view.svelte";
     import {
         buildExportRequest,
         defaultExportRange,
@@ -42,26 +35,16 @@
         formatUtcPreview,
         missingChannelsWarning
     } from "$lib/plot/export-form";
-    import { describeChannelUnit, type ChannelUnitInfo } from "$lib/plot/units";
-    import {
-        FlatBufferParser
-    } from "$lib/flatbuffer-parser";
+    import { channelUnitInfo } from "$lib/plot/units";
+    import { FlatBufferParser } from "$lib/flatbuffer-parser";
     import {
         ScanMessageQueue,
-        createLiveChannel,
         drainChannelQueue,
         snapshotNewest,
-        type DataPoint,
-        type LiveChannel
+        type DataPoint
     } from "$lib/plot/stream";
-    import {
-        advanceTrigger,
-        hasRequiredPreBuffer,
-        type TriggerCapture,
-        type TriggerSettings
-    } from "$lib/plot/trigger";
+    import { advanceTrigger, hasRequiredPreBuffer } from "$lib/plot/trigger";
 
-    
     /**
      * Messages taken from one channel's queue at a time. Channels take turns, so one
      * busy channel cannot starve the other.
@@ -91,7 +74,7 @@
      * counted, shown in Data Statistics, and appear as a gap in the plot.
      */
     const MAX_QUEUED_MESSAGES_PER_CHANNEL = 5000;
-    
+
     /** `asset_number` route parameter; `NaN` when it is not a non-negative integer. */
     let assetNumber = $state<number>(0);
     let labjackConfig = $state<LabJackConfig | null>(null);
@@ -117,18 +100,10 @@
      */
     let channelSubscriptions = new Map<number, Subscription>();
     /**
-     * Copy of the live buffers the template reads, refreshed by {@link flushUiSnapshots}.
+     * One state object per enabled channel: settings, trigger state, live buffer and
+     * the snapshot the plot draws (see `ChannelView`). Replaced on each config load.
      */
-    let channelData = $state<Map<number, DataPoint[]>>(new Map());
-    /**
-     * Copy of the frozen trigger buffers the template reads, refreshed by {@link
-     * flushUiSnapshots}.
-     */
-    let frozenChannelData = $state<Map<number, DataPoint[]>>(new Map());
-    let channelModes = $state<Map<number, ChannelPlotMode>>(new Map());
-    let axisSettings = $state<Map<number, AxisSettings>>(new Map());
-    /** Per channel, why the last typed axis limit was rejected. */
-    let axisInputErrors = $state<Map<number, string>>(new Map());
+    let channelViews = $state.raw<Map<number, ChannelView>>(new Map());
     /**
      * State of this page's NATS connection, kept up to date by {@link watchConnection}
      * from the client's status events and `closed()` promise.
@@ -139,21 +114,6 @@
     /** True while the connection is up and the live subscriptions exist. */
     let isConnected = $derived(connectionState === "connected");
     let flatBufferParser = new FlatBufferParser();
-    let triggerSettings = $state<Map<number, TriggerSettings>>(new Map());
-    /** Per channel, true while a trigger capture is held. */
-    let channelTriggered = $state<Map<number, boolean>>(new Map());
-    /**
-     * Per channel, time of the last trigger in Unix milliseconds, or 0 when not
-     * triggered.
-     */
-    let channelTriggerTime = $state<Map<number, number>>(new Map());
-    /**
-     * Per channel, true when the buffer spans the pre-trigger window. Set true in free
-     * run.
-     */
-    let channelPrebufferReady = $state<Map<number, boolean>>(new Map());
-    /** Per channel, the current trigger capture, if any. */
-    let channelTriggerCaptures = $state<Map<number, TriggerCapture>>(new Map());
     /** Pending `requestAnimationFrame` of the decode and redraw loop. */
     let frameHandle = 0;
     /** Fallback timer that decodes while no animation frames run. */
@@ -163,8 +123,8 @@
     /** `performance.now()` of the last {@link flushUiSnapshots}. */
     let lastFlushAt = 0;
     /**
-     * Automatic X window in seconds, from {@link deriveAutoTimeWindowSec}; the default
-     * for new channels.
+     * Automatic X window in seconds, from `deriveAutoTimeWindowSec`; the default for
+     * new channels.
      */
     let timeWindow = $state<number>(1); // seconds
     /** Maximum points kept in each live buffer. Set by {@link updateMaxDataPoints}. */
@@ -186,32 +146,18 @@
     /** Final size in bytes. Set only after the download completes; `null` while it runs. */
     let exportTotal = $state<number | null>(null);
     /**
-     * Rolling live buffers and stream state, one per channel. Not reactive: they are
-     * changed in place on every message and copied into {@link channelData} when they change
-     * (at most about 30 times a second). Buffers are sorted by sample time with no duplicates (see `$lib/plot/stream`).
-     */
-    let liveChannels = new Map<number, LiveChannel>();
-    /**
-     * Frozen trigger captures, one per channel. Not reactive; copied into {@link
-     * frozenChannelData}.
-     */
-    let frozenChannelBuffers = new Map<number, DataPoint[]>();
-    /**
      * Every received, not yet decoded message per selected channel, in arrival order.
      * Drained in order by {@link processPendingVisualizationBatches}.
      */
     let scanQueue = new ScanMessageQueue(MAX_QUEUED_MESSAGES_PER_CHANNEL);
-    /**
-     * Per-channel stream counters shown in Data Statistics: messages dropped because the
-     * queue overflowed, gaps (missing time between messages), timeline resets, samples
-     * skipped as duplicates, and undecodable payloads.
-     */
-    let channelStreamStatus = $state<Map<number, ChannelStreamStatus>>(new Map());
     /** Channels chosen for plotting, at most two. Only these are decoded. */
     let selectedPlotChannels = $state<Set<number>>(new Set());
     /** True when buffers changed since the last {@link flushUiSnapshots}. */
     let uiSnapshotDirty = false;
-    
+
+    /** Selected channels in config order: the plot cards. */
+    let renderableChannels = $derived(getRenderablePlotChannels());
+
     /**
      * Reads `asset_number` and `key` from the URL and loads the config; an asset number
      * that is not a non-negative integer is reported as an error by
@@ -238,29 +184,28 @@
     /** Resizes the buffers when any channel's axis or trigger settings change. */
     $effect(() => {
         if (!labjackConfig) return;
-        // Bare reads register the two maps as dependencies of this effect.
-        axisSettings;
-        triggerSettings;
+        // Bare reads register every channel's settings as dependencies of this effect.
+        for (const view of channelViews.values()) {
+            view.axis;
+            view.trigger;
+        }
         updateMaxDataPoints();
     });
 
     /**
-     * Sets {@link maxDataPoints} to the number of samples the longest needed window holds.
-     *
-     * The window is the largest of: twice {@link timeWindow}, twice each channel's X window
-     * (at least 0.1 s), and each channel's pre plus post trigger window. It is multiplied by
-     * the scan rate, plus 10 % and one read of headroom. Then trims the live buffers and marks the snapshot dirty. Does nothing
-     * before the config is loaded.
+     * Sets {@link maxDataPoints} to the number of samples the longest needed window
+     * holds (see `requiredBufferPoints`), then trims the live buffers and marks the
+     * snapshot dirty. Does nothing before the config is loaded.
      */
     function updateMaxDataPoints() {
         if (!labjackConfig) return;
         const settings = labjackConfig.sensor_settings;
-        const channels = [];
-        for (const [channel, axis] of axisSettings) {
-            const trigger = triggerSettings.get(channel);
-            if (trigger) channels.push({ axis, trigger });
-        }
-        maxDataPoints = requiredBufferPoints(settings.scan_rate_hz, settings.scans_per_read, timeWindow, channels);
+        maxDataPoints = requiredBufferPoints(
+            settings.scan_rate_hz,
+            settings.scans_per_read,
+            timeWindow,
+            channelViews.values()
+        );
         trimAllChannelBuffers();
         markUiSnapshotDirty();
     }
@@ -275,8 +220,8 @@
      * maxDataPoints}.
      */
     function trimAllChannelBuffers() {
-        for (const live of liveChannels.values()) {
-            const data = live.buffer;
+        for (const view of channelViews.values()) {
+            const data = view.live.buffer;
             const excess = data.length - maxDataPoints;
             if (excess > 0) {
                 data.splice(0, excess);
@@ -285,62 +230,43 @@
     }
 
     /**
-     * Copies the newest part of a channel's live buffer for the plot.
+     * Copies the newest part of a channel's live buffer for the plot (see
+     * `snapshotKeepMs`). The span is measured back from the newest point's timestamp,
+     * not from the clock, and one point before the span is kept so the line reaches the
+     * left edge.
      *
-     * Keeps the X window times {@link SNAPSHOT_OVERSCAN_FACTOR}, at least 0.25 s. In the
-     * trigger modes it keeps at least the pre-trigger window plus 0.25 s. The span is
-     * measured back from the newest point's timestamp, not from the clock, and one point
-     * before the span is kept so the line reaches the left edge.
-     *
-     * @param channel - LabJack channel number.
+     * @param view - The channel.
      * @returns A new array, empty when the buffer is empty.
      */
-    function snapshotLiveChannelData(channel: number): DataPoint[] {
-        const data = liveChannels.get(channel)?.buffer ?? [];
+    function snapshotLiveChannelData(view: ChannelView): DataPoint[] {
+        const data = view.live.buffer;
         if (data.length === 0) return [];
-
-        const axisWindowSec = axisSettings.get(channel)?.xWindowSec ?? timeWindow;
-        const keepMs = snapshotKeepMs(axisWindowSec, channelModes.get(channel) ?? "free_run", triggerSettings.get(channel));
-        return snapshotNewest(data, keepMs);
+        return snapshotNewest(data, snapshotKeepMs(view.axis.xWindowSec, view.mode, view.trigger));
     }
 
     /**
-     * Copies the live and frozen buffers of every selected channel into {@link channelData}
-     * and {@link frozenChannelData}, which triggers a redraw.
+     * Copies the live buffer and stream counters of every selected channel into its
+     * reactive snapshot, which triggers a redraw.
      *
      * @param force - Copy even when nothing is marked dirty.
      */
     function flushUiSnapshots(force: boolean = false) {
         if (!force && !uiSnapshotDirty) return;
 
-        const liveSnapshots = new Map<number, DataPoint[]>();
-        const frozenSnapshots = new Map<number, DataPoint[]>();
-
         for (const channel of getRenderablePlotChannels()) {
-            liveSnapshots.set(channel, snapshotLiveChannelData(channel));
-            frozenSnapshots.set(channel, [...(frozenChannelBuffers.get(channel) || [])]);
-        }
-
-        channelData = liveSnapshots;
-        frozenChannelData = frozenSnapshots;
-        refreshStreamStatus();
-        uiSnapshotDirty = false;
-    }
-
-    /** Copies the per-channel stream counters into {@link channelStreamStatus}. */
-    function refreshStreamStatus() {
-        const next = new Map<number, ChannelStreamStatus>();
-        for (const channel of getRenderablePlotChannels()) {
-            const stats = liveChannels.get(channel)?.stats;
-            next.set(channel, {
+            const view = channelViews.get(channel);
+            if (!view) continue;
+            view.liveData = snapshotLiveChannelData(view);
+            const stats = view.live.stats;
+            view.streamStatus = {
                 dropped: scanQueue.droppedMessages.get(channel) ?? 0,
-                gaps: stats?.gaps ?? 0,
-                resets: stats?.resets ?? 0,
-                skipped: stats?.skippedSamples ?? 0,
-                decodeErrors: stats?.decodeErrors ?? 0
-            });
+                gaps: stats.gaps,
+                resets: stats.resets,
+                skipped: stats.skippedSamples,
+                decodeErrors: stats.decodeErrors
+            };
         }
-        channelStreamStatus = next;
+        uiSnapshotDirty = false;
     }
 
     /**
@@ -353,34 +279,6 @@
         return labjackConfig.sensor_settings.channels_enabled.filter((channel) =>
             selectedPlotChannels.has(channel)
         );
-    }
-
-    /**
-     * Returns the unit of a channel's plotted values and whether they are calibrated,
-     * from its calibration and its `measurement_units` entry (see
-     * `describeChannelUnit`).
-     *
-     * @param channel - LabJack channel number.
-     * @returns The unit description. Raw volts before the config loads.
-     */
-    function getChannelUnitInfo(channel: number): ChannelUnitInfo {
-        const calibration = normalizeCalibration(
-            labjackConfig?.sensor_settings.calibrations?.[String(channel)]
-        );
-        const index = getChannelConfigIndex(channel);
-        const measurementUnit = index >= 0 ? labjackConfig?.sensor_settings.measurement_units[index] : undefined;
-        return describeChannelUnit(calibration, measurementUnit);
-    }
-
-    /**
-     * Returns a channel's position in `channels_enabled`, which is also its index into
-     * `data_formats` and `measurement_units`.
-     *
-     * @param channel - LabJack channel number.
-     * @returns The index, or -1 when the channel is not enabled or no config is loaded.
-     */
-    function getChannelConfigIndex(channel: number): number {
-        return labjackConfig?.sensor_settings.channels_enabled.indexOf(channel) ?? -1;
     }
 
     /**
@@ -447,17 +345,14 @@
 
         for (const channel of labjackConfig.sensor_settings.channels_enabled) {
             if (!selectedPlotChannels.has(channel) || scanQueue.size(channel) === 0) continue;
+            const view = channelViews.get(channel);
+            if (!view) continue;
 
-            let live = liveChannels.get(channel);
-            if (!live) {
-                live = createLiveChannel();
-                liveChannels.set(channel, live);
-            }
             const calibrationSpec = normalizeCalibration(
                 labjackConfig.sensor_settings.calibrations?.[String(channel)]
             );
 
-            const liveChannel = live;
+            const liveChannel = view.live;
             drainChannelQueue(
                 scanQueue,
                 channel,
@@ -466,7 +361,7 @@
                 calibrationSpec,
                 maxDataPoints,
                 (chunkStartIndex, reset, chunk) => {
-                    handleNewChunk(channel, liveChannel.buffer, chunkStartIndex, reset, chunk);
+                    handleNewChunk(view, liveChannel.buffer, chunkStartIndex, reset, chunk);
                 },
                 DECODE_BATCH_MESSAGES
             );
@@ -476,7 +371,6 @@
         return backlog;
     }
 
-    
     /**
      * Loads the config for {@link assetNumber} and starts the live subscriptions.
      *
@@ -509,11 +403,11 @@
             loading = false;
             return;
         }
-        
+
         try {
             const serverName = sessionStorage.getItem("serverName");
             const credentialsContent = sessionStorage.getItem("credentialsContent");
-            
+
             if (!serverName || !credentialsContent) {
                 error = "No NATS connection found. Please login first.";
                 errorAction = "login";
@@ -535,7 +429,7 @@
             }
             natsService = service;
             watchConnection(service);
-            
+
             const preferredKey = $page.url.searchParams.get('key')?.trim() || "";
             let foundConfig: LabJackConfig | null = null;
 
@@ -569,7 +463,7 @@
                     }
                 }
             }
-            
+
             // A newer load has closed this connection; leave its state alone.
             if (superseded()) return;
 
@@ -653,57 +547,25 @@
         natsService = null;
         closeService(service);
     }
-    
+
     /**
      * Resets per-channel state for the loaded config.
      *
-     * Every enabled channel gets empty buffers, free-run mode, auto Y with limits -1 to 1,
-     * the automatic X window, and a rising trigger at 0 with 40 % pre-trigger and a
-     * post-trigger window equal to the automatic X window. Pending messages are dropped.
-     * The plot selection is kept where possible (see {@link pickInitialPlotChannels}).
+     * Every enabled channel gets a new `ChannelView`: empty buffers, free-run mode, auto
+     * Y with limits -1 to 1, the automatic X window, and a rising trigger at 0 with 40 %
+     * pre-trigger and a post-trigger window equal to the automatic X window. Pending
+     * messages are dropped. The plot selection is kept where possible (see
+     * `pickInitialPlotChannels`).
      */
     function initializeChannelData() {
         if (!labjackConfig) return;
         const autoTimeWindow = deriveAutoTimeWindowSec(labjackConfig.sensor_settings.scan_rate_hz);
-        
-        const newChannelData = new Map<number, DataPoint[]>();
-        const newFrozenChannelData = new Map<number, DataPoint[]>();
-        const newChannelModes = new Map<number, ChannelPlotMode>();
-        const newAxisSettings = new Map<number, AxisSettings>();
-        const newTriggerSettings = new Map<number, TriggerSettings>();
-        const newChannelTriggered = new Map<number, boolean>();
-        const newChannelTriggerTime = new Map<number, number>();
-        const newChannelPrebufferReady = new Map<number, boolean>();
-        const newChannelTriggerCaptures = new Map<number, TriggerCapture>();
-        const newLiveChannels = new Map<number, LiveChannel>();
-        const newFrozenBuffers = new Map<number, DataPoint[]>();
-        labjackConfig.sensor_settings.channels_enabled.forEach(channel => {
-            newChannelData.set(channel, []);
-            newFrozenChannelData.set(channel, []);
-            newLiveChannels.set(channel, createLiveChannel());
-            newFrozenBuffers.set(channel, []);
-            newChannelModes.set(channel, 'free_run');
-            newAxisSettings.set(channel, defaultAxisSettings(autoTimeWindow));
-            newTriggerSettings.set(channel, defaultTriggerSettings(autoTimeWindow));
-            newChannelTriggered.set(channel, false);
-            newChannelTriggerTime.set(channel, 0);
-            newChannelPrebufferReady.set(channel, false);
-        });
-        
-        channelData = newChannelData;
-        frozenChannelData = newFrozenChannelData;
-        channelModes = newChannelModes;
-        axisSettings = newAxisSettings;
-        axisInputErrors = new Map();
-        triggerSettings = newTriggerSettings;
-        channelTriggered = newChannelTriggered;
-        channelTriggerTime = newChannelTriggerTime;
-        channelPrebufferReady = newChannelPrebufferReady;
-        channelTriggerCaptures = newChannelTriggerCaptures;
-        liveChannels = newLiveChannels;
-        frozenChannelBuffers = newFrozenBuffers;
+        const views = new Map<number, ChannelView>();
+        for (const channel of labjackConfig.sensor_settings.channels_enabled) {
+            views.set(channel, new ChannelView(channel, autoTimeWindow));
+        }
+        channelViews = views;
         scanQueue.clear();
-        channelStreamStatus = new Map();
         selectedPlotChannels = pickInitialPlotChannels(
             labjackConfig.sensor_settings.channels_enabled,
             selectedPlotChannels
@@ -721,7 +583,7 @@
      */
     async function startDataSubscription(generation: number) {
         if (!natsService || !labjackConfig) return;
-        
+
         try {
             syncChannelSubscriptions(generation);
             if (connectionState === "connecting") connectionState = "connected";
@@ -814,40 +676,34 @@
      * @param channel - LabJack channel number.
      */
     function resetChannelStream(channel: number) {
-        liveChannels.set(channel, createLiveChannel());
+        channelViews.get(channel)?.resetStream();
         scanQueue.clearChannel(channel);
-        clearTriggerState(channel);
-        channelPrebufferReady.set(channel, false);
-        channelPrebufferReady = new Map(channelPrebufferReady);
+        markUiSnapshotDirty();
     }
-    
+
     /**
      * Runs the trigger logic after a batch was appended to a channel's live buffer.
      *
      * In a trigger mode it calls {@link processTriggerMode}; in free run it marks the
      * pre-buffer as ready.
      *
-     * @param channel - LabJack channel number.
+     * @param view - The channel.
      * @param buffer - The channel's live buffer, already including `chunk`.
      * @param chunkStartIndex - Index in `buffer` of the chunk's first point.
      * @param reset - The buffer was emptied before this chunk (timeline jumped back).
      * @param chunk - Points just appended, oldest first.
      */
     function handleNewChunk(
-        channel: number,
+        view: ChannelView,
         buffer: DataPoint[],
         chunkStartIndex: number,
         reset: boolean,
         chunk: DataPoint[]
     ) {
-        const channelMode = channelModes.get(channel) ?? "free_run";
-        if (channelMode === "trigger_normal" || channelMode === "trigger_single") {
-            processTriggerMode(channel, channelMode, buffer, chunkStartIndex, reset, chunk);
-        } else {
-            if (!(channelPrebufferReady.get(channel) ?? false)) {
-                channelPrebufferReady.set(channel, true);
-                channelPrebufferReady = new Map(channelPrebufferReady);
-            }
+        if (isTriggerMode(view.mode)) {
+            processTriggerMode(view, buffer, chunkStartIndex, reset, chunk);
+        } else if (!view.prebufferReady) {
+            view.prebufferReady = true;
         }
     }
 
@@ -860,34 +716,29 @@
      * stays on screen until the next trigger replaces it; in `trigger_single` it is held
      * until Re-arm.
      *
-     * @param channel - LabJack channel number.
-     * @param mode - `trigger_normal` or `trigger_single`.
+     * @param view - The channel, in `trigger_normal` or `trigger_single`.
      * @param buffer - The channel's live buffer, already including the batch.
      * @param chunkStartIndex - Index in `buffer` of the batch's first point.
      * @param reset - The buffer was emptied before this batch.
      * @param chunk - Points just appended.
      */
     function processTriggerMode(
-        channel: number,
-        mode: ChannelPlotMode,
+        view: ChannelView,
         buffer: DataPoint[],
         chunkStartIndex: number,
         reset: boolean,
         chunk: DataPoint[]
     ) {
-        const settings = triggerSettings.get(channel);
-        if (!settings) return;
-
+        const settings = view.trigger;
         const prebufferReady = hasRequiredPreBuffer(buffer, settings);
-        if ((channelPrebufferReady.get(channel) ?? false) !== prebufferReady) {
-            channelPrebufferReady.set(channel, prebufferReady);
-            channelPrebufferReady = new Map(channelPrebufferReady);
+        if (view.prebufferReady !== prebufferReady) {
+            view.prebufferReady = prebufferReady;
         }
 
-        const previous = channelTriggerCaptures.get(channel) ?? null;
+        const previous = view.capture;
         const capture = advanceTrigger(
             previous,
-            mode === "trigger_single",
+            view.mode === "trigger_single",
             settings,
             buffer,
             chunkStartIndex,
@@ -896,175 +747,14 @@
         );
 
         if (capture && capture !== previous) {
-            setTriggerCapture(channel, capture);
+            view.setCapture(capture);
+            markUiSnapshotDirty();
         }
-    }
-
-    /**
-     * Stores a channel's capture and the trigger flags derived from it.
-     *
-     * @param channel - LabJack channel number.
-     * @param capture - New or updated capture.
-     */
-    function setTriggerCapture(channel: number, capture: TriggerCapture) {
-        channelTriggerCaptures.set(channel, capture);
-        channelTriggerCaptures = new Map(channelTriggerCaptures);
-        if (!(channelTriggered.get(channel) ?? false)) {
-            channelTriggered.set(channel, true);
-            channelTriggered = new Map(channelTriggered);
-        }
-        if (channelTriggerTime.get(channel) !== capture.triggerTime) {
-            channelTriggerTime.set(channel, capture.triggerTime);
-            channelTriggerTime = new Map(channelTriggerTime);
-        }
-        frozenChannelBuffers.set(channel, capture.data);
-        markUiSnapshotDirty();
-    }
-
-    /**
-     * Arms the channel again by clearing its trigger flag, time, capture and frozen plot.
-     *
-     * @param channel - LabJack channel number.
-     */
-    function clearTriggerState(channel: number) {
-        channelTriggered.set(channel, false);
-        channelTriggerTime.set(channel, 0);
-        channelTriggerCaptures.delete(channel);
-        frozenChannelBuffers.set(channel, []);
-        markUiSnapshotDirty();
-
-        channelTriggered = new Map(channelTriggered);
-        channelTriggerTime = new Map(channelTriggerTime);
-        channelTriggerCaptures = new Map(channelTriggerCaptures);
-    }
-
-    /**
-     * Changes a channel's plot mode.
-     *
-     * Switching between the two trigger modes keeps the current capture; any other change
-     * clears it. The pre-buffer flag is recomputed from the live buffer.
-     *
-     * @param channel - LabJack channel number.
-     * @param nextMode - Mode chosen in the Plot Mode select.
-     */
-    function setChannelMode(channel: number, nextMode: ChannelPlotMode) {
-        const currentMode = channelModes.get(channel) ?? "free_run";
-        if (currentMode === nextMode) return;
-
-        if (!isTriggerMode(nextMode) || !isTriggerMode(currentMode)) {
-            clearTriggerState(channel);
-        }
-
-        if (isTriggerMode(nextMode)) {
-            const settings = triggerSettings.get(channel);
-            const data = liveChannels.get(channel)?.buffer ?? [];
-            const ready = settings ? hasRequiredPreBuffer(data, settings) : false;
-            channelPrebufferReady.set(channel, ready);
-        } else {
-            channelPrebufferReady.set(channel, true);
-        }
-        channelPrebufferReady = new Map(channelPrebufferReady);
-
-        channelModes.set(channel, nextMode);
-        channelModes = new Map(channelModes);
-    }
-
-    /**
-     * Merges changes into a channel's axis settings and clears the channel's axis input
-     * message, which described an earlier rejected value. Numeric limits are checked by
-     * {@link commitAxisLimit} before they get here.
-     *
-     * @param channel - LabJack channel number.
-     * @param updates - Fields to change.
-     */
-    function updateAxisSettings(channel: number, updates: Partial<AxisSettings>) {
-        const current = axisSettings.get(channel);
-        if (!current) return;
-        if (axisInputErrors.has(channel)) {
-            const nextErrors = new Map(axisInputErrors);
-            nextErrors.delete(channel);
-            axisInputErrors = nextErrors;
-        }
-
-        axisSettings.set(channel, { ...current, ...updates });
-        axisSettings = new Map(axisSettings);
-        markUiSnapshotDirty();
-    }
-
-    /**
-     * Applies a typed Y Min, Y Max or X Window.
-     *
-     * Any finite number is accepted, including 0, as long as Y Min stays below Y Max and
-     * the X window is above 0 (see `applyAxisLimitInput`). Otherwise the input is reset
-     * to the value in use and the reason is shown under the inputs.
-     *
-     * @param channel - LabJack channel number.
-     * @param field - Limit being edited.
-     * @param input - The input element.
-     */
-    function commitAxisLimit(channel: number, field: keyof AxisLimits, input: HTMLInputElement) {
-        const current = axisSettings.get(channel);
-        if (!current) return;
-        const result = applyAxisLimitInput(current, field, input.value);
-        const nextErrors = new Map(axisInputErrors);
-        if (result.ok) {
-            nextErrors.delete(channel);
-            updateAxisSettings(channel, result.limits);
-        } else {
-            nextErrors.set(channel, result.error);
-            input.value = String(current[field]);
-        }
-        axisInputErrors = nextErrors;
-    }
-
-    /**
-     * Applies a typed trigger threshold or post-trigger window. Any finite threshold is
-     * accepted, including 0; the post window must be at least 0.01 s. Otherwise the
-     * input is reset to the value in use.
-     *
-     * @param channel - LabJack channel number.
-     * @param field - Setting being edited.
-     * @param input - The input element.
-     */
-    function commitTriggerNumber(
-        channel: number,
-        field: "threshold" | "postTriggerWindowSec",
-        input: HTMLInputElement
-    ) {
-        const setting = triggerSettings.get(channel);
-        if (!setting) return;
-        const value = parseFiniteInput(input.value);
-        if (value === null || (field === "postTriggerWindowSec" && value < 0.01)) {
-            input.value = String(setting[field]);
-            return;
-        }
-        triggerSettings.set(channel, { ...setting, [field]: value });
-        triggerSettings = new Map(triggerSettings);
-    }
-
-    /**
-     * Builds the data and trigger props for one channel's `RealTimePlot`.
-     *
-     * In a trigger mode with a capture it returns mode `"frozen"` with the capture as
-     * `frozenData` and its own pre and post windows; `frozenCollecting` is true while the
-     * capture is still filling. Otherwise mode `"continuous"`.
-     *
-     * @param channel - LabJack channel number.
-     * @returns `mode`, `data` (live snapshot), `frozenData`, `isTriggered`, `triggerTime`
-     *   (Unix ms), `frozenPreWindowSec`, `frozenPostWindowSec` and `frozenCollecting`.
-     */
-    function getPlotConfig(channel: number) {
-        return plotConfigFor(
-            channelModes.get(channel) ?? "free_run",
-            channelData.get(channel) || [],
-            channelTriggerCaptures.get(channel),
-            triggerSettings.get(channel)
-        );
     }
 
     /**
      * Opens the export form with the plotted channels (all enabled channels if none is
-     * plotted) and the last {@link DEFAULT_EXPORT_RANGE_MS} selected.
+     * plotted) and the last two minutes selected.
      */
     function openExportModal() {
         if (!labjackConfig) return;
@@ -1112,12 +802,11 @@
     /**
      * Validates the export form, downloads the CSV over NATS and saves it.
      *
-     * Checks that times and at least one channel are set and that start is not after end.
-     * Sends an `ExportRequestPayload` (asset, sorted channels, RFC 3339 start and end,
-     * `box_id`, and a file name made from `labjack_name`) through `downloadExportViaNats`
-     * to `<root>.<site>.<box>.<source>.export.request`. That helper handles the streamed
-     * chunks and the acknowledgement of each chunk; this function updates the progress bar
-     * and the missing-channel warning from its callbacks. Errors are shown in the form.
+     * The request comes from `buildExportRequest`. It is sent through
+     * `downloadExportViaNats` to `<root>.<site>.<box>.<source>.export.request`. That
+     * helper handles the streamed chunks and the acknowledgement of each chunk; this
+     * function updates the progress bar and the missing-channel warning from its
+     * callbacks. Errors are shown in the form.
      *
      * @param event - Form `submit` event. Its default action is prevented.
      */
@@ -1139,9 +828,7 @@
         exportAbort = abort;
 
         try {
-            const payload = request.payload;
-
-            const result = await downloadExportViaNats(natsService, archiveExportRequestSubject(labjackConfig), payload, {
+            const result = await downloadExportViaNats(natsService, archiveExportRequestSubject(labjackConfig), request.payload, {
                 signal: abort.signal,
                 onProgress: (received) => {
                     exportProgress = received;
@@ -1212,7 +899,7 @@
             }
         }, BACKGROUND_PUMP_INTERVAL_MS);
     });
-    
+
     // Stop the loop, unsubscribe and close this page's connection when leaving the page.
     // A load still in progress sees `destroyed` and closes its own connection.
     onDestroy(() => {
@@ -1411,9 +1098,10 @@ subscription is released and nothing is saved.
                                     Rate is the average sample rate of the current
                                     snapshot: points divided by its time span.
                                 -->
-                                {#each Array.from(channelData.entries()) as [ch, data]}
+                                {#each renderableChannels as ch (ch)}
+                                    {@const data = channelViews.get(ch)?.liveData ?? []}
                                     {@const rate = snapshotRateHz(data)}
-                                    {@const status = channelStreamStatus.get(ch)}
+                                    {@const status = channelViews.get(ch)?.streamStatus}
                                     {@const problems = streamProblemText(ch, status)}
                                     <span class="badge badge-outline badge-xs">Ch{ch}: {data.length} pts ({rate} Hz)</span>
                                     <!--
@@ -1490,313 +1178,16 @@ subscription is released and nothing is saved.
 
             <!-- Channel Sections: Combined Trigger Settings + Plots -->
             <div class="space-y-6">
-                {#each getRenderablePlotChannels() as channel}
-                    {@const index = getChannelConfigIndex(channel)}
-                    {@const channelTriggerSetting = triggerSettings.get(channel)}
-                    {@const channelMode = channelModes.get(channel) ?? 'free_run'}
-                    {@const channelAxis = axisSettings.get(channel)}
-                    {@const plotConfig = getPlotConfig(channel)}
-                    {@const isChannelTriggered = channelTriggered.get(channel) || false}
-                    {@const channelTriggerTimeValue = channelTriggerTime.get(channel) || 0}
-                    {@const isPrebufferReady = channelPrebufferReady.get(channel) ?? false}
-                    {@const unitInfo = getChannelUnitInfo(channel)}
-                    
-                    <!-- Combined Channel Section -->
-                    <div class="card bg-base-100 shadow-xl border border-base-200">
-                        <div class="card-body">
-                            <!-- Channel Header -->
-                            <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
-                                <h3 class="card-title text-base-content">Channel {channel}</h3>
-                                <div class="flex flex-wrap items-center gap-3">
-                                    <div class="badge badge-outline badge-sm">
-                                        {labjackConfig.sensor_settings.data_formats[index]}
-                                    </div>
-                                    <!-- Whether the plotted values are raw volts or calibrated, and into which unit. -->
-                                    <div
-                                        class="badge badge-sm {unitInfo.warning ? 'badge-warning' : unitInfo.calibrated ? 'badge-secondary' : 'badge-ghost'}"
-                                        title={unitInfo.warning ?? ""}
-                                    >
-                                        {unitInfo.tag}
-                                    </div>
-                                    <span class="badge badge-info badge-sm">
-                                        {channelStatusLabel(channelMode, isPrebufferReady, isChannelTriggered)}
-                                    </span>
-                                    {#if isChannelTriggered}
-                                        <span class="text-xs text-success">
-                                            Triggered at {new Date(channelTriggerTimeValue).toLocaleTimeString()}
-                                        </span>
-                                    {/if}
-                                </div>
-                            </div>
-
-                            {#if unitInfo.warning}
-                                <p class="text-sm text-warning -mt-4 mb-4">{unitInfo.warning}</p>
-                            {/if}
-
-                            <div class="mb-6 p-4 bg-base-200 rounded-lg">
-                                <h4 class="text-md font-medium text-base-content mb-4">Mode & Axis</h4>
-                                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-4">
-                                    <div class="form-control">
-                                        <label class="label" for="plot-mode-{channel}">
-                                            <span class="label-text">Plot Mode</span>
-                                        </label>
-                                        <select
-                                            id="plot-mode-{channel}"
-                                            value={channelMode}
-                                            onchange={(e) => {
-                                                if (e.target instanceof HTMLSelectElement) {
-                                                    setChannelMode(channel, e.target.value as ChannelPlotMode);
-                                                }
-                                            }}
-                                            class="select select-bordered"
-                                        >
-                                            <option value="free_run">Free Run</option>
-                                            <option value="trigger_normal">Trigger Normal</option>
-                                            <option value="trigger_single">Trigger Single</option>
-                                        </select>
-                                    </div>
-
-                                    <div class="form-control">
-                                        <label class="label" for="x-window-{channel}">
-                                            <span class="label-text">X Window (s)</span>
-                                        </label>
-                                        <input
-                                            id="x-window-{channel}"
-                                            type="number"
-                                            step="0.1"
-                                            class="input input-bordered"
-                                            value={channelAxis?.xWindowSec ?? timeWindow}
-                                            onchange={(e) => {
-                                                if (e.target instanceof HTMLInputElement) {
-                                                    commitAxisLimit(channel, "xWindowSec", e.target);
-                                                }
-                                            }}
-                                        />
-                                    </div>
-
-                                    <div class="form-control">
-                                        <label class="label cursor-pointer">
-                                            <span class="label-text">Auto Y-Scale</span>
-                                            <input
-                                                type="checkbox"
-                                                class="checkbox checkbox-primary"
-                                                checked={channelAxis?.autoY ?? true}
-                                                onchange={(e) => {
-                                                    if (e.target instanceof HTMLInputElement) {
-                                                        updateAxisSettings(channel, { autoY: e.target.checked });
-                                                    }
-                                                }}
-                                            />
-                                        </label>
-                                    </div>
-
-                                    <div class="form-control">
-                                        <label class="label" for="y-min-{channel}">
-                                            <span class="label-text">Y Min ({unitInfo.unit})</span>
-                                        </label>
-                                        <input
-                                            id="y-min-{channel}"
-                                            type="number"
-                                            step="0.01"
-                                            class="input input-bordered"
-                                            value={(channelAxis?.autoY ?? true) ? "" : (channelAxis?.yMin ?? -1)}
-                                            placeholder={(channelAxis?.autoY ?? true) ? "auto" : undefined}
-                                            disabled={channelAxis?.autoY ?? true}
-                                            onchange={(e) => {
-                                                if (e.target instanceof HTMLInputElement) {
-                                                    commitAxisLimit(channel, "yMin", e.target);
-                                                }
-                                            }}
-                                        />
-                                    </div>
-
-                                    <div class="form-control">
-                                        <label class="label" for="y-max-{channel}">
-                                            <span class="label-text">Y Max ({unitInfo.unit})</span>
-                                        </label>
-                                        <input
-                                            id="y-max-{channel}"
-                                            type="number"
-                                            step="0.01"
-                                            class="input input-bordered"
-                                            value={(channelAxis?.autoY ?? true) ? "" : (channelAxis?.yMax ?? 1)}
-                                            placeholder={(channelAxis?.autoY ?? true) ? "auto" : undefined}
-                                            disabled={channelAxis?.autoY ?? true}
-                                            onchange={(e) => {
-                                                if (e.target instanceof HTMLInputElement) {
-                                                    commitAxisLimit(channel, "yMax", e.target);
-                                                }
-                                            }}
-                                        />
-                                    </div>
-
-                                    <div class="form-control">
-                                        <label class="label cursor-pointer">
-                                            <span class="label-text">Invert X</span>
-                                            <input
-                                                type="checkbox"
-                                                class="checkbox checkbox-primary"
-                                                checked={channelAxis?.invertX ?? false}
-                                                onchange={(e) => {
-                                                    if (e.target instanceof HTMLInputElement) {
-                                                        updateAxisSettings(channel, { invertX: e.target.checked });
-                                                    }
-                                                }}
-                                            />
-                                        </label>
-                                    </div>
-
-                                    <div class="form-control">
-                                        <label class="label cursor-pointer">
-                                            <span class="label-text">Invert Y</span>
-                                            <input
-                                                type="checkbox"
-                                                class="checkbox checkbox-primary"
-                                                checked={channelAxis?.invertY ?? false}
-                                                onchange={(e) => {
-                                                    if (e.target instanceof HTMLInputElement) {
-                                                        updateAxisSettings(channel, { invertY: e.target.checked });
-                                                    }
-                                                }}
-                                            />
-                                        </label>
-                                    </div>
-                                </div>
-                                {#if axisInputErrors.get(channel)}
-                                    <p class="text-sm text-error mt-2">{axisInputErrors.get(channel)}</p>
-                                {/if}
-                            </div>
-
-                            {#if isTriggerMode(channelMode)}
-                                <div class="mb-6 p-4 bg-base-200 rounded-lg">
-                                    <!--
-                                        The threshold is compared with the plotted
-                                        (calibrated) values, so it is in the channel's
-                                        unit, not always volts.
-                                    -->
-                                    <h4 class="text-md font-medium text-base-content mb-4">Trigger Settings</h4>
-                                    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
-                                        <div class="form-control">
-                                            <label class="label" for="trigger-type-{channel}">
-                                                <span class="label-text">Trigger Edge</span>
-                                            </label>
-                                            <select
-                                                id="trigger-type-{channel}"
-                                                value={channelTriggerSetting?.type || 'rising'}
-                                                onchange={(e) => {
-                                                    const setting = triggerSettings.get(channel);
-                                                    if (setting && e.target instanceof HTMLSelectElement) {
-                                                        triggerSettings.set(channel, {
-                                                            ...setting,
-                                                            type: e.target.value as 'rising' | 'falling'
-                                                        });
-                                                        triggerSettings = new Map(triggerSettings);
-                                                    }
-                                                }}
-                                                class="select select-bordered select-warning"
-                                            >
-                                                <option value="rising">Rising Edge</option>
-                                                <option value="falling">Falling Edge</option>
-                                            </select>
-                                        </div>
-                                        <div class="form-control">
-                                            <label class="label" for="trigger-threshold-{channel}">
-                                                <span class="label-text">Threshold ({unitInfo.unit})</span>
-                                            </label>
-                                            <input
-                                                id="trigger-threshold-{channel}"
-                                                type="number"
-                                                step="0.01"
-                                                value={channelTriggerSetting?.threshold ?? 0}
-                                                onchange={(e) => {
-                                                    if (e.target instanceof HTMLInputElement) {
-                                                        commitTriggerNumber(channel, "threshold", e.target);
-                                                    }
-                                                }}
-                                                class="input input-bordered input-warning"
-                                            />
-                                        </div>
-                                        <div class="form-control">
-                                            <label class="label" for="trigger-pre-{channel}">
-                                                <span class="label-text">Pre Trigger (%)</span>
-                                            </label>
-                                            <input
-                                                id="trigger-pre-{channel}"
-                                                type="number"
-                                                min="0"
-                                                max="95"
-                                                step="1"
-                                                value={channelTriggerSetting?.preTriggerPercent || 0}
-                                                onchange={(e) => {
-                                                    const setting = triggerSettings.get(channel);
-                                                    if (setting && e.target instanceof HTMLInputElement) {
-                                                        const raw = parseInt(e.target.value, 10) || 0;
-                                                        triggerSettings.set(channel, {
-                                                            ...setting,
-                                                            preTriggerPercent: Math.min(95, Math.max(0, raw))
-                                                        });
-                                                        triggerSettings = new Map(triggerSettings);
-                                                    }
-                                                }}
-                                                class="input input-bordered input-warning"
-                                            />
-                                        </div>
-                                        <div class="form-control">
-                                            <label class="label" for="trigger-post-{channel}">
-                                                <span class="label-text">Post Window (s)</span>
-                                            </label>
-                                            <input
-                                                id="trigger-post-{channel}"
-                                                type="number"
-                                                min="0.01"
-                                                step="0.1"
-                                                value={channelTriggerSetting?.postTriggerWindowSec ?? timeWindow}
-                                                onchange={(e) => {
-                                                    if (e.target instanceof HTMLInputElement) {
-                                                        commitTriggerNumber(channel, "postTriggerWindowSec", e.target);
-                                                    }
-                                                }}
-                                                class="input input-bordered input-warning"
-                                            />
-                                        </div>
-                                        <div class="form-control justify-end">
-                                            <button
-                                                class="btn btn-outline btn-warning mt-8"
-                                                onclick={() => clearTriggerState(channel)}
-                                            >
-                                                Re-arm Trigger
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            {/if}
-
-                            <div>
-                                <h4 class="text-md font-medium text-base-content mb-4">Data Plot</h4>
-                                <RealTimePlot
-                                    data={plotConfig.data}
-                                    unit={unitInfo.unit}
-                                    calibrated={unitInfo.calibrated}
-                                    timeWindow={channelAxis?.xWindowSec ?? timeWindow}
-                                    isTriggered={plotConfig.isTriggered}
-                                    triggerTime={plotConfig.triggerTime}
-                                    mode={plotConfig.mode}
-                                    frozenData={plotConfig.frozenData}
-                                    frozenPreWindowSec={plotConfig.frozenPreWindowSec}
-                                    frozenPostWindowSec={plotConfig.frozenPostWindowSec}
-                                    frozenCollecting={plotConfig.frozenCollecting}
-                                    showTriggerThreshold={isTriggerMode(channelMode)}
-                                    triggerThreshold={channelTriggerSetting?.threshold}
-                                    prebuffering={isTriggerMode(channelMode) && !isChannelTriggered && !isPrebufferReady}
-                                    yAutoScale={channelAxis?.autoY ?? true}
-                                    yMin={channelAxis?.yMin ?? -1}
-                                    yMax={channelAxis?.yMax ?? 1}
-                                    invertX={channelAxis?.invertX ?? false}
-                                    invertY={channelAxis?.invertY ?? false}
-                                />
-                            </div>
-                        </div>
-                    </div>
+                {#each renderableChannels as channel (channel)}
+                    {@const view = channelViews.get(channel)}
+                    {#if view}
+                        <ChannelCard
+                            {view}
+                            dataFormat={labjackConfig.sensor_settings.data_formats[labjackConfig.sensor_settings.channels_enabled.indexOf(channel)]}
+                            unitInfo={channelUnitInfo(labjackConfig.sensor_settings, channel)}
+                            onchange={markUiSnapshotDirty}
+                        />
+                    {/if}
                 {/each}
             </div>
 
