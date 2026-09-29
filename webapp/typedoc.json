@@ -3,7 +3,7 @@
   "name": "Avena Webapp API",
   "tsconfig": "tsconfig.typedoc.json",
   "entryPoints": ["src/lib/**/*.ts"],
-  "exclude": ["src/lib/sampler/**"],
+  "exclude": ["src/lib/sampler/**", "src/lib/**/*.test.ts", "src/lib/plot/test-helpers.ts"],
   "excludeInternal": true,
   "excludePrivate": false,
   "includeVersion": true,

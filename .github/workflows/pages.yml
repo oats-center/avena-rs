@@ -12,6 +12,7 @@ on:
       - "webapp/pnpm-workspace.yaml"
       - "webapp/src/lib/**"
       - "webapp/typedoc.json"
+      - "webapp/tsconfig.typedoc.json"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 

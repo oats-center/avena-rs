@@ -374,8 +374,11 @@ class PeriodicTemplate {
  */
 export class RawFilterChain {
     readonly plan: FilterPlan;
+    /** Despike stage, or `null` when off. @internal */
     private readonly despiker: Despiker | null;
+    /** 10 Hz template, or `null` when off. @internal */
     private readonly template10: PeriodicTemplate | null;
+    /** 11.9 Hz template, or `null` when off. @internal */
     private readonly template11: PeriodicTemplate | null;
     private readonly ratio11: number;
     /** Sample number since the start of the run, for the template phase. */

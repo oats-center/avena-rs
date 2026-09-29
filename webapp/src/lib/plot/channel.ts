@@ -2,7 +2,7 @@
  * Per-channel settings and derived values of the live plot page.
  *
  * Pure TypeScript with no Svelte dependency, so it is unit tested directly. The page
- * keeps one {@link "channel-view.svelte"!ChannelView} per enabled channel; these
+ * keeps one {@link "plot/channel-view.svelte"!ChannelView} per enabled channel; these
  * helpers compute what it shows from that state.
  *
  * @module

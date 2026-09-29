@@ -53,6 +53,7 @@ export class LiveChannelFilter {
     showFiltered = true;
     private raw: RawFilterChain | null = null;
     private linear: LinearFilterChain | null = null;
+    /** Points waiting for the despike window, oldest first from `head`. @internal */
     private readonly queue: Pending[] = [];
     private head = 0;
     private lastTimestamp: number | null = null;
