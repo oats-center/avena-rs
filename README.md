@@ -9,7 +9,7 @@ Documentation: <https://oats-center.github.io/avena-rs/>
 
 | Path | Contents |
 |---|---|
-| `rust-ljm/` | Rust services: `streamer`, `archiver`, `exporter`, `subscriber`, `recompress` |
+| `rust-ljm/` | Rust services: `streamer`, `archiver`, `exporter`; tools: `subscriber`, `recompress`, `dedupe` |
 | `webapp/` | SvelteKit webapp for live plots, configuration and exports |
 | `shared/` | Edge node profiles, config renderer, container and systemd units |
 | `scripts/` | Installer, status and health scripts, export client, docs build |
@@ -22,6 +22,8 @@ cd webapp && pnpm install && cd ..
 ./scripts/build-docs-site.sh
 ```
 
-This needs [mdBook](https://rust-lang.github.io/mdBook/) and a Rust toolchain.
-The site is written to `target/docs-site`; open `target/docs-site/index.html`.
+This needs [mdBook](https://rust-lang.github.io/mdBook/), a Rust toolchain and
+pnpm. The site is written to `target/docs-site`; open
+`target/docs-site/index.html`. Pass another folder as the first argument to
+build there instead.
 GitHub Pages publishes the same build from `main`.

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Builds the documentation site into target/docs-site.
+# Builds the documentation site into target/docs-site, or into the folder given
+# as the first argument.
 #
 # The guides are an mdBook under docs/. The API reference is generated from the
 # code: rustdoc for rust-ljm and TypeDoc for the webapp library. Both are copied
@@ -9,10 +10,18 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-SITE="${ROOT}/target/docs-site"
+SITE="${1:-${ROOT}/target/docs-site}"
+mkdir -p "${SITE}"
+SITE="$(cd -- "${SITE}" && pwd)"
+case "${SITE}" in
+  / | "${HOME:-/}" | "${ROOT}")
+    echo "Refusing to use ${SITE} as the output folder; it is emptied first." >&2
+    exit 1
+    ;;
+esac
 
 rm -rf "${SITE}"
-mdbook build "${ROOT}/docs"
+mdbook build --dest-dir "${SITE}" "${ROOT}/docs"
 
 cargo doc \
   --manifest-path "${ROOT}/rust-ljm/Cargo.toml" \
