@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DataPoint } from './stream';
-import { computeValueRange, downsampleMinMax, formatTimeTick, latestFinitePoint, selectTimeWindow, splitAtGaps, timeAxisTicks } from './render';
+import { computeValueRange, downsampleMinMax, formatTimeTick, latestFinitePoint, selectTimeWindow, splitAtGaps, thresholdLabelBox, timeAxisTicks } from './render';
 
 const series = (values: number[], step = 1): DataPoint[] => values.map((value, i) => ({ timestamp: i * step, value }));
 
@@ -76,5 +76,23 @@ describe('time axis ticks', () => {
         expect(formatTimeTick(1, 0.5, 's')).toBe('1.0');
         expect(formatTimeTick(-0.02, 0.01, 'ms')).toBe('-20');
         expect(formatTimeTick(0.0025, 0.0005, 'ms')).toBe('2.5');
+    });
+});
+
+describe('thresholdLabelBox', () => {
+    it('sits in the top margin, above the plot area', () => {
+        const box = thresholdLabelBox(80, 760, 30, 90);
+        expect(box).toEqual({ x: 80, y: 6, width: 102, height: 18 });
+        expect(box.y + box.height).toBeLessThanOrEqual(30);
+    });
+
+    it('never gets wider than the plot area or taller than the margin', () => {
+        const narrow = thresholdLabelBox(80, 120, 30, 90);
+        expect(narrow.x).toBe(80);
+        expect(narrow.width).toBe(40);
+        const flat = thresholdLabelBox(80, 760, 12, 90);
+        expect(flat.y).toBeGreaterThanOrEqual(0);
+        expect(flat.y + flat.height).toBeLessThanOrEqual(12);
+        expect(thresholdLabelBox(80, 60, 0, 90)).toEqual({ x: 80, y: 0, width: 0, height: 0 });
     });
 });

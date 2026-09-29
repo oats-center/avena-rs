@@ -1502,8 +1502,8 @@
 Live plot page for one LabJack, with a form to download archived data as CSV.
 
 URL: `/labjacks/plots/[asset_number]?key=<kv key>`
-- `asset_number`: the config's `asset_number`. If it is not a non-negative integer the
-  page shows an error instead of loading.
+- `asset_number`: the config's `asset_number`. If it is not a non-negative integer,
+  `+page.ts` answers 404 and SvelteKit shows the shared error page.
 - `key` (optional): KV key of the config in bucket `avenabox`, such as
   `<site>.<box>.<source>.config`. It is used only when that config's `asset_number`
   matches. Otherwise the page reads every `*.*.*.config` key and takes the first config
