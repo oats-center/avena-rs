@@ -74,9 +74,45 @@ Rows come channel by channel, and within a channel in file order.
 Core NATS delivers as fast as the exporter publishes, so a slow client would
 fall behind and lose chunks. When the request has an `ack_subject`, the
 exporter waits after every eight chunks until it has received eight messages
-on that subject, allowing up to 30 seconds for each. The content of an ack
-message is ignored. A client should publish one ack per chunk as it stores it.
-Without `ack_subject`, the exporter sends as fast as it can.
+on that subject, allowing up to 30 seconds for each. An ack is any message on
+that subject other than a cancel (see below); an empty message is enough. A
+client should publish one ack per chunk as it stores it. Without
+`ack_subject`, the exporter sends as fast as it can.
+
+## Cancel
+
+To stop an export early, publish one cancel message on the same `ack_subject`:
+
+```text
+subject:  <ack_subject>
+header:   Avena-Export-Frame: cancel
+body:     {"type":"cancel"}
+```
+
+Either part is enough: the exporter treats a message as a cancel if it has
+that header, or if its body is JSON with `"type":"cancel"` (for tools that
+cannot set headers). Empty acks are never mistaken for a cancel.
+
+The exporter reads its ack subject before publishing each chunk and while it
+waits for acks, so it stops before the next chunk: chunks it had already
+published may still arrive, and nothing is sent after it has read the cancel,
+not even an `error` or `complete` frame. It then closes the ack subscription,
+drops its file readers and logs
+`[exporter] export cancelled by the client after N chunk(s), M bytes`.
+
+The webapp sends a cancel when the user cancels an export, and also when it
+gives up for another reason after sending the request (idle timeout, a frame it
+cannot parse). It sends none after `complete`, after an `error` frame or after
+a no-responders status.
+
+Compatibility:
+
+- A client that never sends a cancel works as before.
+- An exporter that predates the cancel message counts it as one ack. It then
+  waits for the remaining acks of the current round and stops after its
+  30-second ack timeout, as it did before, having sent at most eight more
+  chunks. A client should therefore unsubscribe from its reply inbox after
+  cancelling instead of waiting for a final frame.
 
 ## Errors
 

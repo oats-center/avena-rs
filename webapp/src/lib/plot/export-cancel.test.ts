@@ -61,7 +61,9 @@ describe('export cancel', () => {
         expect(isExportCancelled(err)).toBe(true);
         expect(sub.unsubscribed).toBe(true);
         expect(received).toBe(3);
-        expect(published.length).toBe(acksBefore);
+        // No more acks; only the cancel message on the ack subject.
+        expect(published.length).toBe(acksBefore + 1);
+        expect(published[published.length - 1]).toBe(published[1]);
     });
 
     it('does not send the request when already aborted', async () => {

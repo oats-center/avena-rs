@@ -16,8 +16,8 @@
 //!   header `Avena-Export-Frame` naming the frame: `meta`, then one or more
 //!   `chunk` frames with raw CSV bytes (about 512 KiB each, the last one smaller),
 //!   then `summary` and `complete`. Failures produce an `error` frame. See
-//!   [`process_nats_request`] and [`NatsCsvStreamer`] for the exact payloads and
-//!   the ack-subject backpressure.
+//!   [`process_nats_request`] and [`NatsCsvStreamer`] for the exact payloads, the
+//!   ack-subject backpressure and the cancel message a client can send there.
 //! * Direct mode serves the same export over a WebSocket at `ws://<EXPORTER_ADDR>/export`.
 //!   The client sends one JSON request as a text message and receives the same
 //!   frames as JSON text messages, with CSV chunks (about 128 KiB) as binary
@@ -114,6 +114,8 @@ use std::io::Write as _;
 mod calibration;
 mod nats_config;
 mod subjects;
+#[cfg(test)]
+mod test_nats;
 
 use calibration::{CalibrationFormula, CalibrationSpec};
 
@@ -129,6 +131,53 @@ const EXPORT_FRAME_SUMMARY: &str = "summary";
 const EXPORT_FRAME_COMPLETE: &str = "complete";
 /// Frame name for request validation or processing errors (`message`).
 const EXPORT_FRAME_ERROR: &str = "error";
+/// Frame name a client sends on its `ack_subject` to stop an export.
+const EXPORT_FRAME_CANCEL: &str = "cancel";
+
+/// Error returned when the client cancels a worker-mode export.
+///
+/// [`run_worker`] logs it and sends no `error` frame, since the client has stopped
+/// listening.
+#[derive(Debug)]
+struct ExportCancelled {
+    /// `chunk` frames published before the cancel was seen.
+    chunks_sent: usize,
+    /// CSV bytes published before the cancel was seen.
+    bytes_sent: usize,
+}
+
+impl std::fmt::Display for ExportCancelled {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "export cancelled by the client after {} chunk(s), {} bytes",
+            self.chunks_sent, self.bytes_sent
+        )
+    }
+}
+
+impl std::error::Error for ExportCancelled {}
+
+/// Tells whether a message on the ack subject is a cancel request.
+///
+/// A cancel carries the header `Avena-Export-Frame: cancel`, or a JSON body whose
+/// `type` is `cancel` for clients that cannot set headers. Every other message,
+/// including the empty acks, is an ack.
+fn is_cancel_message(message: &async_nats::Message) -> bool {
+    if message
+        .headers
+        .as_ref()
+        .and_then(|h| h.get(EXPORT_FRAME_HEADER))
+        .is_some_and(|v| v.as_str() == EXPORT_FRAME_CANCEL)
+    {
+        return true;
+    }
+    !message.payload.is_empty()
+        && serde_json::from_slice::<serde_json::Value>(&message.payload)
+            .ok()
+            .and_then(|v| v.get("type").and_then(|t| t.as_str()).map(str::to_owned))
+            .is_some_and(|t| t == EXPORT_FRAME_CANCEL)
+}
 /// Runtime mode used when `EXPORTER_MODE` is unset.
 const DEFAULT_EXPORTER_MODE: &str = "worker";
 /// WebSocket listen address used in direct mode when `EXPORTER_ADDR` is unset.
@@ -473,6 +522,10 @@ async fn run_worker(parquet_root: PathBuf) -> Result<()> {
             )
             .await
             {
+                if let Some(cancelled) = err.downcast_ref::<ExportCancelled>() {
+                    println!("[exporter] {cancelled}; stopped the export on {reply}");
+                    return;
+                }
                 eprintln!("[exporter] worker request failed: {err:#}");
                 let _ = publish_nats_json(
                     &client,
@@ -502,7 +555,8 @@ async fn run_worker(parquet_root: PathBuf) -> Result<()> {
 /// Validation failures (no channels, `end` before `start`, non-CSV format) publish
 /// only an `error` frame (`{"type":"error","message":...}`) and return `Ok`, with
 /// no `complete` frame. If `ack_subject` is set and not blank, the function
-/// subscribes to it before streaming.
+/// subscribes to it before streaming. A cancel message on that subject stops the
+/// export before the next chunk with an [`ExportCancelled`] error.
 ///
 /// # Arguments
 ///
@@ -516,7 +570,8 @@ async fn run_worker(parquet_root: PathBuf) -> Result<()> {
 /// Returns an error if the payload is not a valid [`ExportRequest`], if `start` or
 /// `end` is not RFC 3339, if a publish, flush or the ack subscription fails, if an
 /// ack does not arrive in time, or if a channel's day directory cannot be listed.
-/// The caller ([`run_worker`]) turns these into an `error` frame.
+/// The caller ([`run_worker`]) turns these into an `error` frame, except
+/// [`ExportCancelled`], which it only logs.
 async fn process_nats_request(
     nc: async_nats::Client,
     reply: async_nats::Subject,
@@ -911,8 +966,11 @@ struct CsvStreamer<'a, S: ExportSink + Send> {
 /// [`Self::FLUSH_EVERY_CHUNKS`] (8) chunks it flushes the NATS client and, when
 /// the request named an `ack_subject`, waits until the client has published one
 /// ack message per chunk sent, allowing [`Self::ACK_TIMEOUT_SECS`] (30 s) for
-/// each. The content of ack messages is ignored. Without an ack subject the
-/// worker only flushes, and nothing stops it from outrunning a slow client.
+/// each. The content of ack messages is ignored, except that a cancel message
+/// (see [`is_cancel_message`]) stops the export: messages already on the ack
+/// subject are read before every chunk, so at most the chunk being published when
+/// the cancel arrives still goes out. Without an ack subject the worker only
+/// flushes, and nothing stops it from outrunning a slow client.
 struct NatsCsvStreamer {
     /// Connected NATS client.
     client: async_nats::Client,
@@ -924,8 +982,10 @@ struct NatsCsvStreamer {
     chunk: Vec<u8>,
     /// Chunks published since the last forced client flush.
     chunks_since_flush: usize,
-    /// Chunks published since the last completed ack wait.
-    chunks_since_ack: usize,
+    /// Chunks published and not yet acknowledged by the client.
+    unacked: usize,
+    /// Chunks published so far.
+    chunks_sent: usize,
     /// CSV bytes published so far.
     bytes_sent: usize,
     /// Asset number used to locate the Parquet partitions.
@@ -972,7 +1032,8 @@ impl NatsCsvStreamer {
             ack_sub,
             chunk,
             chunks_since_flush: 0,
-            chunks_since_ack: 0,
+            unacked: 0,
+            chunks_sent: 0,
             bytes_sent: 0,
             asset,
             start,
@@ -1001,7 +1062,13 @@ impl NatsCsvStreamer {
             let found = self
                 .stream_channel(parquet_root, channel)
                 .await
-                .map_err(|e| anyhow!("channel {channel:02}: {e}"))?;
+                .map_err(|e| {
+                    if e.is::<ExportCancelled>() {
+                        e
+                    } else {
+                        anyhow!("channel {channel:02}: {e}")
+                    }
+                })?;
             if !found {
                 missing.push(channel);
             }
@@ -1011,69 +1078,115 @@ impl NatsCsvStreamer {
 
     /// Publishes the current CSV buffer as one `chunk` frame.
     ///
-    /// Does nothing if the buffer is empty. Adds the chunk to `bytes_sent`, flushes
-    /// the NATS client every [`Self::FLUSH_EVERY_CHUNKS`] chunks, and calls
-    /// [`Self::wait_for_acks`] once that many chunks are unacknowledged.
+    /// Does nothing if the buffer is empty. First reads what has arrived on the ack
+    /// subject ([`Self::poll_ack_subject`]), so a cancel stops the export before the
+    /// next chunk. Adds the chunk to `bytes_sent`, flushes the NATS client every
+    /// [`Self::FLUSH_EVERY_CHUNKS`] chunks, and calls [`Self::wait_for_acks`] once
+    /// that many chunks are unacknowledged.
     ///
     /// # Errors
     ///
-    /// Returns an error if the publish or flush fails, or if [`Self::wait_for_acks`]
-    /// fails.
+    /// Returns [`ExportCancelled`] if the client cancelled, or an error if the
+    /// publish or flush fails, or if [`Self::wait_for_acks`] fails.
     async fn flush(&mut self) -> Result<()> {
         if self.chunk.is_empty() {
             return Ok(());
         }
+        self.poll_ack_subject()?;
         let data = std::mem::take(&mut self.chunk);
-        self.bytes_sent += data.len();
+        let len = data.len();
         let mut headers = HeaderMap::new();
         headers.insert(EXPORT_FRAME_HEADER, EXPORT_FRAME_CHUNK);
         self.client
             .publish_with_headers(self.reply.clone(), headers, data.into())
             .await?;
+        self.bytes_sent += len;
+        self.chunks_sent += 1;
         self.chunks_since_flush += 1;
-        self.chunks_since_ack += 1;
+        if self.ack_sub.is_some() {
+            self.unacked += 1;
+        }
         if self.chunks_since_flush >= Self::FLUSH_EVERY_CHUNKS {
             self.client.flush().await?;
             self.chunks_since_flush = 0;
         }
-        if self.chunks_since_ack >= Self::FLUSH_EVERY_CHUNKS {
+        if self.unacked >= Self::FLUSH_EVERY_CHUNKS {
             self.wait_for_acks().await?;
         }
         self.chunk = Vec::with_capacity(Self::CHUNK_SIZE);
         Ok(())
     }
 
-    /// Waits for client acknowledgements for recently published chunks.
-    ///
-    /// Returns at once if there is no ack subscription or no pending chunk.
-    /// Otherwise flushes the client so the chunks actually leave, then waits for one
-    /// message on the ack subject per pending chunk, allowing
-    /// [`Self::ACK_TIMEOUT_SECS`] for each, and resets the pending count.
+    /// Returns the error for a cancel seen after the chunks sent so far.
+    fn cancelled(&self) -> anyhow::Error {
+        ExportCancelled {
+            chunks_sent: self.chunks_sent,
+            bytes_sent: self.bytes_sent,
+        }
+        .into()
+    }
+
+    /// Counts one message from the ack subject: an ack, or a cancel.
     ///
     /// # Errors
     ///
-    /// Returns an error if the flush fails, if any ack takes longer than
-    /// [`Self::ACK_TIMEOUT_SECS`], or if the ack subscription closes.
+    /// Returns [`ExportCancelled`] if the message is a cancel.
+    fn handle_ack_message(&mut self, message: &async_nats::Message) -> Result<()> {
+        if is_cancel_message(message) {
+            return Err(self.cancelled());
+        }
+        self.unacked = self.unacked.saturating_sub(1);
+        Ok(())
+    }
+
+    /// Reads, without waiting, every message already received on the ack subject.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExportCancelled`] if one of them is a cancel.
+    fn poll_ack_subject(&mut self) -> Result<()> {
+        use futures_util::FutureExt as _;
+        loop {
+            let Some(ack_sub) = self.ack_sub.as_mut() else {
+                return Ok(());
+            };
+            match ack_sub.next().now_or_never() {
+                Some(Some(message)) => self.handle_ack_message(&message)?,
+                _ => return Ok(()),
+            }
+        }
+    }
+
+    /// Waits until the client has acknowledged every chunk sent so far.
+    ///
+    /// Returns at once if there is no ack subscription or no unacknowledged chunk.
+    /// Otherwise flushes the client so the chunks actually leave, then waits for
+    /// messages on the ack subject until every chunk is acknowledged, allowing
+    /// [`Self::ACK_TIMEOUT_SECS`] for each.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExportCancelled`] if a cancel arrives, or an error if the flush
+    /// fails, if any ack takes longer than [`Self::ACK_TIMEOUT_SECS`], or if the ack
+    /// subscription closes.
     async fn wait_for_acks(&mut self) -> Result<()> {
-        let Some(ack_sub) = self.ack_sub.as_mut() else {
-            return Ok(());
-        };
-        let pending = self.chunks_since_ack;
-        if pending == 0 {
+        if self.ack_sub.is_none() || self.unacked == 0 {
             return Ok(());
         }
-
         self.client.flush().await?;
-        for _ in 0..pending {
-            tokio::time::timeout(
+        while self.unacked > 0 {
+            let Some(ack_sub) = self.ack_sub.as_mut() else {
+                return Ok(());
+            };
+            let message = tokio::time::timeout(
                 std::time::Duration::from_secs(Self::ACK_TIMEOUT_SECS),
                 ack_sub.next(),
             )
             .await
             .map_err(|_| anyhow!("timed out waiting for export chunk acknowledgement"))?
             .ok_or_else(|| anyhow!("export acknowledgement subscription closed"))?;
+            self.handle_ack_message(&message)?;
         }
-        self.chunks_since_ack = 0;
         Ok(())
     }
 
@@ -2108,6 +2221,202 @@ mod tests {
         schema::parser::parse_message_type,
     };
     use std::time::Instant;
+
+    /// What a test client saw of one worker-mode export.
+    struct ExportRun {
+        /// Frame names in arrival order.
+        frames: Vec<String>,
+        /// `chunk` frames received after the cancel was sent.
+        chunks_after_cancel: usize,
+        /// What `process_nats_request` returned.
+        result: Result<()>,
+        /// Time from the cancel (or the request) until the exporter returned.
+        elapsed: std::time::Duration,
+    }
+
+    /// How the test client ends an export.
+    #[derive(Clone, Copy)]
+    enum ClientEnd {
+        /// Acks every chunk, like a client without cancel support.
+        AckAll,
+        /// Acks the first `n` chunks, then sends a cancel with the header, while
+        /// the exporter keeps streaming.
+        CancelAfter(usize),
+        /// Acks the first eight chunks, lets the exporter block waiting for the next
+        /// eight acks, then sends a cancel as a JSON body without the header.
+        CancelWhileBlocked,
+    }
+
+    /// Runs one worker-mode export of about 20 chunks against a real NATS server.
+    async fn run_worker_export(server: &crate::test_nats::TestNats, end: ClientEnd) -> ExportRun {
+        let root = std::env::temp_dir().join(format!("exporter-cancel-{}", uuid::Uuid::new_v4()));
+        let dir = root
+            .join("asset1001")
+            .join(at(DAY_START).date_naive().format("%Y-%m-%d").to_string())
+            .join("ch08");
+        write_part(&dir, 1, &samples(0, 150_000), IDENTITY);
+
+        let client = async_nats::connect(&server.url).await.unwrap();
+        let reply = client.new_inbox();
+        let ack_subject = client.new_inbox();
+        let mut replies = client.subscribe(reply.clone()).await.unwrap();
+        client.flush().await.unwrap();
+        let request = json!({
+            "asset": 1001,
+            "channels": [8],
+            "start": at(DAY_START).to_rfc3339(),
+            "end": at(DAY_START + 86_000 * 1_000_000_000).to_rfc3339(),
+            "ack_subject": ack_subject,
+        });
+        let state = AppState {
+            mode: ExporterMode::Worker,
+            parquet_root: Arc::new(root.clone()),
+        };
+        let worker = tokio::spawn(process_nats_request(
+            client.clone(),
+            reply.into(),
+            serde_json::to_vec(&request).unwrap(),
+            state,
+        ));
+
+        let mut frames = Vec::new();
+        let mut chunks = 0usize;
+        let mut cancelled_at: Option<Instant> = None;
+        let mut chunks_after_cancel = 0usize;
+        let started = Instant::now();
+        let send_cancel = |header: bool| {
+            let client = client.clone();
+            let subject = ack_subject.clone();
+            async move {
+                if header {
+                    let mut headers = HeaderMap::new();
+                    headers.insert(EXPORT_FRAME_HEADER, EXPORT_FRAME_CANCEL);
+                    client
+                        .publish_with_headers(subject, headers, "".into())
+                        .await
+                        .unwrap();
+                } else {
+                    client
+                        .publish(subject, r#"{"type":"cancel"}"#.into())
+                        .await
+                        .unwrap();
+                }
+                client.flush().await.unwrap();
+            }
+        };
+        loop {
+            let next =
+                tokio::time::timeout(std::time::Duration::from_secs(2), replies.next()).await;
+            let Ok(Some(message)) = next else {
+                // Quiet for 2 s: the exporter is blocked on acks or done.
+                if let (ClientEnd::CancelWhileBlocked, None) = (end, cancelled_at) {
+                    send_cancel(false).await;
+                    cancelled_at = Some(Instant::now());
+                    continue;
+                }
+                break;
+            };
+            let frame = message
+                .headers
+                .as_ref()
+                .and_then(|h| h.get(EXPORT_FRAME_HEADER))
+                .map(|v| v.as_str().to_string())
+                .unwrap_or_default();
+            frames.push(frame.clone());
+            if frame == EXPORT_FRAME_COMPLETE || frame == EXPORT_FRAME_ERROR {
+                break;
+            }
+            if frame != EXPORT_FRAME_CHUNK {
+                continue;
+            }
+            chunks += 1;
+            if cancelled_at.is_some() {
+                chunks_after_cancel += 1;
+                continue;
+            }
+            match end {
+                ClientEnd::CancelAfter(n) if chunks == n => {
+                    send_cancel(true).await;
+                    cancelled_at = Some(Instant::now());
+                }
+                ClientEnd::CancelWhileBlocked if chunks > 8 => {}
+                _ => {
+                    client
+                        .publish(ack_subject.clone(), "".into())
+                        .await
+                        .unwrap();
+                }
+            }
+        }
+        let result = tokio::time::timeout(std::time::Duration::from_secs(10), worker)
+            .await
+            .expect("exporter returns without waiting for its ack timeout")
+            .unwrap();
+        let elapsed = cancelled_at.unwrap_or(started).elapsed();
+        fs::remove_dir_all(root).unwrap();
+        ExportRun {
+            frames,
+            chunks_after_cancel,
+            result,
+            elapsed,
+        }
+    }
+
+    /// A client without cancel support acks every chunk and gets the whole export.
+    #[tokio::test]
+    async fn worker_export_completes_for_a_client_that_only_acks() {
+        let Some(server) = crate::test_nats::TestNats::start("export_ack_all") else {
+            return;
+        };
+        let run = run_worker_export(&server, ClientEnd::AckAll).await;
+        run.result.expect("export succeeds");
+        let chunks = run.frames.iter().filter(|f| *f == "chunk").count();
+        assert!(
+            chunks > 16,
+            "the test export spans several ack rounds: {chunks}"
+        );
+        assert_eq!(run.frames.first().map(String::as_str), Some("meta"));
+        assert_eq!(
+            &run.frames[run.frames.len() - 2..],
+            ["summary".to_string(), "complete".to_string()]
+        );
+    }
+
+    /// A cancel sent while the exporter is streaming stops it before its next ack
+    /// wait: no summary or complete frame, and it returns without the ack timeout.
+    #[tokio::test]
+    async fn worker_export_stops_on_cancel_while_streaming() {
+        let Some(server) = crate::test_nats::TestNats::start("export_cancel") else {
+            return;
+        };
+        let run = run_worker_export(&server, ClientEnd::CancelAfter(3)).await;
+        let err = run.result.expect_err("export is cancelled");
+        let cancelled = err.downcast_ref::<ExportCancelled>().expect("cancel error");
+        // Up to eight chunks may be in flight unacknowledged when the cancel is
+        // sent; nothing is published after the exporter has read it.
+        assert!(cancelled.chunks_sent < 3 + NatsCsvStreamer::FLUSH_EVERY_CHUNKS);
+        assert!(run.chunks_after_cancel < NatsCsvStreamer::FLUSH_EVERY_CHUNKS);
+        assert!(!run.frames.iter().any(|f| f == "summary" || f == "complete"));
+        assert!(run.elapsed < std::time::Duration::from_secs(5));
+    }
+
+    /// A cancel (here as a JSON body without the header) ends an exporter that is
+    /// blocked waiting for acks at once, with no further chunk.
+    #[tokio::test]
+    async fn worker_export_stops_on_cancel_while_waiting_for_acks() {
+        let Some(server) = crate::test_nats::TestNats::start("export_cancel_blocked") else {
+            return;
+        };
+        let run = run_worker_export(&server, ClientEnd::CancelWhileBlocked).await;
+        let err = run.result.expect_err("export is cancelled");
+        let cancelled = err.downcast_ref::<ExportCancelled>().expect("cancel error");
+        assert_eq!(
+            cancelled.chunks_sent,
+            2 * NatsCsvStreamer::FLUSH_EVERY_CHUNKS
+        );
+        assert_eq!(run.chunks_after_cancel, 0);
+        assert!(run.elapsed < std::time::Duration::from_secs(5));
+    }
 
     /// The exporter's reading logic before this change, kept as a reference.
     fn reference_rows(path: &Path, start: DateTime<Utc>, end: DateTime<Utc>) -> Vec<(i64, f64)> {

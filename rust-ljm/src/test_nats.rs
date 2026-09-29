@@ -60,6 +60,7 @@ impl TestNats {
     }
 
     /// Connects and returns a JetStream context once JetStream answers.
+    #[allow(dead_code)] // not every binary's tests use JetStream
     pub async fn jetstream(&self) -> async_nats::jetstream::Context {
         let client = async_nats::connect(&self.url)
             .await

@@ -8,13 +8,14 @@
  * the `Avena-Export-Frame` header: `meta`, one or more `chunk` frames of raw CSV
  * bytes, `summary`, and `complete`, or an `error` frame instead. Because core NATS
  * has no flow control, the client acknowledges each chunk on a separate ack subject,
- * and the exporter pauses every eight chunks until the acks arrive.
+ * and the exporter pauses every eight chunks until the acks arrive. To stop an export
+ * early the client publishes a `cancel` message on the same ack subject.
  *
  * See `docs/src/reference/export-protocol.md` for the full protocol.
  *
  * @module
  */
-import { createInbox } from "@nats-io/nats-core";
+import { createInbox, headers } from "@nats-io/nats-core";
 import type { NatsService } from "./nats.svelte";
 
 /**
@@ -77,10 +78,11 @@ export interface ExportStreamOptions {
    */
   idleTimeoutMs?: number;
   /**
-   * Cancels the download when aborted: no further frames are read or acknowledged,
-   * the reply subscription is released, and the call rejects with an error named
-   * `AbortError` (see {@link isExportCancelled}). The exporter then stops on its own
-   * when its acks time out; the protocol has no cancel message.
+   * Cancels the download when aborted: a `cancel` message is published on the ack
+   * subject so the exporter stops before its next chunk, no further frames are read
+   * or acknowledged, the reply subscription is released, and the call rejects with
+   * an error named `AbortError` (see {@link isExportCancelled}). An exporter that
+   * predates the cancel message counts it as one ack and stops when its acks time out.
    */
   signal?: AbortSignal;
 }
@@ -133,6 +135,12 @@ type Frame = SummaryFrame | MetaFrame | ErrorFrame | CompleteFrame | Record<stri
 
 /** NATS header whose value names the frame type of each reply message. */
 const EXPORT_FRAME_HEADER = "Avena-Export-Frame";
+
+/**
+ * Frame name of the cancel message a client publishes on its ack subject. The body
+ * repeats it as JSON for tools that cannot set headers.
+ */
+const EXPORT_FRAME_CANCEL = "cancel";
 
 /**
  * Bytes of received chunks kept as separate arrays before they are folded into one
@@ -189,6 +197,13 @@ function isErrorFrame(frame: Frame): frame is ErrorFrame {
  *    whose `type` field does not match the header, are ignored.
  * 4. On the `complete` frame, joins the stored parts into one Blob and resolves.
  *
+ * If the call ends any other way after the request was sent (cancelled through
+ * `options.signal`, idle timeout, a bad frame, the subscription ending), it publishes
+ * a `cancel` message on the ack subject, with the header `Avena-Export-Frame: cancel`
+ * and the body `{"type":"cancel"}`, so the exporter stops instead of waiting for acks.
+ * No cancel is sent after an `error` frame or a NATS status reply, since the exporter
+ * has already stopped or never started.
+ *
  * Chunks are folded into a Blob part every 8 MiB, so at most that much CSV sits in
  * JavaScript memory at a time; the rest is held in the browser's Blob storage until
  * the caller saves the result.
@@ -236,6 +251,11 @@ export async function downloadExportViaNats(
   let summary: SummaryFrame | null = null;
   let totalBytes = 0;
   let timedOut = false;
+  // Set once the request is published; no cancel is needed before that.
+  let requestSent = false;
+  // Set when the exporter has finished on its own (complete or error frame, status).
+  let exporterDone = false;
+  let cancelSent = false;
   const idleTimeoutMs = options.idleTimeoutMs ?? 10 * 60_000;
   let timeout: ReturnType<typeof setTimeout>;
 
@@ -262,8 +282,30 @@ export async function downloadExportViaNats(
     }
   }, idleTimeoutMs);
 
-  // Cancelling unsubscribes, which ends the `for await` loop below.
+  // Tells the exporter to stop. Best effort: the connection may already be closed.
+  const sendCancel = () => {
+    if (!requestSent || exporterDone || cancelSent) return;
+    cancelSent = true;
+    try {
+      const h = headers();
+      h.set(EXPORT_FRAME_HEADER, EXPORT_FRAME_CANCEL);
+      nats.connection.publish(
+        ackSubject,
+        new TextEncoder().encode(JSON.stringify({ type: EXPORT_FRAME_CANCEL })),
+        { headers: h }
+      );
+      if (typeof nats.connection.flush === "function") {
+        nats.connection.flush().catch(() => {});
+      }
+    } catch {
+      // The exporter falls back to its ack timeout.
+    }
+  };
+
+  // Cancelling tells the exporter to stop and unsubscribes, which ends the
+  // `for await` loop below.
   const onAbort = () => {
+    sendCancel();
     try {
       sub.unsubscribe();
     } catch {
@@ -280,6 +322,7 @@ export async function downloadExportViaNats(
       ),
       { reply: inbox }
     );
+    requestSent = true;
     if (typeof nats.connection.flush === "function") {
       await nats.connection.flush();
     }
@@ -292,11 +335,13 @@ export async function downloadExportViaNats(
       // (503) when nothing is subscribed to the subject; other status codes are
       // errors too. Exporter frames never carry a status.
       if (msg.headers?.code === 503) {
+        exporterDone = true;
         throw new Error(
           `No exporter is listening on ${requestSubject}. The edge box is offline or its exporter is not running.`
         );
       }
       if (msg.headers?.hasError) {
+        exporterDone = true;
         const { code, description } = msg.headers;
         throw new Error(`NATS export request failed: ${code}${description ? ` ${description}` : ""}`);
       }
@@ -348,10 +393,12 @@ export async function downloadExportViaNats(
       }
 
       if (frame === "error" && isErrorFrame(parsed)) {
+        exporterDone = true;
         throw new Error(`Export server error: ${parsed.message}`);
       }
 
       if (frame === "complete") {
+        exporterDone = true;
         const fileName = meta?.fileName ?? payload.download_name ?? "labjack_export.csv";
         const mime = meta?.contentType ?? "text/csv";
         const blob = new Blob([...parts, ...(pending as BlobPart[])], { type: mime });
@@ -371,6 +418,7 @@ export async function downloadExportViaNats(
     throw new Error("NATS export response ended before completion");
   } finally {
     signal?.removeEventListener("abort", onAbort);
+    sendCancel();
     clearTimeout(timeout);
     try {
       sub.unsubscribe();
