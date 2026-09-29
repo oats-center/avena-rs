@@ -36,6 +36,11 @@ export interface DataPoint {
     timestamp: number;
     /** Calibrated value, or `NaN` for a missing sample or a gap marker. */
     value: number;
+    /**
+     * Raw reading in volts before calibration, or `NaN` for a missing sample or a gap
+     * marker. Shown next to the calibrated Latest value.
+     */
+    raw?: number;
     /** Source sample time, Unix ms. Equal to `timestamp`. */
     sourceTimestamp?: number | null;
     /** Browser time the message arrived, Unix ms. Used for the lag readout. */
@@ -171,18 +176,19 @@ export function ingestScan(
     const points: DataPoint[] = [];
     if (gap && state) {
         const markerTime = state.lastTimestamp + state.lastIntervalMs;
-        points.push({ timestamp: markerTime, value: Number.NaN, sourceTimestamp: markerTime, receivedAt });
+        points.push({ timestamp: markerTime, value: Number.NaN, raw: Number.NaN, sourceTimestamp: markerTime, receivedAt });
     }
 
     for (let i = startIndex; i < count; i++) {
         const timestamp = timeAt(i);
         const raw = scan.values[i];
         let value = Number.NaN;
-        if (!isMissingRawValue(raw)) {
+        const missing = isMissingRawValue(raw);
+        if (!missing) {
             const calibrated = applyCalibration(calibration, raw);
             value = Number.isFinite(calibrated) ? calibrated : Number.NaN;
         }
-        points.push({ timestamp, value, sourceTimestamp: timestamp, receivedAt });
+        points.push({ timestamp, value, raw: missing ? Number.NaN : raw, sourceTimestamp: timestamp, receivedAt });
     }
 
     const nextState: ChannelStreamState = {

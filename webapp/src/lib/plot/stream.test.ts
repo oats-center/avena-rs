@@ -254,6 +254,7 @@ describe('values', () => {
         const linear = normalizeCalibration({ type: 'linear', a: 2, b: -1 });
         const result = ingestScan(null, scanOf([0, 3, Number.NaN, 60]), linear, 0);
         expect(result.points.map((p) => p.value)).toEqual([-1, 5, Number.NaN, 119]);
+        expect(result.points.map((p) => p.raw)).toEqual([0, 3, Number.NaN, 60]);
         const poly = normalizeCalibration({ type: 'polynomial', coeffs: [1, 0, 2] });
         expect(ingestScan(null, scanOf([3]), poly, 0).points[0].value).toBe(19);
     });

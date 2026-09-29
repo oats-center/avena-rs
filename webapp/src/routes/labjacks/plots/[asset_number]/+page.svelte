@@ -10,6 +10,7 @@
     import { parseAssetNumberParam } from "$lib/plot/route";
     import { applyAxisLimitInput, parseFiniteInput, type AxisLimits } from "$lib/plot/axis";
     import { nextConnectionState, type LiveConnectionState } from "$lib/plot/connection";
+    import { describeChannelUnit, type ChannelUnitInfo } from "$lib/plot/units";
     import {
         FlatBufferParser
     } from "$lib/flatbuffer-parser";
@@ -544,6 +545,23 @@
         return labjackConfig.sensor_settings.channels_enabled.filter((channel) =>
             selectedPlotChannels.has(channel)
         );
+    }
+
+    /**
+     * Returns the unit of a channel's plotted values and whether they are calibrated,
+     * from its calibration and its `measurement_units` entry (see
+     * `describeChannelUnit`).
+     *
+     * @param channel - LabJack channel number.
+     * @returns The unit description. Raw volts before the config loads.
+     */
+    function getChannelUnitInfo(channel: number): ChannelUnitInfo {
+        const calibration = normalizeCalibration(
+            labjackConfig?.sensor_settings.calibrations?.[String(channel)]
+        );
+        const index = getChannelConfigIndex(channel);
+        const measurementUnit = index >= 0 ? labjackConfig?.sensor_settings.measurement_units[index] : undefined;
+        return describeChannelUnit(calibration, measurementUnit);
     }
 
     /**
@@ -1855,6 +1873,7 @@ subscription is released and nothing is saved.
                     {@const isChannelTriggered = channelTriggered.get(channel) || false}
                     {@const channelTriggerTimeValue = channelTriggerTime.get(channel) || 0}
                     {@const isPrebufferReady = channelPrebufferReady.get(channel) ?? false}
+                    {@const unitInfo = getChannelUnitInfo(channel)}
                     
                     <!-- Combined Channel Section -->
                     <div class="card bg-base-100 shadow-xl border border-base-200">
@@ -1864,8 +1883,14 @@ subscription is released and nothing is saved.
                                 <h3 class="card-title text-base-content">Channel {channel}</h3>
                                 <div class="flex flex-wrap items-center gap-3">
                                     <div class="badge badge-outline badge-sm">
-                                        {labjackConfig.sensor_settings.data_formats[index]} 
-                                        ({labjackConfig.sensor_settings.measurement_units[index]})
+                                        {labjackConfig.sensor_settings.data_formats[index]}
+                                    </div>
+                                    <!-- Whether the plotted values are raw volts or calibrated, and into which unit. -->
+                                    <div
+                                        class="badge badge-sm {unitInfo.warning ? 'badge-warning' : unitInfo.calibrated ? 'badge-secondary' : 'badge-ghost'}"
+                                        title={unitInfo.warning ?? ""}
+                                    >
+                                        {unitInfo.tag}
                                     </div>
                                     <span class="badge badge-info badge-sm">
                                         {#if channelMode === 'free_run'}
@@ -1885,6 +1910,10 @@ subscription is released and nothing is saved.
                                     {/if}
                                 </div>
                             </div>
+
+                            {#if unitInfo.warning}
+                                <p class="text-sm text-warning -mt-4 mb-4">{unitInfo.warning}</p>
+                            {/if}
 
                             <div class="mb-6 p-4 bg-base-200 rounded-lg">
                                 <h4 class="text-md font-medium text-base-content mb-4">Mode & Axis</h4>
@@ -1945,7 +1974,7 @@ subscription is released and nothing is saved.
 
                                     <div class="form-control">
                                         <label class="label" for="y-min-{channel}">
-                                            <span class="label-text">Y Min</span>
+                                            <span class="label-text">Y Min ({unitInfo.unit})</span>
                                         </label>
                                         <input
                                             id="y-min-{channel}"
@@ -1964,7 +1993,7 @@ subscription is released and nothing is saved.
 
                                     <div class="form-control">
                                         <label class="label" for="y-max-{channel}">
-                                            <span class="label-text">Y Max</span>
+                                            <span class="label-text">Y Max ({unitInfo.unit})</span>
                                         </label>
                                         <input
                                             id="y-max-{channel}"
@@ -2021,9 +2050,9 @@ subscription is released and nothing is saved.
                             {#if isTriggerMode(channelMode)}
                                 <div class="mb-6 p-4 bg-base-200 rounded-lg">
                                     <!--
-                                        The threshold is compared with calibrated values,
-                                        so its unit is the channel's unit, not always
-                                        volts.
+                                        The threshold is compared with the plotted
+                                        (calibrated) values, so it is in the channel's
+                                        unit, not always volts.
                                     -->
                                     <h4 class="text-md font-medium text-base-content mb-4">Trigger Settings</h4>
                                     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
@@ -2052,7 +2081,7 @@ subscription is released and nothing is saved.
                                         </div>
                                         <div class="form-control">
                                             <label class="label" for="trigger-threshold-{channel}">
-                                                <span class="label-text">Threshold (V)</span>
+                                                <span class="label-text">Threshold ({unitInfo.unit})</span>
                                             </label>
                                             <input
                                                 id="trigger-threshold-{channel}"
@@ -2126,7 +2155,8 @@ subscription is released and nothing is saved.
                                 <h4 class="text-md font-medium text-base-content mb-4">Data Plot</h4>
                                 <RealTimePlot
                                     data={plotConfig.data}
-                                    unit={labjackConfig.sensor_settings.measurement_units[index]}
+                                    unit={unitInfo.unit}
+                                    calibrated={unitInfo.calibrated}
                                     timeWindow={channelAxis?.xWindowSec ?? timeWindow}
                                     isTriggered={plotConfig.isTriggered}
                                     triggerTime={plotConfig.triggerTime}

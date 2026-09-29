@@ -14,8 +14,13 @@
     interface Props {
         /** Live buffer of samples for this channel. */
         data: DataPoint[];
-        /** Unit label for the y axis, badges and threshold. */
+        /** Unit of the plotted values, for the y axis, badges and threshold. */
         unit: string;
+        /**
+         * True when the values are calibrated from raw volts; the raw volts of the
+         * latest sample are then shown next to Latest.
+         */
+        calibrated?: boolean;
         /** Width of the continuous time axis, in seconds. */
         timeWindow: number;
         /** Whether a trigger has fired. */
@@ -53,6 +58,7 @@
     let {
         data,
         unit,
+        calibrated = false,
         timeWindow,
         isTriggered,
         triggerTime,
@@ -544,7 +550,7 @@
         ctx.font = '11px Inter, system-ui, sans-serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'bottom';
-        ctx.fillText(`Trig ${triggerThreshold.toFixed(3)}`, margin.left + 6, y - 4);
+        ctx.fillText(`Trig ${triggerThreshold.toFixed(3)} ${unit}`, margin.left + 6, y - 4);
     }
 
     /**
@@ -971,7 +977,9 @@ held), the number of samples inside the visible window, and the latest value.
 Props:
 - `data: DataPoint[]`: live samples. `timestamp` is Unix epoch ms; `sourceTimestamp`
   and `receivedAt` (both epoch ms, optional) feed the source clock and lag badges.
-- `unit: string`: unit label for the value axis, threshold and badges.
+- `unit: string`: unit of the plotted values, for the value axis, threshold and badges.
+- `calibrated?: boolean`: the values are calibrated; shows the latest raw volts next
+  to Latest. Default `false`.
 - `timeWindow: number`: continuous window width, seconds.
 - `isTriggered: boolean`: a trigger has fired.
 - `triggerTime: number`: trigger time, Unix epoch ms; `0` means none.
@@ -1029,6 +1037,11 @@ Events: none. The component only reads its props.
                 <span class="badge badge-primary badge-sm">
                     Latest: {latestPoint ? latestPoint.value.toFixed(3) : '--'} {unit}
                 </span>
+                {#if calibrated}
+                    <span class="badge badge-ghost badge-sm" title="Raw reading of the latest sample, before calibration">
+                        Raw: {latestPoint && typeof latestPoint.raw === 'number' && Number.isFinite(latestPoint.raw) ? latestPoint.raw.toFixed(4) : '--'} V
+                    </span>
+                {/if}
             </div>
         </div>
         {#if mode === 'frozen' && isTriggered}
