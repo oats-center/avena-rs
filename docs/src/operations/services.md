@@ -50,6 +50,10 @@ not covered here.
 the local services, serves monitoring on `127.0.0.1:8222`, stores the JetStream
 stream `labjacks` and the local `avenabox` bucket under `/home/user/nats`, and
 keeps one outbound leaf connection to `nats1.oats:7422` or `nats2.oats:7422`.
+Its configuration sets `sync_interval: always`, so JetStream syncs every write
+to disk, including the consumers' progress, and a power cut does not undo it.
+A box whose `nats-leaf.conf` predates that line needs the updated file (see
+[Everyday tasks](tasks.md#update-the-nats-server-configuration)).
 
 **streamer** mirrors its configuration key from central `avenabox` into the
 local bucket, opens the LabJack at `LABJACK_IP`, checks it is a T7 with the
@@ -72,7 +76,8 @@ streamer stops.
 The archiver also keeps a small checkpoint per channel in
 `rust-ljm/parquet/.archiver-state/`: the consumer's ack floor, saved once a
 minute and on shutdown with an fsync. If JetStream later hands a consumer
-messages at or below that sequence (it lost the consumer's progress, see
+messages at or below that sequence (it lost the consumer's progress, which
+`sync_interval: always` should prevent; see
 [Troubleshooting](troubleshooting.md#the-archiver-writes-old-data-again)), the
 archiver acknowledges them without writing them again. When a channel's
 subject changes, the existing consumer is left as it is and a consumer named

@@ -63,8 +63,9 @@ seconds.
 - The exporter must be running: `systemctl status avena-exporter`.
 - An empty result for a channel means there are no closed Parquet files in that
   range. The current five-minute window is not exported until it closes.
-- A request that times out immediately with an empty reply means nothing is
-  listening on the export subject: the exporter is down or the box is offline.
+- "No exporter is listening on …" (in the webapp) or an immediate
+  no-responders error (from other NATS clients) means nothing is subscribed to
+  the export subject: the exporter is down or the box is offline.
 
 ## Quarantined files appear
 
@@ -79,8 +80,9 @@ quarantined file can be deleted once the new file exists.
 ## The archiver writes old data again
 
 JetStream stores each durable consumer's progress in
-`/home/user/nats/jetstream/.../streams/<stream>/obs/<consumer>/o.dat`. The server
-replaces that file without an fsync, so a power cut can leave it empty. The
+`/home/user/nats/jetstream/.../streams/<stream>/obs/<consumer>/o.dat`. Unless
+`sync_interval: always` is set in `nats-leaf.conf`, the server replaces that
+file without an fsync, so a power cut can leave it empty. The
 consumer then comes back with no progress and, because the archiver's
 consumers deliver the whole stream, every message still in the stream is
 delivered again. A corrupt `o.dat` makes the server drop the consumer (log line
@@ -100,7 +102,11 @@ for old windows. A checkpoint is ignored, with a log line, when the stream was
 recreated or ends below the checkpoint; every message is then written as
 before. Set `ARCHIVER_REPLAY_GUARD=off` in the archiver's environment to turn
 the guard off, or `ARCHIVER_STATE_DIR` to keep the checkpoints elsewhere.
-Copies written before the guard existed can be removed with `dedupe`.
+Copies written before the guard existed can be removed with
+[`dedupe`](../reference/tools.md#dedupe). The rendered `nats-leaf.conf` now sets
+`sync_interval: always`, which should stop the loss in the first place; a box
+set up before that needs the updated file (see [Everyday
+tasks](tasks.md#update-the-nats-server-configuration)).
 
 ## The readings themselves look wrong
 
@@ -113,4 +119,6 @@ patterns seen in the field point at wiring or power rather than software:
   inputs or the LabJack's internal ground (`AIN15`), is entering through the
   sensor wiring or its power supply.
 
-Measure at the LabJack terminals before changing any software.
+Measure at the LabJack terminals before changing any software. [Noise on the
+I-69 sensor inputs](../noise.md) lists the patterns found on MU1 and MU2 and
+which of them the per-channel filters can remove from plots and exports.
