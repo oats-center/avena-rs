@@ -34,6 +34,13 @@ were fixed in #21 and deployed to MU1 and MU2 on 2026-09-29.
 - [x] **Small cleanups:** the inline invalid-asset branch in the plot page is now
   unreachable (`+page.ts` handles it); the trigger plot shows the level twice
   (label box and LEVEL badge); at 390 px the time axis shows only two ticks.
+- [x] `downloadExportViaNats` kept its own in-memory copy of an export even when
+  the webapp streamed it to a file. It now takes an `onChunk` hook, awaited before
+  each ack, and the chunk tap in `lib/plot/export-sink.ts` is gone.
+- [x] **Noise filters.** Per-channel despike, 10 Hz and 11.9 Hz template removal,
+  high-pass and low-pass, set in the config form (`sensor_settings.filters`),
+  applied causally in the live plot (Filtered / Raw switch) and zero phase in
+  exports (`filtered_value` column). The archive keeps the raw readings.
 
 ## Still open
 
@@ -46,7 +53,6 @@ were fixed in #21 and deployed to MU1 and MU2 on 2026-09-29.
   the 1–100 Hz noise (+0.9 dB), because that channel's noise is mostly random, not
   spikes. It is off for MU2 ch7; consider a despike that only acts on isolated
   one-sample outliers.
-
 - [ ] **Scan rates the T7 can't hit exactly.** At 2200 Hz the LJM library reported
   2200 Hz, but the MU2 data drift about 100 ppm (0.36 s an hour) against the sample
   count, which is more than the clock slew can absorb (60 ms an hour). Check the
@@ -54,17 +60,16 @@ were fixed in #21 and deployed to MU1 and MU2 on 2026-09-29.
   starting, or compute it from the T7's clock divisor) and use that for the sample
   interval. 100, 2000 and 2500 Hz are not affected.
 
-- [x] `downloadExportViaNats` keeps its own in-memory copy of an export even when
-  the webapp streams it to a file. An `onChunk` hook awaited before each ack would
-  remove that copy and the chunk tap in `lib/plot/export-sink.ts`.
-- [ ] Consider `sync_interval: always` in `nats-leaf.conf` so nats-server fsyncs its
-  state; weigh the extra writes on the box disks first.
-
 ## Setup and operations
 
 - [x] **Add `wait-for-local-nats` to the installer.** The script and the
   `10-nats-ready.conf` drop-ins for the three services are installed by hand on
   both boxes but are not in `scripts/`.
+- [x] **`sync_interval: always` in `nats-leaf.conf`**, so nats-server syncs consumer
+  state and a power cut cannot reset a consumer. The renderer and
+  `shared/nats-leaf.conf` have it; each box needs its re-rendered `nats-leaf.conf`
+  installed and `nats-leaf` restarted (the installer does not do this).
+- [ ] Watch the disk write load on MU1 and MU2 once `sync_interval: always` is live.
 - [ ] **Data caveat.** MU1 timestamps from the 2026-09-25 reboot to the
   2026-09-28 21:28 UTC deploy carry the old per-minute re-anchoring jitter
   (plus or minus 60 to 430 ms).

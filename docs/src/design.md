@@ -56,12 +56,29 @@ rate.
 The cost is memory, one window of samples and messages per channel (roughly 10
 to 20 MB at 2 kHz), and a rare duplicate: if the process dies after a file is
 renamed but before the acknowledgements are sent, those samples are written
-again into a second file for the same window.
+again into a second file for the same window. The exporter sends such exact
+copies once.
 
-This protects data between JetStream and Parquet. JetStream itself writes to
-disk on its own schedule (every two minutes with its default settings), so an
-abrupt power cut can still lose up to that much of the most recent data before
-it reaches the archiver.
+This protects data between JetStream and Parquet. JetStream's own files are
+protected by `sync_interval: always` in the edge server's configuration: every
+write, including each consumer's progress, is synced to disk as it is made.
+With the default (a sync every two minutes) a power cut could lose that much of
+the newest data, and could also leave a consumer's state file empty, so the
+consumer started again from the beginning of the stream and the archiver wrote
+the whole stream a second time. That happened on both I-69 boxes. The cost is
+more disk writes.
+
+## A checkpoint of its own in the archiver
+
+As a second line of defence, the archiver saves each consumer's ack floor to a
+small synced file of its own and acknowledges, without writing, any message at
+or below it. If JetStream loses a consumer's progress for any reason, the
+replay is skipped instead of archived again. The checkpoint is ignored when the
+stream was recreated, since sequence numbers then start over. When a channel's
+subject changes, the archiver uses a new consumer named after the subject
+rather than editing an existing consumer's filter: an edited consumer keeps its
+old delivery position, so messages on the new subject below it would be
+skipped.
 
 ## Files cover aligned windows of sample time
 
@@ -94,6 +111,21 @@ channels that is roughly 0.6 GB a day, so a 1 TB disk holds years of data.
 Small row groups would not make anything safer. An unfinished file has no
 footer and cannot be read either way; the safety comes from the
 acknowledgements above.
+
+## Filters apply where data is read, not where it is stored
+
+The per-channel noise filters run in the webapp's live plot and, on request, in
+the exporter, which adds a `filtered_value` column. The streamer and archiver
+never see them, and the archive keeps the raw volts.
+
+A filter setting can be wrong, and a better one can be found later; raw data
+can always be filtered again, filtered data cannot be unfiltered. Keeping
+filters out of the recording path also means changing them restarts nothing.
+The cost is that the same pipeline exists twice, in TypeScript and Rust, and
+the two are held together by shared test vectors
+(`testdata/filter-vectors.json`). The live plot filters causally, so it can
+draw as samples arrive; exports filter forward and backward, which removes the
+phase shift but needs a margin of data past the end of the range.
 
 ## Timestamps come from the host clock
 
@@ -152,7 +184,8 @@ one exporter.
 
 Core NATS has no flow control, so the exporter waits for the client to
 acknowledge every eight chunks. A slow connection then slows the export down
-instead of dropping chunks.
+instead of dropping chunks. The same ack subject carries a cancel message, so a
+client that gives up stops the exporter before its next chunk.
 
 The exporter reads only the row groups whose timestamp range overlaps the
 request, reads the two columns directly rather than row by row, and formats
