@@ -1,13 +1,14 @@
 <script lang="ts">
     import { onMount, onDestroy, untrack } from "svelte";
     import { page } from "$app/stores";
-    import { connect, getKeyValue, getKeys } from "$lib/nats.svelte";
+    import { connect, getKeyValue, getKeys, type NatsService } from "$lib/nats.svelte";
     import { downloadExportViaNats, type ExportRequestPayload } from "$lib/exporter";
     import { normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
     import { archiveExportRequestSubject, liveLabJackChannelPattern, liveLabJackChannelSubject } from "$lib/subjects";
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
     import { parseAssetNumberParam } from "$lib/plot/route";
     import { applyAxisLimitInput, parseFiniteInput, type AxisLimits } from "$lib/plot/axis";
+    import { nextConnectionState, type LiveConnectionState } from "$lib/plot/connection";
     import {
         FlatBufferParser
     } from "$lib/flatbuffer-parser";
@@ -224,10 +225,14 @@
     /** Per channel, why the last typed axis limit was rejected. */
     let axisInputErrors = $state<Map<number, string>>(new Map());
     /**
-     * True after the live subscriptions were created. Does not track later connection
-     * loss.
+     * State of this page's NATS connection, kept up to date by {@link watchConnection}
+     * from the client's status events and `closed()` promise.
      */
-    let isConnected = $state<boolean>(false);
+    let connectionState = $state<LiveConnectionState>("disconnected");
+    /** Why the connection closed, shown in the banner when `disconnected` after a loss. */
+    let connectionLostReason = $state<string>("");
+    /** True while the connection is up and the live subscriptions exist. */
+    let isConnected = $derived(connectionState === "connected");
     let flatBufferParser = new FlatBufferParser();
     let triggerSettings = $state<Map<number, TriggerSettings>>(new Map());
     /** Per channel, true while a trigger capture is held. */
@@ -605,7 +610,6 @@
         const superseded = () => generation !== loadGeneration || destroyed;
         loading = true;
         error = "";
-        isConnected = false;
 
         closeLiveConnection();
 
@@ -625,18 +629,21 @@
                 loading = false;
                 return;
             }
-            
+
+            connectionState = "connecting";
             const service = await connect(serverName, credentialsContent);
             if (superseded()) {
                 closeService(service);
                 return;
             }
             if (!service) {
+                connectionState = "disconnected";
                 error = "Failed to connect to NATS server";
                 loading = false;
                 return;
             }
             natsService = service;
+            watchConnection(service);
             
             const preferredKey = $page.url.searchParams.get('key')?.trim() || "";
             const keys = await getKeys(service, "avenabox", "*.*.*.config");
@@ -688,7 +695,12 @@
             console.error("Error loading LabJack config:", err);
             error = "Failed to load LabJack configuration";
         } finally {
-            if (!superseded()) loading = false;
+            if (!superseded()) {
+                loading = false;
+                if (connectionState === "connecting") {
+                    connectionState = natsService ? "connected" : "disconnected";
+                }
+            }
         }
     }
 
@@ -707,6 +719,33 @@
     }
 
     /**
+     * Follows a connection's status events and its `closed()` promise, updating
+     * {@link connectionState}. Events from a connection the page no longer uses (after
+     * a reload or when leaving the page) are ignored, so the page's own `close()` is not
+     * reported as a lost connection.
+     *
+     * @param service - Connection just opened by {@link loadLabJackConfig}.
+     */
+    function watchConnection(service: NatsService) {
+        const current = () => natsService === service && !destroyed;
+        (async () => {
+            try {
+                for await (const status of service.connection.status()) {
+                    if (!current()) break;
+                    connectionState = nextConnectionState(connectionState, status.type);
+                }
+            } catch (err) {
+                console.error("NATS status stream ended with an error:", err);
+            }
+        })();
+        service.connection.closed().then((err) => {
+            if (!current()) return;
+            connectionState = "disconnected";
+            connectionLostReason = err instanceof Error ? err.message : "The server closed the connection.";
+        });
+    }
+
+    /**
      * Unsubscribes every live subscription and closes this page's connection. Their
      * reader loops end; any message they still hold is ignored (see
      * {@link startDataSubscription}).
@@ -720,7 +759,8 @@
             }
         }
         subscriptions = [];
-        isConnected = false;
+        connectionState = "disconnected";
+        connectionLostReason = "";
         const service = natsService;
         natsService = null;
         closeService(service);
@@ -801,7 +841,8 @@
      * The subject comes from `liveLabJackChannelSubject`:
      * `avenars.<site>.<box>.<source>.live.chNN` for structured configs, or
      * `<root>.<asset>.data.chNN` for legacy ones. All enabled channels are subscribed, not
-     * only the selected ones. Sets {@link isConnected} when all subscriptions exist, or
+     * only the selected ones. Sets {@link connectionState} to `connected` when all
+     * subscriptions exist and the client is still connected, or
      * `error` if subscribing throws.
      *
      * @param generation - The {@link loadGeneration} of the load that owns the
@@ -839,7 +880,7 @@
                     }
                 })();
             }
-            isConnected = true;
+            if (connectionState === "connecting") connectionState = "connected";
         } catch (err) {
             console.error("Error starting data subscription:", err);
             error = "Failed to start data subscription";
@@ -1111,6 +1152,31 @@
             frozenPostWindowSec: postWindowSec,
             frozenCollecting: false
         };
+    }
+
+    /**
+     * Text of the connection badges.
+     *
+     * @param state - Connection state.
+     */
+    function connectionLabel(state: LiveConnectionState): string {
+        switch (state) {
+            case "connected": return "Connected";
+            case "connecting": return "Connecting...";
+            case "reconnecting": return "Reconnecting...";
+            default: return "Disconnected";
+        }
+    }
+
+    /**
+     * Color class of the connection dot in the header.
+     *
+     * @param state - Connection state.
+     */
+    function connectionDotClass(state: LiveConnectionState): string {
+        if (state === "connected") return "bg-success";
+        if (state === "disconnected") return "bg-error";
+        return "bg-warning";
     }
 
     /** Does a full page load of `/labjacks`. */
@@ -1405,14 +1471,11 @@ progress and saves the result through a temporary download link.
             </div>
         </div>
         <div class="flex-none">
-            <!--
-                Connection Status. "Connected" means the live subscriptions were created;
-                it does not follow later connection loss.
-            -->
+            <!-- Connection status, following the NATS client's status events. -->
             <div class="flex items-center mr-4">
-                <div class="w-2 h-2 rounded-full mr-2 {isConnected ? 'bg-success' : 'bg-error'}"></div>
+                <div class="w-2 h-2 rounded-full mr-2 {connectionDotClass(connectionState)}"></div>
                 <span class="text-base-content text-sm">
-                    {isConnected ? 'Connected' : 'Disconnected'}
+                    {connectionLabel(connectionState)}
                 </span>
             </div>
         </div>
@@ -1434,6 +1497,21 @@ progress and saves the result through a temporary download link.
                     >
                         Retry
                     </button>
+                </div>
+            </div>
+        {/if}
+
+        <!-- Lost connection banner -->
+        {#if labjackConfig && !loading && connectionState === "reconnecting"}
+            <div class="alert alert-warning mb-6" role="status">
+                <span class="loading loading-spinner loading-sm"></span>
+                <span>Connection to NATS lost. Reconnecting... The plots resume by themselves; the missing time shows as a gap.</span>
+            </div>
+        {:else if labjackConfig && !loading && connectionState === "disconnected" && !error}
+            <div class="alert alert-error mb-6" role="alert">
+                <span>Disconnected from NATS{connectionLostReason ? `: ${connectionLostReason}` : ""}. Live data has stopped.</span>
+                <div>
+                    <button onclick={loadLabJackConfig} class="btn btn-sm">Reconnect</button>
                 </div>
             </div>
         {/if}
@@ -1505,9 +1583,8 @@ progress and saves the result through a temporary download link.
                         </div>
                         <div class="flex justify-between">
                             <span>Connection Status:</span>
-                            <span class="badge {isConnected ? 'badge-success' : 'badge-error'} badge-sm">
-                                <div class="w-2 h-2 rounded-full mr-1 {isConnected ? 'bg-success-content' : 'bg-error-content'}"></div>
-                                {isConnected ? 'Connected' : 'Disconnected'}
+                            <span class="badge {connectionState === 'connected' ? 'badge-success' : connectionState === 'disconnected' ? 'badge-error' : 'badge-warning'} badge-sm">
+                                {connectionLabel(connectionState)}
                             </span>
                         </div>
                         <div class="flex justify-between">
