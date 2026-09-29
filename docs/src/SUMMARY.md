@@ -37,4 +37,5 @@
 # Background
 
 - [Design notes](design.md)
+- [Noise on the I-69 inputs](noise.md)
 
