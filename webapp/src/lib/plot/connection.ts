@@ -41,3 +41,39 @@ export function nextConnectionState(current: LiveConnectionState, statusType: st
             return current;
     }
 }
+
+/**
+ * Text of the connection badges.
+ *
+ * @param state - Connection state.
+ */
+export function connectionLabel(state: LiveConnectionState): string {
+    switch (state) {
+        case 'connected': return 'Connected';
+        case 'connecting': return 'Connecting...';
+        case 'reconnecting': return 'Reconnecting...';
+        default: return 'Disconnected';
+    }
+}
+
+/**
+ * Color class of the connection dot in the header.
+ *
+ * @param state - Connection state.
+ */
+export function connectionDotClass(state: LiveConnectionState): string {
+    if (state === 'connected') return 'bg-success';
+    if (state === 'disconnected') return 'bg-error';
+    return 'bg-warning';
+}
+
+/**
+ * DaisyUI badge class of the connection state in Data Statistics.
+ *
+ * @param state - Connection state.
+ */
+export function connectionBadgeClass(state: LiveConnectionState): string {
+    if (state === 'connected') return 'badge-success';
+    if (state === 'disconnected') return 'badge-error';
+    return 'badge-warning';
+}

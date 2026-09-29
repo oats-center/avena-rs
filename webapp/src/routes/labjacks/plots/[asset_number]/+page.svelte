@@ -2,7 +2,7 @@
     import { onMount, onDestroy, untrack } from "svelte";
     import { page } from "$app/stores";
     import { connect, getKeyValue, getKeys, type NatsService } from "$lib/nats.svelte";
-    import { downloadExportViaNats, isExportCancelled, type ExportRequestPayload } from "$lib/exporter";
+    import { downloadExportViaNats, isExportCancelled } from "$lib/exporter";
     import { normalizeCalibration } from "$lib/calibration";
     import { normalizeLabJackConfig, type LabJackConfig } from "$lib/labjack-config";
     import { archiveExportRequestSubject, liveLabJackChannelPattern, liveLabJackChannelSubject } from "$lib/subjects";
@@ -10,7 +10,38 @@
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
     import { parseAssetNumberParam } from "$lib/plot/route";
     import { applyAxisLimitInput, parseFiniteInput, type AxisLimits } from "$lib/plot/axis";
-    import { nextConnectionState, type LiveConnectionState } from "$lib/plot/connection";
+    import {
+        connectionBadgeClass,
+        connectionDotClass,
+        connectionLabel,
+        nextConnectionState,
+        type LiveConnectionState
+    } from "$lib/plot/connection";
+    import {
+        channelStatusLabel,
+        defaultAxisSettings,
+        defaultTriggerSettings,
+        deriveAutoTimeWindowSec,
+        isTriggerMode,
+        pickInitialPlotChannels,
+        plotConfigFor,
+        requiredBufferPoints,
+        snapshotKeepMs,
+        snapshotRateHz,
+        streamProblemText,
+        togglePlotSelection,
+        type AxisSettings,
+        type ChannelPlotMode,
+        type ChannelStreamStatus
+    } from "$lib/plot/channel";
+    import {
+        buildExportRequest,
+        defaultExportRange,
+        describeLocalTimeZone,
+        formatBytes,
+        formatUtcPreview,
+        missingChannelsWarning
+    } from "$lib/plot/export-form";
     import { describeChannelUnit, type ChannelUnitInfo } from "$lib/plot/units";
     import {
         FlatBufferParser
@@ -25,46 +56,12 @@
     } from "$lib/plot/stream";
     import {
         advanceTrigger,
-        getTriggerWindows,
         hasRequiredPreBuffer,
         type TriggerCapture,
         type TriggerSettings
     } from "$lib/plot/trigger";
 
     
-    /**
-     * Plot mode of one channel.
-     *
-     * `free_run` scrolls continuously. `trigger_normal` freezes a capture on each threshold
-     * crossing and re-arms after the post-trigger window. `trigger_single` keeps the first
-     * capture until the user presses Re-arm.
-     */
-    type ChannelPlotMode = 'free_run' | 'trigger_normal' | 'trigger_single';
-
-    /** Axis settings of one channel, edited in the Mode & Axis panel. */
-    interface AxisSettings {
-        /** When true the plot scales Y to the data and ignores `yMin` and `yMax`. */
-        autoY: boolean;
-        /** Lower Y limit when `autoY` is false. */
-        yMin: number;
-        /**
-         * Upper Y limit when `autoY` is false. Kept above `yMin` by {@link
-         * commitAxisLimit}.
-         */
-        yMax: number;
-        /** Width of the X axis in seconds. Above 0. */
-        xWindowSec: number;
-        /** Mirrors the X axis. */
-        invertX: boolean;
-        /** Mirrors the Y axis. */
-        invertY: boolean;
-    }
-
-    /**
-     * Samples the automatic X window aims to show; the window is this count divided by
-     * the scan rate.
-     */
-    const TARGET_SAMPLES_PER_WINDOW = 1000;
     /**
      * Messages taken from one channel's queue at a time. Channels take turns, so one
      * busy channel cannot starve the other.
@@ -87,11 +84,6 @@
      * animation frames (a background tab), in ms.
      */
     const BACKGROUND_PUMP_INTERVAL_MS = 1000;
-    /**
-     * Live snapshots cover this multiple of the channel's X window, so the plot edge is
-     * never empty.
-     */
-    const SNAPSHOT_OVERSCAN_FACTOR = 1.25;
     /**
      * Most undecoded messages held per channel between frames. Normally a frame finds at
      * most a few; this is reached only if decoding stalls for a long time (for example a
@@ -214,7 +206,7 @@
      * queue overflowed, gaps (missing time between messages), timeline resets, samples
      * skipped as duplicates, and undecodable payloads.
      */
-    let channelStreamStatus = $state<Map<number, { dropped: number; gaps: number; resets: number; skipped: number; decodeErrors: number }>>(new Map());
+    let channelStreamStatus = $state<Map<number, ChannelStreamStatus>>(new Map());
     /** Channels chosen for plotting, at most two. Only these are decoded. */
     let selectedPlotChannels = $state<Set<number>>(new Set());
     /** True when buffers changed since the last {@link flushUiSnapshots}. */
@@ -262,45 +254,15 @@
      */
     function updateMaxDataPoints() {
         if (!labjackConfig) return;
-        const sr = labjackConfig.sensor_settings.scan_rate_hz;
-        let requiredSeconds = timeWindow * 2;
-
-        for (const axis of axisSettings.values()) {
-            requiredSeconds = Math.max(requiredSeconds, Math.max(0.1, axis.xWindowSec) * 2);
+        const settings = labjackConfig.sensor_settings;
+        const channels = [];
+        for (const [channel, axis] of axisSettings) {
+            const trigger = triggerSettings.get(channel);
+            if (trigger) channels.push({ axis, trigger });
         }
-
-        for (const trigger of triggerSettings.values()) {
-            const windows = getTriggerWindows(trigger);
-            requiredSeconds = Math.max(requiredSeconds, windows.preWindowSec + windows.postWindowSec);
-        }
-
-        // 10 % and one read of headroom: the actual scan rate can be slightly above the
-        // configured one, and gap markers take a slot each. Without it a trigger capture
-        // could find the start of its pre-trigger window already trimmed.
-        const scansPerRead = Math.max(1, labjackConfig.sensor_settings.scans_per_read || 1);
-        maxDataPoints = Math.ceil(sr * requiredSeconds * 1.1) + scansPerRead;
+        maxDataPoints = requiredBufferPoints(settings.scan_rate_hz, settings.scans_per_read, timeWindow, channels);
         trimAllChannelBuffers();
         markUiSnapshotDirty();
-    }
-
-    /**
-     * Returns the automatic X window for a scan rate.
-     *
-     * @param scanRateHz - Scans per second per channel.
-     * @returns {@link TARGET_SAMPLES_PER_WINDOW} divided by the rate, in seconds, at least
-     *   0.05. Returns 1 when the rate is not a positive finite number.
-     *
-     * @example
-     * ```ts
-     * deriveAutoTimeWindowSec(1000);  // 1
-     * deriveAutoTimeWindowSec(50000); // 0.05 (0.02 raised to the minimum)
-     * ```
-     */
-    function deriveAutoTimeWindowSec(scanRateHz: number): number {
-        if (!Number.isFinite(scanRateHz) || scanRateHz <= 0) {
-            return 1;
-        }
-        return Math.max(0.05, TARGET_SAMPLES_PER_WINDOW / scanRateHz);
     }
 
     /** Marks the buffers as changed so the next frame copies them into reactive state. */
@@ -338,18 +300,8 @@
         if (data.length === 0) return [];
 
         const axisWindowSec = axisSettings.get(channel)?.xWindowSec ?? timeWindow;
-        let keepSeconds = Math.max(0.25, axisWindowSec * SNAPSHOT_OVERSCAN_FACTOR);
-
-        const triggerMode = channelModes.get(channel);
-        if (triggerMode === "trigger_normal" || triggerMode === "trigger_single") {
-            const trigger = triggerSettings.get(channel);
-            if (trigger) {
-                const windows = getTriggerWindows(trigger);
-                keepSeconds = Math.max(keepSeconds, windows.preWindowSec + 0.25);
-            }
-        }
-
-        return snapshotNewest(data, keepSeconds * 1000);
+        const keepMs = snapshotKeepMs(axisWindowSec, channelModes.get(channel) ?? "free_run", triggerSettings.get(channel));
+        return snapshotNewest(data, keepMs);
     }
 
     /**
@@ -377,7 +329,7 @@
 
     /** Copies the per-channel stream counters into {@link channelStreamStatus}. */
     function refreshStreamStatus() {
-        const next = new Map<number, { dropped: number; gaps: number; resets: number; skipped: number; decodeErrors: number }>();
+        const next = new Map<number, ChannelStreamStatus>();
         for (const channel of getRenderablePlotChannels()) {
             const stats = liveChannels.get(channel)?.stats;
             next.set(channel, {
@@ -389,36 +341,6 @@
             });
         }
         channelStreamStatus = next;
-    }
-
-    /**
-     * Chooses up to two channels to plot after a config load.
-     *
-     * Keeps channels from the previous selection that are still enabled, then fills up to
-     * two from `enabledChannels` in config order.
-     *
-     * @param enabledChannels - `channels_enabled` from the config.
-     * @param existingSelection - Selection before the reload, if any.
-     * @returns A new set with at most two channels.
-     */
-    function pickInitialPlotChannels(enabledChannels: number[], existingSelection?: Set<number>): Set<number> {
-        const selected = new Set<number>();
-
-        if (existingSelection) {
-            for (const channel of enabledChannels) {
-                if (existingSelection.has(channel)) {
-                    selected.add(channel);
-                    if (selected.size >= 2) return selected;
-                }
-            }
-        }
-
-        for (const channel of enabledChannels) {
-            selected.add(channel);
-            if (selected.size >= 2) break;
-        }
-
-        return selected;
     }
 
     /**
@@ -472,15 +394,8 @@
      * @param checked - New checkbox state.
      */
     function togglePlotChannel(channel: number, checked: boolean) {
-        const next = new Set(selectedPlotChannels);
-
-        if (checked) {
-            if (next.size >= 2) return;
-            next.add(channel);
-        } else {
-            next.delete(channel);
-        }
-
+        const next = togglePlotSelection(selectedPlotChannels, channel, checked);
+        if (!next) return;
         selectedPlotChannels = next;
         resetChannelStream(channel);
         try {
@@ -768,20 +683,8 @@
             newLiveChannels.set(channel, createLiveChannel());
             newFrozenBuffers.set(channel, []);
             newChannelModes.set(channel, 'free_run');
-            newAxisSettings.set(channel, {
-                autoY: true,
-                yMin: -1,
-                yMax: 1,
-                xWindowSec: autoTimeWindow,
-                invertX: false,
-                invertY: false
-            });
-            newTriggerSettings.set(channel, {
-                type: 'rising',
-                threshold: 0,
-                preTriggerPercent: 40,
-                postTriggerWindowSec: autoTimeWindow
-            });
+            newAxisSettings.set(channel, defaultAxisSettings(autoTimeWindow));
+            newTriggerSettings.set(channel, defaultTriggerSettings(autoTimeWindow));
             newChannelTriggered.set(channel, false);
             newChannelTriggerTime.set(channel, 0);
             newChannelPrebufferReady.set(channel, false);
@@ -1036,16 +939,6 @@
     }
 
     /**
-     * Tells whether a mode uses the trigger.
-     *
-     * @param mode - Plot mode.
-     * @returns `true` for `trigger_normal` and `trigger_single`.
-     */
-    function isTriggerMode(mode: ChannelPlotMode): boolean {
-        return mode === "trigger_normal" || mode === "trigger_single";
-    }
-
-    /**
      * Changes a channel's plot mode.
      *
      * Switching between the two trigger modes keeps the current capture; any other change
@@ -1161,114 +1054,12 @@
      *   (Unix ms), `frozenPreWindowSec`, `frozenPostWindowSec` and `frozenCollecting`.
      */
     function getPlotConfig(channel: number) {
-        const mode = channelModes.get(channel) ?? "free_run";
-        const liveData = channelData.get(channel) || [];
-        const capture = channelTriggerCaptures.get(channel);
-
-        if (isTriggerMode(mode) && capture) {
-            return {
-                mode: "frozen" as const,
-                data: liveData,
-                frozenData: capture.data,
-                isTriggered: true,
-                triggerTime: capture.triggerTime,
-                frozenPreWindowSec: capture.preWindowSec,
-                frozenPostWindowSec: capture.postWindowSec,
-                frozenCollecting: !capture.complete
-            };
-        }
-
-        const { preWindowSec, postWindowSec } = getTriggerWindows(triggerSettings.get(channel));
-        return {
-            mode: "continuous" as const,
-            data: liveData,
-            frozenData: undefined,
-            isTriggered: false,
-            triggerTime: 0,
-            frozenPreWindowSec: preWindowSec,
-            frozenPostWindowSec: postWindowSec,
-            frozenCollecting: false
-        };
-    }
-
-    /**
-     * Text of the connection badges.
-     *
-     * @param state - Connection state.
-     */
-    function connectionLabel(state: LiveConnectionState): string {
-        switch (state) {
-            case "connected": return "Connected";
-            case "connecting": return "Connecting...";
-            case "reconnecting": return "Reconnecting...";
-            default: return "Disconnected";
-        }
-    }
-
-    /**
-     * Color class of the connection dot in the header.
-     *
-     * @param state - Connection state.
-     */
-    function connectionDotClass(state: LiveConnectionState): string {
-        if (state === "connected") return "bg-success";
-        if (state === "disconnected") return "bg-error";
-        return "bg-warning";
-    }
-
-    /** Default length of the export range, ending now, in ms. */
-    const DEFAULT_EXPORT_RANGE_MS = 2 * 60 * 1000;
-
-    /**
-     * Formats a date for a `datetime-local` input, in local time, to the second.
-     *
-     * @param date - Date to format.
-     * @returns `YYYY-MM-DDTHH:mm:ss`.
-     */
-    function toLocalInputValue(date: Date): string {
-        const pad = (value: number) => value.toString().padStart(2, "0");
-        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
-    }
-
-    /**
-     * Describes the browser's time zone, in which the export times are entered.
-     *
-     * @returns E.g. `Europe/Berlin (UTC+02:00)`.
-     */
-    function describeLocalTimeZone(): string {
-        const name = Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
-        const offsetMin = -new Date().getTimezoneOffset();
-        const sign = offsetMin >= 0 ? "+" : "-";
-        const abs = Math.abs(offsetMin);
-        const pad = (value: number) => value.toString().padStart(2, "0");
-        return `${name} (UTC${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)})`;
-    }
-
-    /**
-     * Shows an export input value as UTC, the time the request is sent in.
-     *
-     * @param value - `datetime-local` value.
-     * @returns E.g. `2026-09-28 12:00:05 UTC`, or `""` when the value is not a date.
-     */
-    function formatUtcPreview(value: string): string {
-        const date = new Date(value);
-        if (!value || isNaN(date.getTime())) return "";
-        return `${date.toISOString().slice(0, 19).replace("T", " ")} UTC`;
-    }
-
-    /**
-     * Converts a `datetime-local` value, read as local time, to an RFC 3339 UTC string.
-     *
-     * @param value - Value such as `2025-01-31T14:05` or `2025-01-31T14:05:30`.
-     * @returns The time from `Date.toISOString()`, e.g. `2025-01-31T19:05:00.000Z` in UTC-5.
-     * @throws Error if the value is not a valid date.
-     */
-    function toRfc3339(value: string): string {
-        const date = new Date(value);
-        if (isNaN(date.getTime())) {
-            throw new Error("Invalid date/time value");
-        }
-        return date.toISOString();
+        return plotConfigFor(
+            channelModes.get(channel) ?? "free_run",
+            channelData.get(channel) || [],
+            channelTriggerCaptures.get(channel),
+            triggerSettings.get(channel)
+        );
     }
 
     /**
@@ -1279,10 +1070,9 @@
         if (!labjackConfig) return;
         const plotted = getRenderablePlotChannels();
         exportChannels = new Set(plotted.length > 0 ? plotted : labjackConfig.sensor_settings.channels_enabled);
-        const now = new Date();
-        exportEnd = toLocalInputValue(now);
-        const start = new Date(now.getTime() - DEFAULT_EXPORT_RANGE_MS);
-        exportStart = toLocalInputValue(start);
+        const range = defaultExportRange(new Date());
+        exportEnd = range.end;
+        exportStart = range.start;
         exportError = "";
         exportWarning = "";
         exporting = false;
@@ -1320,23 +1110,6 @@
     }
 
     /**
-     * Formats a byte count with 1024-based units.
-     *
-     * @param value - Size in bytes.
-     * @returns E.g. `512 B`, `1.5 KB`, `12.0 MB`. Stops at GB.
-     */
-    function formatBytes(value: number): string {
-        const units = ["B", "KB", "MB", "GB"];
-        let size = value;
-        let unitIndex = 0;
-        while (size >= 1024 && unitIndex < units.length - 1) {
-            size /= 1024;
-            unitIndex += 1;
-        }
-        return `${size.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
-    }
-
-    /**
      * Validates the export form, downloads the CSV over NATS and saves it.
      *
      * Checks that times and at least one channel are set and that start is not after end.
@@ -1350,35 +1123,12 @@
      */
     async function handleExportSubmit(event: Event) {
         event.preventDefault();
-        if (!labjackConfig) {
-            exportError = "Configuration not loaded";
+        const request = buildExportRequest(labjackConfig, exportStart, exportEnd, exportChannels);
+        if (!request.ok) {
+            exportError = request.error;
             return;
         }
-
-        if (!exportStart || !exportEnd) {
-            exportError = "Please select a start and end time";
-            return;
-        }
-
-        if (exportChannels.size === 0) {
-            exportError = "Select at least one channel";
-            return;
-        }
-
-        let startIso: string;
-        let endIso: string;
-        try {
-            startIso = toRfc3339(exportStart);
-            endIso = toRfc3339(exportEnd);
-        } catch (err) {
-            exportError = "Invalid date/time selection";
-            return;
-        }
-
-        if (new Date(startIso) > new Date(endIso)) {
-            exportError = "Start time must be before end time";
-            return;
-        }
+        if (!labjackConfig) return;
 
         exporting = true;
         exportError = "";
@@ -1389,16 +1139,7 @@
         exportAbort = abort;
 
         try {
-            const payload: ExportRequestPayload = {
-                asset: labjackConfig.asset_number,
-                channels: Array.from(exportChannels).sort((a, b) => a - b),
-                start: startIso,
-                end: endIso,
-                box_id: labjackConfig.box_id || undefined,
-                download_name: labjackConfig.labjack_name
-                    ? `${labjackConfig.labjack_name.replace(/\s+/g, "_")}.csv`
-                    : undefined,
-            };
+            const payload = request.payload;
 
             const result = await downloadExportViaNats(natsService, archiveExportRequestSubject(labjackConfig), payload, {
                 signal: abort.signal,
@@ -1406,14 +1147,7 @@
                     exportProgress = received;
                 },
                 onSummary: (missing) => {
-                    if (missing.length > 0) {
-                        const formatted = missing
-                            .map((ch) => ch.toString().padStart(2, "0"))
-                            .join(", ");
-                        exportWarning = `No samples found for channels: ${formatted}. Continuing with remaining channels.`;
-                    } else {
-                        exportWarning = "";
-                    }
+                    exportWarning = missingChannelsWarning(missing);
                 },
             });
 
@@ -1678,9 +1412,9 @@ subscription is released and nothing is saved.
                                     snapshot: points divided by its time span.
                                 -->
                                 {#each Array.from(channelData.entries()) as [ch, data]}
-                                    {@const latest = data[data.length - 1]}
-                                    {@const rate = data.length > 1 ? Math.round(1000 * (data.length - 1) / (latest?.timestamp - data[0]?.timestamp)) : 0}
+                                    {@const rate = snapshotRateHz(data)}
                                     {@const status = channelStreamStatus.get(ch)}
+                                    {@const problems = streamProblemText(ch, status)}
                                     <span class="badge badge-outline badge-xs">Ch{ch}: {data.length} pts ({rate} Hz)</span>
                                     <!--
                                         Stream problems since the page loaded: messages
@@ -1691,17 +1425,15 @@ subscription is released and nothing is saved.
                                     {#if status && status.dropped > 0}
                                         <span class="badge badge-error badge-xs">Ch{ch}: {status.dropped} msgs dropped (overload)</span>
                                     {/if}
-                                    {#if status && (status.gaps > 0 || status.resets > 0 || status.skipped > 0 || status.decodeErrors > 0)}
-                                        <span class="badge badge-warning badge-xs">
-                                            Ch{ch}: {status.gaps} gaps{status.resets > 0 ? `, ${status.resets} resets` : ''}{status.skipped > 0 ? `, ${status.skipped} dup samples` : ''}{status.decodeErrors > 0 ? `, ${status.decodeErrors} bad msgs` : ''}
-                                        </span>
+                                    {#if problems}
+                                        <span class="badge badge-warning badge-xs">{problems}</span>
                                     {/if}
                                 {/each}
                             </div>
                         </div>
                         <div class="flex justify-between">
                             <span>Connection Status:</span>
-                            <span class="badge {connectionState === 'connected' ? 'badge-success' : connectionState === 'disconnected' ? 'badge-error' : 'badge-warning'} badge-sm">
+                            <span class="badge {connectionBadgeClass(connectionState)} badge-sm">
                                 {connectionLabel(connectionState)}
                             </span>
                         </div>
@@ -1787,15 +1519,7 @@ subscription is released and nothing is saved.
                                         {unitInfo.tag}
                                     </div>
                                     <span class="badge badge-info badge-sm">
-                                        {#if channelMode === 'free_run'}
-                                            Running
-                                        {:else if !isPrebufferReady}
-                                            Pre-buffering
-                                        {:else if isChannelTriggered}
-                                            Triggered
-                                        {:else}
-                                            Armed
-                                        {/if}
+                                        {channelStatusLabel(channelMode, isPrebufferReady, isChannelTriggered)}
                                     </span>
                                     {#if isChannelTriggered}
                                         <span class="text-xs text-success">

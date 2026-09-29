@@ -23,3 +23,19 @@ describe('nextConnectionState', () => {
         expect(nextConnectionState('connecting', 'reconnect')).toBe('connecting');
     });
 });
+
+describe('connection labels', () => {
+    it('names each state and colors it', async () => {
+        const { connectionLabel, connectionDotClass, connectionBadgeClass } = await import('./connection');
+        expect(connectionLabel('connected')).toBe('Connected');
+        expect(connectionLabel('connecting')).toBe('Connecting...');
+        expect(connectionLabel('reconnecting')).toBe('Reconnecting...');
+        expect(connectionLabel('disconnected')).toBe('Disconnected');
+        expect(connectionDotClass('connected')).toBe('bg-success');
+        expect(connectionDotClass('disconnected')).toBe('bg-error');
+        expect(connectionDotClass('connecting')).toBe('bg-warning');
+        expect(connectionBadgeClass('connected')).toBe('badge-success');
+        expect(connectionBadgeClass('disconnected')).toBe('badge-error');
+        expect(connectionBadgeClass('reconnecting')).toBe('badge-warning');
+    });
+});
