@@ -24,13 +24,13 @@ on the network.
 | `src/routes/+page.svelte` | Connect page: server address and credentials |
 | `src/routes/labjacks/+page.svelte` | List of LabJack configurations |
 | `src/routes/labjacks/plots/[asset_number]/+page.svelte` | Live plots and export for one configuration |
-| `src/lib/components/` | `RealTimePlot` and `LabJackConfigModal` |
+| `src/lib/components/` | `RealTimePlot`, `LabJackConfigModal` and the plot page's `ChannelCard`, `StatsPanel`, `ExportDialog` and `ConnectionBanner` |
 | `src/lib/nats.svelte.ts` | Connecting to NATS and reading and writing the key-value bucket |
 | `src/lib/subjects.ts` | Subject names, matching `rust-ljm/src/subjects.rs` |
 | `src/lib/flatbuffer-parser.ts` | Decoding live `Scan` messages |
 | `src/lib/calibration.ts` | Volts to engineering units, matching `rust-ljm/src/calibration.rs` |
 | `src/lib/labjack-config.ts` | LabJack configuration types and filling in missing fields |
-| `src/lib/plot/` | The live plot's data path, trigger logic and drawing helpers |
+| `src/lib/plot/` | The live plot's data path, per-channel state, trigger logic, drawing helpers, and the export form, connection and file saving |
 | `src/lib/exporter.ts` | The client side of the [export protocol](../reference/export-protocol.md) |
 | `src/lib/sampler/` | FlatBuffers code generated from `rust-ljm/src/data.fbs`; do not edit |
 

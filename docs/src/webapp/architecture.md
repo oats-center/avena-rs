@@ -83,6 +83,14 @@ joined across; repeated or late messages are skipped; and if the timeline jumps
 backward (a clock step or a new sampling run) the buffer starts again. The code
 for all of this is in `src/lib/plot/`, with unit tests.
 
+The page keeps one state object per channel (`ChannelView` in
+`src/lib/plot/channel-view.svelte.ts`): its mode, axis and trigger settings, the
+trigger capture, the live buffer and the snapshot the plot draws. The layout is
+split into components: `ChannelCard` (header badges, Mode & Axis, Trigger
+Settings and the plot), `StatsPanel` (Data Statistics), `ExportDialog` and
+`ConnectionBanner`. The page itself loads the configuration, owns the NATS
+connection, the subscriptions and the decode loop, and runs exports.
+
 Decoding has one quirk worth knowing. The browser can hand over a message as a
 slice of a larger buffer that does not start on an 8-byte boundary, and the
 generated FlatBuffers code cannot create a `Float64Array` view on it.
@@ -123,9 +131,10 @@ it is back, and the missing time shows as a gap. If the connection closes for
 good, a red banner gives the reason and a Reconnect button.
 
 When the page cannot load at all, the error message comes with the button that
-can help: Retry for a failed connection or a missing configuration, Log in when
-there are no saved credentials, and LabJacks when the asset number in the
-address is not a number. Back returns to the LabJack list.
+can help: Retry for a failed connection or a missing configuration, and Log in
+when there are no saved credentials. An asset number in the address that is not
+a number gets the app's "not found" page, with a link back to the LabJack list.
+Back returns to the LabJack list.
 
 ### Modes and axes
 
@@ -135,6 +144,16 @@ a level, then freeze a window around the crossing so a single event can be
 inspected. Normal re-arms once the post-trigger window has passed; Single keeps
 its first capture until you press Re-arm. The capture is drawn inside the plot
 area with the time axis titled "Time from trigger".
+
+Turning Auto Y-Scale off keeps the plot where it is: Y Min and Y Max start at
+the range the plot was showing, rounded to a few significant digits, instead of
+-1 and 1.
+
+In a trigger mode the trigger level is drawn as a dashed line and labelled once,
+as "Trig level", in the margin above the plot. The time axis aims for about one
+tick per 70 pixels; on a narrow screen it places them closer, as long as the
+labels do not overlap, so a phone still shows several ticks rather than only the
+two ends.
 
 The Y limits, X window and trigger level accept any valid number, zero
 included. An invalid axis value (Y Min not below Y Max, an X window of 0, text
@@ -151,13 +170,28 @@ which is what the request carries. It builds an export request and hands it to
 `downloadExportViaNats()` in `src/lib/exporter.ts`, which implements the client
 side of the [export protocol](../reference/export-protocol.md). It publishes the
 request with a reply inbox and an ack subject, acknowledges every chunk as it
-arrives, collects the chunks, and when the `complete` frame arrives turns them
-into a file download. If no exporter is listening (the box is offline), the
-NATS server says so straight away and the export fails with that message. If no
-message arrives for ten minutes, it gives up.
+arrives, and finishes when the `complete` frame arrives. If no exporter is
+listening (the box is offline), the NATS server says so straight away and the
+export fails with that message. If no message arrives for ten minutes, it gives
+up.
+
+Each export runs on a NATS connection of its own, opened with the saved
+credentials when you press Start Download and closed when the export completes,
+fails or is cancelled. Reloading the configuration, Retry, Reconnect or a lost
+live connection therefore do not cut a running export, and the dialog stays
+open through them. Leaving the page cancels the export.
+
+Where the browser has a save dialog (Chrome, Edge and other Chromium browsers),
+Start Download first asks where to save the file, offering the LabJack's name
+(or the exporter's default name), and then writes each chunk to that file as it
+arrives, before acknowledging it. Closing the save dialog without choosing a file
+starts no export. Firefox and Safari have no such dialog; there the chunks are
+collected and saved as a normal download when the export completes.
 
 Cancel Download stops a running export: the page stops reading and
-acknowledging chunks, releases the reply subscription and saves nothing. There
+acknowledging chunks, releases the reply subscription, closes the export's
+connection and saves nothing. A partly written file is discarded; if you chose
+to replace an existing file, that file is left as it was. There
 is no cancel message in the protocol, so the edge box does not know at once. It
 may send up to eight more chunks (512 KiB each) and then waits 30 s for an
 acknowledgement before it gives up, so a cancelled export can keep that box's
@@ -172,9 +206,11 @@ These are known and worth fixing, but none of them affects recorded data:
   the plot shows a gap. A channel that is not selected is not received at all,
   so selecting it again starts an empty plot. The archive and exports have
   every sample.
-- **Exports are held by the browser until saved.** Received chunks are folded
-  into Blob parts every 8 MiB, so little sits in JavaScript memory, but the
-  whole file is kept in the browser's Blob storage before it is saved. Split
-  very long ranges into several downloads.
+- **Exports are also kept by the browser until they finish.** Even when the
+  chunks are written straight to the chosen file, `downloadExportViaNats`
+  still folds them into Blob parts every 8 MiB and keeps them in the browser's
+  Blob storage until the export completes; in Firefox and Safari that copy is
+  what gets saved. Little sits in JavaScript memory, but split very long ranges
+  into several downloads.
 - **The credentials sit in `sessionStorage` as plain text** for as long as the
   tab is open. Log out or close the tab on shared machines.
