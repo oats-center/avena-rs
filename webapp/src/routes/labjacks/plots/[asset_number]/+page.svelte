@@ -622,7 +622,6 @@
             watchConnection(service);
             
             const preferredKey = $page.url.searchParams.get('key')?.trim() || "";
-            const keys = await getKeys(service, "avenabox", "*.*.*.config");
             let foundConfig: LabJackConfig | null = null;
 
             if (preferredKey) {
@@ -637,7 +636,10 @@
                 }
             }
 
+            // Search every config only when the ?key= config is missing or is for another asset.
             if (!foundConfig) {
+                const keys = await getKeys(service, "avenabox", "*.*.*.config");
+                if (superseded()) return;
                 for (const key of keys) {
                     try {
                         const configStr = await getKeyValue(service, "avenabox", key);
