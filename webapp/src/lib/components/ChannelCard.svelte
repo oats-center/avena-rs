@@ -1,6 +1,6 @@
 <script lang="ts">
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
-    import type { AxisLimits } from "$lib/plot/axis";
+    import { seedManualYLimits, type AxisLimits } from "$lib/plot/axis";
     import { channelStatusLabel, isTriggerMode, plotConfigFor, type ChannelPlotMode } from "$lib/plot/channel";
     import type { ChannelView } from "$lib/plot/channel-view.svelte";
     import type { ChannelUnitInfo } from "$lib/plot/units";
@@ -22,6 +22,9 @@
 
     let { view, dataFormat, unitInfo, onchange }: Props = $props();
 
+    /** The plot, asked for its current y range when autoscale is turned off. */
+    let plot = $state<ReturnType<typeof RealTimePlot> | undefined>();
+
     const channel = $derived(view.channel);
     const plotConfig = $derived(plotConfigFor(view.mode, view.liveData, view.capture, view.trigger));
     const triggerMode = $derived(isTriggerMode(view.mode));
@@ -36,6 +39,22 @@
         const restore = view.commitAxisLimit(field, input.value);
         if (restore === null) onchange();
         else input.value = restore;
+    }
+
+    /**
+     * Turns autoscale on or off. Turning it off starts Y Min and Y Max from the range
+     * the plot shows (see `seedManualYLimits`), so the plot does not jump.
+     *
+     * @param autoY - New checkbox state.
+     */
+    function setAutoY(autoY: boolean) {
+        if (autoY) {
+            view.updateAxis({ autoY: true });
+        } else {
+            const limits = seedManualYLimits(plot?.getDisplayedYRange() ?? null, view.axis);
+            view.updateAxis({ autoY: false, ...limits });
+        }
+        onchange();
     }
 
     /**
@@ -138,8 +157,7 @@ component only edits it.
                             checked={view.axis.autoY}
                             onchange={(e) => {
                                 if (e.target instanceof HTMLInputElement) {
-                                    view.updateAxis({ autoY: e.target.checked });
-                                    onchange();
+                                    setAutoY(e.target.checked);
                                 }
                             }}
                         />
@@ -323,6 +341,7 @@ component only edits it.
         <div>
             <h4 class="text-md font-medium text-base-content mb-4">Data Plot</h4>
             <RealTimePlot
+                bind:this={plot}
                 data={plotConfig.data}
                 unit={unitInfo.unit}
                 calibrated={unitInfo.calibrated}

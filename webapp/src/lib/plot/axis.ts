@@ -66,3 +66,37 @@ export function applyAxisLimitInput(
     }
     return { ok: true, limits: next };
 }
+
+/**
+ * Picks the manual Y limits used when autoscale is turned off, from the range the plot
+ * showed last, so the plot does not jump.
+ *
+ * The edges are rounded outward to two significant digits beyond the span's order of
+ * magnitude (at most six decimals), so the range still covers what was shown and the
+ * inputs show short numbers.
+ *
+ * @param shown - Y range of the last drawn frame, or `null` when nothing was drawn.
+ * @param current - Limits in use; kept when there is no usable range.
+ * @returns The new `yMin` and `yMax`, with `yMin < yMax`.
+ *
+ * @example
+ * ```ts
+ * seedManualYLimits({ low: -2, high: 2 }, { yMin: -1, yMax: 1 });              // { yMin: -2, yMax: 2 }
+ * seedManualYLimits({ low: 0.12345, high: 0.30001 }, { yMin: -1, yMax: 1 });   // { yMin: 0.123, yMax: 0.301 }
+ * ```
+ */
+export function seedManualYLimits(
+    shown: { low: number; high: number } | null,
+    current: { yMin: number; yMax: number }
+): { yMin: number; yMax: number } {
+    if (!shown || !Number.isFinite(shown.low) || !Number.isFinite(shown.high) || !(shown.low < shown.high)) {
+        return { yMin: current.yMin, yMax: current.yMax };
+    }
+    const span = shown.high - shown.low;
+    const decimals = Math.min(6, Math.max(0, Math.ceil(-Math.log10(span)) + 2));
+    const factor = Math.pow(10, decimals);
+    // Round away from the range, but ignore floating point noise just past a step.
+    const yMin = Number((Math.floor(shown.low * factor + 1e-9) / factor).toFixed(decimals));
+    const yMax = Number((Math.ceil(shown.high * factor - 1e-9) / factor).toFixed(decimals));
+    return yMin < yMax ? { yMin, yMax } : { yMin: current.yMin, yMax: current.yMax };
+}

@@ -108,6 +108,19 @@
     const MIN_TIME_TICK_SPACING = 70;
     /** Running min/max of every value seen in continuous autoscale. Only grows until reset. */
     let stickyAutoExtrema: { min: number; max: number } | null = null;
+    /** Y range of the last drawn frame, or `null` before data arrives. */
+    let lastYRange: { low: number; high: number } | null = null;
+
+    /**
+     * Returns the y range of the last drawn frame, so the page can start manual limits
+     * from what is on screen when autoscale is turned off.
+     *
+     * @returns `{ low, high }` in `unit`, or `null` when nothing has been drawn yet.
+     */
+    export function getDisplayedYRange(): { low: number; high: number } | null {
+        return lastYRange ? { ...lastYRange } : null;
+    }
+
     /** Number of horizontal grid intervals on the y axis. */
     const Y_GRID_DIVISIONS = 8;
     /** Smallest autoscale grid step, in `unit`. Keeps a flat signal from collapsing the axis. */
@@ -868,6 +881,7 @@
         const referenceTime = getContinuousReferenceTime(dataToPlot);
         const visibleData = getVisiblePoints(dataToPlot, referenceTime);
         const range = getDisplayRange(visibleData);
+        lastYRange = range;
 
         // The left margin depends on the value labels, and everything else on the margin.
         const valueLabels = getValueTickLabels(range);
