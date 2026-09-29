@@ -4,7 +4,11 @@
  *
  * See `docs/src/reference/kv-config.md` for the fields.
  */
-import type { CalibrationSpec } from "./calibration";
+import {
+    normalizeCalibration,
+    resolveCalibrationUnit,
+    type CalibrationSpec
+} from "./calibration";
 
 /** `sensor_settings` of a LabJack config document. */
 export interface SensorSettings {
@@ -16,13 +20,19 @@ export interface SensorSettings {
     channels_enabled: number[];
     /** Edited in the webapp but not used by the streamer. */
     gains: number;
-    /** What each enabled channel measures, same order as `channels_enabled`. Label only. */
+    /**
+     * Sensor type of each enabled channel (see {@link SENSOR_TYPES}), same order as
+     * `channels_enabled`. Label only.
+     */
     data_formats: string[];
-    /** Unit of each enabled channel after calibration, same order. Label only. */
+    /**
+     * Unit of each enabled channel after calibration, same order. A copy of the
+     * calibration's `unit` kept for older readers; the calibration's `unit` wins.
+     */
     measurement_units: string[];
     /** `false` stops streaming. This is a setting, not a live status. */
     labjack_on_off: boolean;
-    /** Volts-to-units conversion per channel, keyed by channel number as a string. */
+    /** Volts-to-units conversion and its unit per channel, keyed by channel number as a string. */
     calibrations?: Record<string, CalibrationSpec>;
 }
 
@@ -139,8 +149,9 @@ export function normalizeLabJackConfig(raw: any): LabJackConfig | null {
 /**
  * Copies a config from the edit modal into the shape written to KV.
  *
- * Converts the numeric top-level fields with `Number()` and normalizes the sensor
- * settings with {@link normalizeSensorSettings}. Only the fields listed in
+ * Converts the numeric top-level fields with `Number()`, normalizes the sensor
+ * settings with {@link normalizeSensorSettings} and writes each enabled channel's unit
+ * into its calibration and `measurement_units` with {@link syncChannelCalibrations}. Only the fields listed in
  * {@link LabJackConfig} are kept; any other field on `raw` is dropped.
  *
  * @param raw - Config returned by `LabJackConfigModal`.
@@ -158,6 +169,106 @@ export function sanitizeLabJackConfig(raw: LabJackConfig): LabJackConfig {
         nats_subject: raw.nats_subject,
         nats_stream: raw.nats_stream,
         rotate_secs: Number(raw.rotate_secs),
-        sensor_settings: normalizeSensorSettings(raw.sensor_settings)
+        sensor_settings: syncChannelCalibrations(normalizeSensorSettings(raw.sensor_settings))
     };
+}
+
+/** A kind of sensor offered for a channel, stored in `data_formats`. */
+export interface SensorType {
+    /** Value stored in `data_formats`. */
+    format: string;
+    /** Name shown in the config form. */
+    label: string;
+    /** Units offered for a calibrated channel of this type; the first is the default. */
+    units: string[];
+}
+
+/**
+ * Sensor types offered in the config form. A channel whose calibration is identity is
+ * in volts whatever its type.
+ */
+export const SENSOR_TYPES: readonly SensorType[] = Object.freeze([
+    { format: "voltage", label: "Voltage", units: ["V", "mV"] },
+    { format: "strain", label: "Strain gauge", units: ["µε", "mV/V", "V"] },
+    { format: "pressure", label: "Pressure", units: ["kPa", "Pa", "bar", "PSI"] },
+    { format: "temperature", label: "Temperature", units: ["°C"] },
+    { format: "current", label: "Current", units: ["A", "mA"] },
+    { format: "resistance", label: "Resistance", units: ["Ω"] }
+]);
+
+/**
+ * Looks up a sensor type by its `data_formats` value.
+ *
+ * @param format - Stored `data_formats` entry.
+ * @returns The type, or `undefined` for a value not in {@link SENSOR_TYPES}.
+ */
+export function findSensorType(format: string | undefined): SensorType | undefined {
+    return SENSOR_TYPES.find((type) => type.format === format);
+}
+
+/**
+ * Picks the `data_formats` value that matches a calibrated channel's unit.
+ *
+ * Keeps `format` when its sensor type offers `unit`, or when `format` is not a known
+ * type (a custom value from KV is left alone). Otherwise returns the first sensor type
+ * that offers `unit`, or `format` unchanged when none does.
+ *
+ * @param format - Current `data_formats` entry.
+ * @param unit - Unit of the channel's calibration.
+ * @returns The sensor type format to store.
+ */
+export function sensorFormatForUnit(format: string | undefined, unit: string): string {
+    const current = findSensorType(format);
+    if (format && !current) return format;
+    if (current?.units.includes(unit)) return current.format;
+    return SENSOR_TYPES.find((type) => type.units.includes(unit))?.format ?? format ?? "voltage";
+}
+
+/**
+ * Makes each enabled channel's calibration, unit and sensor type agree, in place.
+ *
+ * For every enabled channel, the calibration is normalized (a missing one becomes
+ * identity) and its unit set from {@link resolveCalibrationUnit}: `V` for identity,
+ * else the calibration's own unit, else a non-`V` `measurement_units` entry from an
+ * older config. That unit is copied to `measurement_units` so older readers see it,
+ * and for a calibrated channel `data_formats` is moved to a sensor type offering it
+ * (see {@link sensorFormatForUnit}). A calibrated channel with no known unit keeps its
+ * calibration without `unit` and its old labels; the form does not save such a channel.
+ * An `id` from an older config is kept. Calibrations of channels that are not enabled
+ * are left as they are.
+ *
+ * @param sensor - Normalized sensor settings; modified.
+ * @returns `sensor`, for chaining.
+ */
+export function syncChannelCalibrations(sensor: SensorSettings): SensorSettings {
+    const calibrations = { ...(sensor.calibrations ?? {}) };
+    sensor.channels_enabled.forEach((channel, index) => {
+        const key = String(channel);
+        const calibration = normalizeCalibration(calibrations[key]);
+        const unit = resolveCalibrationUnit(calibration, sensor.measurement_units[index]);
+        if (unit === undefined) {
+            calibrations[key] = calibration;
+            return;
+        }
+        calibrations[key] = { ...calibration, unit };
+        sensor.measurement_units[index] = unit;
+        if (calibration.type !== "identity") {
+            sensor.data_formats[index] = sensorFormatForUnit(sensor.data_formats[index], unit);
+        }
+    });
+    sensor.calibrations = calibrations;
+    return sensor;
+}
+
+/**
+ * Lists enabled channels that have a calibration but no unit for it.
+ *
+ * @param sensor - Sensor settings.
+ * @returns Channel numbers, in `channels_enabled` order.
+ */
+export function channelsMissingUnit(sensor: SensorSettings): number[] {
+    return sensor.channels_enabled.filter((channel, index) => {
+        const calibration = normalizeCalibration(sensor.calibrations?.[String(channel)]);
+        return resolveCalibrationUnit(calibration, sensor.measurement_units[index]) === undefined;
+    });
 }

@@ -47,8 +47,9 @@ unique between boxes, so the plot address carries the configuration key:
 The plot page shows up to two channels at a time and receives only the ones
 you select, so selecting a channel again starts an empty plot. Each channel
 says whether it shows raw volts or calibrated values and in which unit; a
-calibrated channel also shows its latest raw reading in volts. If a calibrated
-channel is still labelled V, set its unit in the configuration.
+calibrated channel also shows its latest raw reading in volts. The unit is the
+one set with the channel's calibration in the configuration form; if a channel
+says "unit not set", edit the configuration and choose it.
 
 The connection badge reads Connecting, Connected, Reconnecting or
 Disconnected. When the connection drops, a banner says the page is
@@ -66,6 +67,10 @@ nats --server nats://nats1.oats:4222 --creds apt.creds \
 Editing a configuration in the webapp writes the central key. The box's
 streamer mirrors the change within a moment and restarts sampling with the new
 settings; the archiver starts a new file when a channel's calibration changes.
+Each channel has one calibration, set in the form together with its unit (for
+example kPa for pressure or µε for a strain gauge); a strain gauge's
+calibration can be worked out from its certificate factor, the bridge
+excitation and the amplifier gain with the form's bridge helper.
 The [LabJack configuration reference](../reference/kv-config.md) explains each
 field.
 

@@ -27,8 +27,7 @@ pages show an error message instead of crashing.
 ## The LabJack list
 
 `/labjacks` lists every key in the `avenabox` bucket that matches
-`*.*.*.config` and shows one card per configuration. It also loads the
-calibration presets stored under `calibration.*`. Configurations are read
+`*.*.*.config` and shows one card per configuration. Configurations are read
 through `normalizeLabJackConfig()` in `src/lib/labjack-config.ts`, which fills
 in missing fields and accepts older field names.
 
@@ -43,10 +42,12 @@ and returns it. The page writes the result to
 `<site>.<box>.<source>.config`. From there the edge node's streamer picks the
 change up within seconds (see [LabJack configuration](../reference/kv-config.md)).
 Writes and deletes each open a short-lived connection of their own. Closing the
-form with unsaved changes asks first. Saving a calibration preset from the form
-writes `calibration.<id>` straight away, after a confirmation, whether or not
-the form itself is then saved. Delete sits at the bottom of each card, away from
-Edit, and asks for confirmation.
+form with unsaved changes asks first. Delete sits at the bottom of each card,
+away from Edit, and asks for confirmation.
+
+Earlier versions also kept named calibration presets under `calibration.*` in
+the same bucket. The webapp no longer reads or writes those keys, and the edge
+node never did: each channel's calibration lives only in its configuration.
 
 ## Live plots
 
@@ -90,17 +91,24 @@ one at a time, so a missing value comes through as a gap.
 
 ### Units and calibration
 
-The configuration has no unit field for a calibration, only one
-`measurement_units` entry per channel (`V` when none was chosen). Each channel
-header shows a tag saying what the plotted values are:
+Each channel's calibration carries the unit it converts to, for example
+`{"type":"linear","a":2.0,"b":-1.0,"unit":"kPa"}`. The unit is worked out by
+`resolveCalibrationUnit()` in `src/lib/calibration.ts` and used for the axis
+title, Latest, the y limits and the trigger threshold. Each channel header
+shows a tag saying what the plotted values are:
 
-- `raw volts` when the channel has no calibration. The values are volts
-  whatever unit is configured, so a configured unit other than V gets a
-  warning.
-- `calibrated: <preset or type> → <unit>` when it has one. The values are in
-  the configured unit. If that unit is still V, the tag turns yellow and a line
-  under the header asks you to check it, since most calibrations convert volts
-  to something else. The configuration form flags the same case.
+- `raw volts` when the channel has no calibration (identity). The values are
+  volts; a configuration from before calibrations had units that still names
+  another unit for the channel gets a warning.
+- `calibrated → <unit>` when it has one. The values are in the calibration's
+  unit.
+
+A configuration saved before calibrations had units has no `unit` in the
+calibration. The page then uses the channel's `measurement_units` entry, unless
+it is V, which was the value filled in when nobody chose a unit. Such a
+channel shows `calibrated: <type> → unit not set` in yellow with a line asking
+you to set the unit in the configuration; saving the configuration from the
+form fixes it for good.
 
 A calibrated plot also shows a Raw badge with the latest reading in volts
 before calibration, which is handy for checking a sensor against its data

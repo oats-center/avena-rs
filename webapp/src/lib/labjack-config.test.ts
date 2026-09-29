@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+    channelsMissingUnit,
     DEFAULT_SENSOR_SETTINGS,
+    findSensorType,
     normalizeLabJackConfig,
     normalizeSensorSettings,
-    sanitizeLabJackConfig
+    sanitizeLabJackConfig,
+    sensorFormatForUnit
 } from './labjack-config';
 
 describe('normalizeSensorSettings', () => {
@@ -131,5 +134,136 @@ describe('sanitizeLabJackConfig', () => {
         expect(c).not.toHaveProperty('extra');
         expect(c.asset_number).toBe(7);
         expect(c.sensor_settings.data_formats).toEqual(['voltage']);
+    });
+});
+
+/** A config as the webapp saves it, with the given sensor settings. */
+function configWith(sensor: any) {
+    return {
+        labjack_name: 'lj2',
+        asset_number: 1456,
+        max_channels: 8,
+        site_id: 'i69',
+        box_id: 'i69-mu2',
+        source_type: 'labjack',
+        source_id: 'i69-lj2',
+        nats_subject: 'avenars',
+        nats_stream: 'labjacks',
+        rotate_secs: 60,
+        sensor_settings: sensor
+    };
+}
+
+/** Load from KV (JSON text) and save again, as the /labjacks page does. */
+function roundTrip(sensor: any) {
+    const loaded = normalizeLabJackConfig(JSON.parse(JSON.stringify(configWith(sensor))))!;
+    return JSON.parse(JSON.stringify(sanitizeLabJackConfig(loaded))).sensor_settings;
+}
+
+describe('calibration units on save', () => {
+    it('keeps an older config with id and measurement_units, adding the unit to the calibration', () => {
+        const saved = roundTrip({
+            channels_enabled: [0, 6],
+            data_formats: ['voltage', 'voltage'],
+            measurement_units: ['V', 'kPa'],
+            calibrations: {
+                '0': { type: 'identity' },
+                '6': { id: 'tp3505', type: 'linear', a: 2, b: -1 }
+            }
+        });
+        expect(saved.calibrations).toEqual({
+            '0': { type: 'identity', unit: 'V' },
+            '6': { id: 'tp3505', type: 'linear', a: 2, b: -1, unit: 'kPa' }
+        });
+        expect(saved.measurement_units).toEqual(['V', 'kPa']);
+        expect(saved.data_formats).toEqual(['voltage', 'pressure']);
+    });
+
+    it('keeps the MU2 strain calibration unchanged and labels it µε once the unit is chosen', () => {
+        const mu2 = {
+            channels_enabled: [6],
+            data_formats: ['voltage'],
+            measurement_units: ['V'],
+            calibrations: { '6': { id: 'sg194', type: 'linear', a: 481.26, b: 1058.722 } }
+        };
+        // Without a unit the calibration is left as it was and flagged.
+        const before = normalizeSensorSettings(mu2);
+        expect(channelsMissingUnit(before)).toEqual([6]);
+        expect(roundTrip(mu2).calibrations['6']).toEqual({ id: 'sg194', type: 'linear', a: 481.26, b: 1058.722 });
+
+        // After the owner picks µε in the form.
+        const picked = { ...mu2, calibrations: { '6': { ...mu2.calibrations['6'], unit: 'µε' } } };
+        const saved = roundTrip(picked);
+        expect(saved.calibrations['6']).toEqual({ id: 'sg194', type: 'linear', a: 481.26, b: 1058.722, unit: 'µε' });
+        expect(saved.measurement_units).toEqual(['µε']);
+        expect(saved.data_formats).toEqual(['strain']);
+        expect(channelsMissingUnit(normalizeSensorSettings(saved))).toEqual([]);
+    });
+
+    it('round-trips a new config with units unchanged', () => {
+        const sensor = {
+            scans_per_read: 200,
+            scan_rate_hz: 1000,
+            channels_enabled: [0, 1, 2, 3],
+            gains: 1,
+            data_formats: ['voltage', 'pressure', 'strain', 'strain'],
+            measurement_units: ['V', 'kPa', 'µε', 'mV/V'],
+            labjack_on_off: true,
+            calibrations: {
+                '0': { type: 'identity', unit: 'V' },
+                '1': { type: 'polynomial', coeffs: [1, 2, 0.5], unit: 'kPa' },
+                '2': { type: 'linear', a: 481.26, b: -240.63, unit: 'µε' },
+                '3': { type: 'linear', a: 1, b: 0, unit: 'mV/V' }
+            }
+        };
+        expect(roundTrip(sensor)).toEqual(sensor);
+        expect(roundTrip(roundTrip(sensor))).toEqual(sensor);
+    });
+
+    it('makes measurement_units follow the calibration unit', () => {
+        const saved = roundTrip({
+            channels_enabled: [1],
+            data_formats: ['pressure'],
+            measurement_units: ['PSI'],
+            calibrations: { '1': { type: 'linear', a: 3, b: 0, unit: 'kPa' } }
+        });
+        expect(saved.measurement_units).toEqual(['kPa']);
+        expect(saved.data_formats).toEqual(['pressure']);
+    });
+
+    it('labels identity channels V and keeps their sensor type', () => {
+        const saved = roundTrip({
+            channels_enabled: [2],
+            data_formats: ['strain'],
+            measurement_units: ['µε'],
+            calibrations: {}
+        });
+        expect(saved.calibrations).toEqual({ '2': { type: 'identity', unit: 'V' } });
+        expect(saved.measurement_units).toEqual(['V']);
+        expect(saved.data_formats).toEqual(['strain']);
+    });
+
+    it('leaves calibrations of channels that are not enabled alone', () => {
+        const saved = roundTrip({
+            channels_enabled: [0],
+            calibrations: { '5': { type: 'linear', a: 2, b: 0 } }
+        });
+        expect(saved.calibrations['5']).toEqual({ type: 'linear', a: 2, b: 0 });
+    });
+});
+
+describe('sensor types', () => {
+    it('offers strain gauges in µε, mV/V and V', () => {
+        expect(findSensorType('strain')).toEqual({ format: 'strain', label: 'Strain gauge', units: ['µε', 'mV/V', 'V'] });
+        expect(findSensorType('pressure')?.units).toContain('kPa');
+        expect(findSensorType('nonsense')).toBeUndefined();
+    });
+
+    it('picks the sensor type from the unit', () => {
+        expect(sensorFormatForUnit('voltage', 'µε')).toBe('strain');
+        expect(sensorFormatForUnit('voltage', 'kPa')).toBe('pressure');
+        expect(sensorFormatForUnit('strain', 'V')).toBe('strain');
+        expect(sensorFormatForUnit('voltage', 'furlongs')).toBe('voltage');
+        expect(sensorFormatForUnit('my-sensor', 'kPa')).toBe('my-sensor');
     });
 });
