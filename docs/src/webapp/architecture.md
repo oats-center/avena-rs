@@ -195,11 +195,11 @@ completes.
 Cancel Download stops a running export: the page stops reading and
 acknowledging chunks, releases the reply subscription, closes the export's
 connection and saves nothing. A partly written file is discarded; if you chose
-to replace an existing file, that file is left as it was. There
-is no cancel message in the protocol, so the edge box does not know at once. It
-may send up to eight more chunks (512 KiB each) and then waits 30 s for an
-acknowledgement before it gives up, so a cancelled export can keep that box's
-uplink busy for a little while.
+to replace an existing file, that file is left as it was. The
+webapp also sends a `cancel` message on the export's ack subject, and the edge
+exporter stops before its next chunk. An older exporter that doesn't know the
+message stops when its acknowledgements time out, after up to eight more chunks
+and about 30 s.
 
 ## Current limitations
 
