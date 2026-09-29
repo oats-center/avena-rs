@@ -37,6 +37,16 @@ were fixed in #21 and deployed to MU1 and MU2 on 2026-09-29.
 
 ## Still open
 
+- [ ] **Filtered export edges.** In a 2 kHz export with a low-pass, the last few
+  samples of `filtered_value` taper to exactly 0 and the first few ring slightly.
+  The exporter reads a settling margin around the range, so check whether that
+  margin is actually read (the newest window may still be `.inprogress`) and how
+  the forward-backward pass starts and ends.
+- [ ] **Despike on noisy channels.** On SG159 the spike filter slightly raises
+  the 1–100 Hz noise (+0.9 dB), because that channel's noise is mostly random, not
+  spikes. It is off for MU2 ch7; consider a despike that only acts on isolated
+  one-sample outliers.
+
 - [ ] **Scan rates the T7 can't hit exactly.** At 2200 Hz the LJM library reported
   2200 Hz, but the MU2 data drift about 100 ppm (0.36 s an hour) against the sample
   count, which is more than the clock slew can absorb (60 ms an hour). Check the
