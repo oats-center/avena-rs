@@ -4,7 +4,7 @@ import type { NatsService } from '../nats.svelte';
 import { runExportOnOwnConnection } from './export-run';
 
 const payload = { asset: 1, channels: [0], start: '2026-01-01T00:00:00Z', end: '2026-01-01T00:01:00Z' };
-const result: ExportStreamResult = { blob: new Blob(['a']), fileName: 'x.csv', size: 1, missingChannels: [] };
+const result: ExportStreamResult = { blob: new Blob(['a']), streamed: false, fileName: 'x.csv', size: 1, missingChannels: [] };
 
 function fakeService() {
     const state = { closed: 0 };
@@ -75,17 +75,16 @@ describe('runExportOnOwnConnection', () => {
         expect(failed.message).toBe('Failed to connect to NATS server for the export');
     });
 
-    it('hands the wrapped connection to the download but closes the original', async () => {
-        const { service, state } = fakeService();
-        const wrapped = { connection: {} } as unknown as NatsService;
-        let used: NatsService | null = null;
+    it('passes the chunk consumer on to the download', async () => {
+        const { service } = fakeService();
+        const onChunk = async () => {};
+        let passed: unknown = null;
         await runExportOnOwnConnection({
             openConnection: async () => service,
             subject: 'req', payload, signal: new AbortController().signal,
-            wrapConnection: () => wrapped,
-            download: async (nats) => { used = nats; return result; }
+            onChunk,
+            download: async (_nats, _subject, _payload, opts) => { passed = opts?.onChunk; return result; }
         });
-        expect(used).toBe(wrapped);
-        expect(state.closed).toBe(1);
+        expect(passed).toBe(onChunk);
     });
 });

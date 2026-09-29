@@ -52,9 +52,15 @@ export interface ExportRequestPayload {
 export interface ExportStreamResult {
   /**
    * All CSV chunks joined in arrival order, typed with the `meta` frame's content type
-   * or `text/csv`.
+   * or `text/csv`. Empty when the chunks went to {@link ExportStreamOptions.onChunk}
+   * instead (see {@link streamed}).
    */
   blob: Blob;
+  /**
+   * `true` when every chunk was handed to {@link ExportStreamOptions.onChunk} and not
+   * kept, so {@link blob} is empty; `false` when {@link blob} holds the CSV.
+   */
+  streamed: boolean;
   /**
    * File name from the `meta` frame, else the request's `download_name`, else
    * `labjack_export.csv`.
@@ -70,6 +76,15 @@ export interface ExportStreamResult {
 export interface ExportStreamOptions {
   /** Called after each chunk is stored and acked, with the total bytes received so far. */
   onProgress?: (received: number) => void;
+  /**
+   * Receives the bytes of each `chunk` frame, in arrival order, instead of the chunks
+   * being collected into the result's Blob. The call is awaited before the chunk is
+   * acknowledged, so a slow consumer (a file on a slow disk) slows the exporter down
+   * instead of data piling up in memory. The result then has an empty `blob` and
+   * `streamed: true`. If it throws or rejects, the export fails with that error and
+   * a `cancel` message is sent to the exporter.
+   */
+  onChunk?: (data: Uint8Array) => void | Promise<void>;
   /** Called on the `summary` frame with its missing channels (empty if absent). */
   onSummary?: (missingChannels: number[]) => void;
   /**
@@ -191,35 +206,38 @@ function isErrorFrame(frame: Frame): frame is ErrorFrame {
  *    subscribed to `requestSubject` (the box is offline or its exporter is not
  *    running), and the call rejects at once instead of waiting for the idle
  *    timeout. Otherwise the `Avena-Export-Frame` header names each frame; a message
- *    without the header counts as a `chunk`. Each chunk is copied, stored, and
- *    acknowledged by publishing an empty message to the ack inbox. `meta` and
- *    `summary` frames are parsed as JSON and kept. Frames with another name, or
- *    whose `type` field does not match the header, are ignored.
- * 4. On the `complete` frame, joins the stored parts into one Blob and resolves.
+ *    without the header counts as a `chunk`. Each chunk is copied and stored (or
+ *    passed to `options.onChunk`, which is awaited), and then acknowledged by
+ *    publishing an empty message to the ack inbox. `meta` and `summary` frames are
+ *    parsed as JSON and kept. Frames with another name, or whose `type` field does
+ *    not match the header, are ignored.
+ * 4. On the `complete` frame, joins the stored parts into one Blob (an empty one when
+ *    `options.onChunk` took the chunks) and resolves.
  *
  * If the call ends any other way after the request was sent (cancelled through
- * `options.signal`, idle timeout, a bad frame, the subscription ending), it publishes
- * a `cancel` message on the ack subject, with the header `Avena-Export-Frame: cancel`
- * and the body `{"type":"cancel"}`, so the exporter stops instead of waiting for acks.
+ * `options.signal`, idle timeout, a bad frame, the subscription ending, or
+ * `options.onChunk` failing), it publishes a `cancel` message on the ack subject,
+ * with the header `Avena-Export-Frame: cancel` and the body `{"type":"cancel"}`, so
+ * the exporter stops instead of waiting for acks.
  * No cancel is sent after an `error` frame or a NATS status reply, since the exporter
  * has already stopped or never started.
  *
  * Chunks are folded into a Blob part every 8 MiB, so at most that much CSV sits in
  * JavaScript memory at a time; the rest is held in the browser's Blob storage until
- * the caller saves the result.
+ * the caller saves the result. With `options.onChunk` nothing is kept at all.
  *
  * @param nats - Connected service from {@link "nats.svelte"!connect}.
  * @param requestSubject - Export request subject, e.g. from
  *   {@link subjects!archiveExportRequestSubject}:
  *   `avenars.<site>.<box>.<source>.export.request`.
  * @param payload - Request fields. `format` is overwritten with `csv`.
- * @param options - Progress callbacks and idle timeout.
+ * @param options - Progress callbacks, chunk consumer, idle timeout and abort signal.
  * @returns Resolves to the assembled CSV, its file name, size and missing channels.
  * @throws If publishing fails, no exporter is listening on `requestSubject`, the
  *   server returns another error status, a non-chunk frame is not valid JSON, the
  *   exporter sends an `error` frame, no message arrives within the idle timeout, the reply
- *   subscription ends before a `complete` frame, or `options.signal` is aborted (an
- *   error named `AbortError`).
+ *   subscription ends before a `complete` frame, `options.onChunk` throws (that
+ *   error), or `options.signal` is aborted (an error named `AbortError`).
  *
  * @example
  * ```ts
@@ -239,6 +257,7 @@ export async function downloadExportViaNats(
   options: ExportStreamOptions = {}
 ): Promise<ExportStreamResult> {
   const signal = options.signal;
+  const onChunk = options.onChunk;
   if (signal?.aborted) throw cancelledError();
   const inbox = createInbox();
   const ackSubject = createInbox();
@@ -351,14 +370,19 @@ export async function downloadExportViaNats(
       if (frame === "chunk") {
         const data = msg.data instanceof Uint8Array ? msg.data : new Uint8Array(msg.data);
         // Copy, since the message may be a view into a buffer the client reuses.
-        pending.push(data.slice());
-        pendingBytes += data.byteLength;
-        totalBytes += data.byteLength;
-        if (pendingBytes >= BLOB_PART_BYTES) {
-          parts.push(new Blob(pending as BlobPart[]));
-          pending = [];
-          pendingBytes = 0;
+        if (onChunk) {
+          // Awaited before the ack, so a slow consumer holds the exporter back.
+          await onChunk(data.slice());
+        } else {
+          pending.push(data.slice());
+          pendingBytes += data.byteLength;
+          if (pendingBytes >= BLOB_PART_BYTES) {
+            parts.push(new Blob(pending as BlobPart[]));
+            pending = [];
+            pendingBytes = 0;
+          }
         }
+        totalBytes += data.byteLength;
         // One ack per stored chunk; the exporter waits for these every eight chunks.
         // A cancelled download sends no more acks.
         if (signal?.aborted) throw cancelledError();
@@ -404,6 +428,7 @@ export async function downloadExportViaNats(
         const blob = new Blob([...parts, ...(pending as BlobPart[])], { type: mime });
         return {
           blob,
+          streamed: onChunk !== undefined,
           fileName,
           size: summary?.bytesSent ?? totalBytes ?? blob.size,
           missingChannels: summary?.missingChannels ?? [],

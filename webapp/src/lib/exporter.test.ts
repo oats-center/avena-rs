@@ -114,3 +114,83 @@ describe('export cancel message', () => {
         expect(fake.published).toEqual([]);
     });
 });
+
+describe('export onChunk hook', () => {
+    it('awaits onChunk before acknowledging each chunk', async () => {
+        const fake = fakeNats();
+        const events: string[] = [];
+        const acks = () => fake.published.filter((p) => p.subject !== 'req' && !p.frame).length;
+        const download = downloadExportViaNats(fake.nats, 'req', payload, {
+            onChunk: async (data) => {
+                events.push(`start ${data.length} acks=${acks()}`);
+                await new Promise((resolve) => setTimeout(resolve, 5));
+                events.push(`done ${data.length} acks=${acks()}`);
+            },
+            onProgress: (bytes) => events.push(`progress ${bytes} acks=${acks()}`)
+        });
+        fake.send('chunk', new Uint8Array([1, 2]));
+        fake.send('chunk', new Uint8Array([3]));
+        fake.json('complete', { type: 'complete' });
+        await download;
+        expect(events).toEqual([
+            'start 2 acks=0',
+            'done 2 acks=0',
+            'progress 2 acks=1',
+            'start 1 acks=1',
+            'done 1 acks=1',
+            'progress 3 acks=2'
+        ]);
+    });
+
+    it('keeps no Blob when onChunk takes the chunks', async () => {
+        const fake = fakeNats();
+        const received: number[][] = [];
+        const download = downloadExportViaNats(fake.nats, 'req', payload, {
+            onChunk: (data) => {
+                received.push([...data]);
+            }
+        });
+        fake.json('meta', { type: 'meta', fileName: 'x.csv', contentType: 'text/csv' });
+        fake.send('chunk', new Uint8Array([1, 2, 3]));
+        fake.send('chunk', new Uint8Array([4]));
+        fake.json('summary', { type: 'summary', bytesSent: 4, missingChannels: [2] });
+        fake.json('complete', { type: 'complete' });
+        const result = await download;
+        expect(received).toEqual([[1, 2, 3], [4]]);
+        expect(result.streamed).toBe(true);
+        expect(result.blob.size).toBe(0);
+        expect(result.fileName).toBe('x.csv');
+        expect(result.size).toBe(4);
+        expect(result.missingChannels).toEqual([2]);
+        expect(fake.cancels()).toEqual([]);
+    });
+
+    it('cancels the exporter and rejects with the onChunk error', async () => {
+        const fake = fakeNats();
+        const download = downloadExportViaNats(fake.nats, 'req', payload, {
+            onChunk: async () => {
+                throw new Error('disk full');
+            }
+        });
+        fake.send('chunk', new Uint8Array([1]));
+        await expect(download).rejects.toThrow('disk full');
+        const toAck = fake.published.filter((p) => p.subject === fake.ackSubject());
+        expect(toAck.map((p) => p.frame ?? 'ack')).toEqual(['cancel']);
+    });
+
+    it('collects the chunks into the Blob without onChunk', async () => {
+        const fake = fakeNats();
+        const download = downloadExportViaNats(fake.nats, 'req', payload);
+        fake.json('meta', { type: 'meta', fileName: 'x.csv', contentType: 'text/plain' });
+        fake.send('chunk', new TextEncoder().encode('a,b\n'));
+        fake.send('chunk', new TextEncoder().encode('1,2\n'));
+        fake.json('complete', { type: 'complete' });
+        const result = await download;
+        expect(result.streamed).toBe(false);
+        expect(result.blob.type).toBe('text/plain');
+        expect(await result.blob.text()).toBe('a,b\n1,2\n');
+        expect(result.size).toBe(8);
+        const toAck = fake.published.filter((p) => p.subject === fake.ackSubject());
+        expect(toAck.map((p) => p.frame ?? 'ack')).toEqual(['ack', 'ack']);
+    });
+});

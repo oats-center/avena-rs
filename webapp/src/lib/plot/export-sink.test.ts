@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { downloadExportViaNats } from '../exporter';
+import { downloadExportViaNats, isExportCancelled, type ExportStreamResult } from '../exporter';
 import type { NatsService } from '../nats.svelte';
-import { isChunkFrame, isPickerCancelled, pickSaveFile, suggestedExportFileName, tapExportChunks } from './export-sink';
+import {
+    isPickerCancelled,
+    pickSaveFile,
+    runAndSaveExport,
+    suggestedExportFileName,
+    type SaveFileWritable
+} from './export-sink';
 
 /** Fake connection whose one reply subscription is fed by the test, logging publishes. */
 function fakeNats() {
@@ -28,7 +34,8 @@ function fakeNats() {
     };
     const connection = {
         subscribe: () => sub,
-        publish: (subject: string) => log.push(`publish ${subject.startsWith('_INBOX') ? 'ack' : subject}`),
+        publish: (subject: string, _data?: Uint8Array, opts?: { headers?: unknown }) =>
+            log.push(`publish ${subject.startsWith('_INBOX') ? (opts?.headers ? 'cancel' : 'ack') : subject}`),
         flush: async () => {}
     };
     const frame = (name: string | null, data: Uint8Array) => {
@@ -41,16 +48,35 @@ function fakeNats() {
 
 const payload = { asset: 7, channels: [0], start: '2026-09-28T12:00:00Z', end: '2026-09-28T12:02:00Z' };
 
-describe('tapExportChunks', () => {
-    it('writes every chunk in order before it is acknowledged', async () => {
-        const { nats, log, frame, json } = fakeNats();
-        const written: number[][] = [];
-        const tapped = tapExportChunks(nats, async (data) => {
-            await new Promise((resolve) => setTimeout(resolve, 5));
+/** Fake save-dialog file that records writes, close and abort in `log`. */
+function fakeFile(log: string[], write?: (data: Uint8Array) => Promise<void>) {
+    const written: number[][] = [];
+    const file: SaveFileWritable = {
+        async write(data) {
+            if (write) await write(data);
             written.push([...data]);
             log.push(`write ${data.length}`);
-        });
-        const download = downloadExportViaNats(tapped, 'req', payload);
+        },
+        async close() {
+            log.push('close');
+        },
+        async abort() {
+            log.push('abort');
+        }
+    };
+    return { file, written };
+}
+
+describe('runAndSaveExport', () => {
+    it('writes every chunk in order before it is acknowledged, then closes the file', async () => {
+        const { nats, log, frame, json } = fakeNats();
+        const { file, written } = fakeFile(log, () => new Promise((resolve) => setTimeout(resolve, 5)));
+        const saved: string[] = [];
+        const download = runAndSaveExport(
+            file,
+            (onChunk) => downloadExportViaNats(nats, 'req', payload, { onChunk }),
+            (_blob, name) => saved.push(name)
+        );
         json('meta', { type: 'meta', fileName: 'x.csv' });
         frame('chunk', new Uint8Array([1, 2, 3]));
         frame(null, new Uint8Array([4]));
@@ -58,32 +84,65 @@ describe('tapExportChunks', () => {
         json('complete', { type: 'complete' });
         const result = await download;
         expect(written).toEqual([[1, 2, 3], [4]]);
-        expect(log).toEqual(['publish req', 'write 3', 'publish ack', 'write 1', 'publish ack']);
+        expect(log).toEqual(['publish req', 'write 3', 'publish ack', 'write 1', 'publish ack', 'close']);
         expect(result.size).toBe(4);
         expect(result.fileName).toBe('x.csv');
+        expect(result.streamed).toBe(true);
+        expect(result.blob.size).toBe(0);
+        expect(saved).toEqual([]);
     });
 
-    it('fails the export when a write fails', async () => {
-        const { nats, frame } = fakeNats();
-        const tapped = tapExportChunks(nats, async () => {
+    it('cancels the exporter and discards the file when a write fails', async () => {
+        const { nats, log, frame } = fakeNats();
+        const { file } = fakeFile(log, async () => {
             throw new Error('disk full');
         });
-        const download = downloadExportViaNats(tapped, 'req', payload);
+        const download = runAndSaveExport(file, (onChunk) => downloadExportViaNats(nats, 'req', payload, { onChunk }));
         frame('chunk', new Uint8Array([1]));
         await expect(download).rejects.toThrow('disk full');
+        expect(log).toEqual(['publish req', 'publish cancel', 'abort']);
+    });
+
+    it('discards the file when the export is cancelled', async () => {
+        const { nats, log, frame } = fakeNats();
+        const { file } = fakeFile(log);
+        const controller = new AbortController();
+        const download = runAndSaveExport(file, (onChunk) =>
+            downloadExportViaNats(nats, 'req', payload, { onChunk, signal: controller.signal })
+        );
+        frame('chunk', new Uint8Array([1, 2]));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        controller.abort();
+        expect(isExportCancelled(await download.catch((e) => e))).toBe(true);
+        expect(log).toEqual(['publish req', 'write 2', 'publish ack', 'publish cancel', 'abort']);
+    });
+
+    it('saves the finished Blob through the fallback when there is no file', async () => {
+        const { nats, log, frame, json } = fakeNats();
+        const saved: { name: string; blob: Blob }[] = [];
+        let hook: unknown = 'unset';
+        const download = runAndSaveExport(
+            null,
+            (onChunk) => {
+                hook = onChunk;
+                return downloadExportViaNats(nats, 'req', payload, { onChunk });
+            },
+            (blob, name) => saved.push({ name, blob })
+        );
+        json('meta', { type: 'meta', fileName: 'x.csv' });
+        frame('chunk', new TextEncoder().encode('a,b\n'));
+        json('complete', { type: 'complete' });
+        const result: ExportStreamResult = await download;
+        expect(hook).toBeUndefined();
+        expect(result.streamed).toBe(false);
+        expect(saved.map((s) => s.name)).toEqual(['x.csv']);
+        expect(saved[0].blob).toBe(result.blob);
+        expect(await result.blob.text()).toBe('a,b\n');
+        expect(log).toEqual(['publish req', 'publish ack']);
     });
 });
 
 describe('export sink helpers', () => {
-    it('recognises chunk frames', () => {
-        const headers = (name: string, extra: object = {}) => ({ get: () => name, ...extra });
-        expect(isChunkFrame({})).toBe(true);
-        expect(isChunkFrame({ headers: headers('') })).toBe(true);
-        expect(isChunkFrame({ headers: headers('chunk') })).toBe(true);
-        expect(isChunkFrame({ headers: headers('meta') })).toBe(false);
-        expect(isChunkFrame({ headers: headers('', { code: 503, hasError: true }) })).toBe(false);
-    });
-
     it('suggests the request name or the exporter default', () => {
         expect(suggestedExportFileName({ ...payload, download_name: 'LJ2.csv' })).toBe('LJ2.csv');
         expect(suggestedExportFileName(payload)).toBe('labjack_asset007_20260928T120000_20260928T120200.csv');

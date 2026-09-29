@@ -25,15 +25,14 @@ export interface ExportRunOptions {
     payload: ExportRequestPayload;
     /** Cancels the export, including while the connection is being opened. */
     signal: AbortSignal;
-    /** Progress and summary callbacks, passed on to `downloadExportViaNats`. */
+    /** Progress, summary and chunk callbacks, passed on to `downloadExportViaNats`. */
     onProgress?: ExportStreamOptions['onProgress'];
     onSummary?: ExportStreamOptions['onSummary'];
     /**
-     * Changes the connection handed to the download, for example to see the chunks as
-     * they arrive (see `tapExportChunks`). The original connection is still the one
-     * closed afterwards.
+     * Takes each chunk as it arrives, before it is acknowledged, instead of the chunks
+     * being collected into the result's Blob (see `ExportStreamOptions.onChunk`).
      */
-    wrapConnection?: (service: NatsService) => NatsService;
+    onChunk?: ExportStreamOptions['onChunk'];
     /** The download function; `downloadExportViaNats` unless a test replaces it. */
     download?: typeof downloadExportViaNats;
 }
@@ -77,11 +76,11 @@ export async function runExportOnOwnConnection(options: ExportRunOptions): Promi
     try {
         if (options.signal.aborted) throw cancelledError();
         const download = options.download ?? downloadExportViaNats;
-        const target = options.wrapConnection ? options.wrapConnection(service) : service;
-        return await download(target, options.subject, options.payload, {
+        return await download(service, options.subject, options.payload, {
             signal: options.signal,
             onProgress: options.onProgress,
-            onSummary: options.onSummary
+            onSummary: options.onSummary,
+            onChunk: options.onChunk
         });
     } finally {
         closeQuietly(service);

@@ -5,18 +5,14 @@
  *
  * The save picker needs a user gesture, so the page calls {@link pickSaveFile}
  * synchronously in the export click handler, before its first `await`. The chunks are
- * then written to the file as they arrive: {@link tapExportChunks} wraps the export's
- * NATS connection so every `chunk` frame of the reply stream is written, and the write
- * finishes, before `downloadExportViaNats` sees the frame and acknowledges it. A slow
- * disk therefore slows the exporter down instead of piling data up in memory.
+ * then passed to `downloadExportViaNats` as its `onChunk` hook (see
+ * {@link runAndSaveExport}): every chunk is written to the file, and the write finishes,
+ * before the chunk is acknowledged. A slow disk therefore slows the exporter down
+ * instead of piling data up in memory, and no other copy of the export is kept.
  *
  * @module
  */
-import type { ExportRequestPayload } from '../exporter';
-import type { NatsService } from '../nats.svelte';
-
-/** NATS header that names the frame type of each export reply (see the export protocol). */
-const EXPORT_FRAME_HEADER = 'Avena-Export-Frame';
+import type { ExportRequestPayload, ExportStreamResult } from '../exporter';
 
 /** The part of `FileSystemFileHandle` used here. */
 export interface SaveFileHandle {
@@ -83,79 +79,6 @@ export function suggestedExportFileName(payload: ExportRequestPayload): string {
 }
 
 /**
- * Tells whether a reply message is an export `chunk` frame: not a NATS status message,
- * and named `chunk` by the frame header or carrying no header (see
- * `downloadExportViaNats`).
- *
- * @param msg - Reply message.
- */
-export function isChunkFrame(msg: { headers?: { get(name: string): string; code?: number; hasError?: boolean } }): boolean {
-    const headers = msg.headers;
-    if (headers && (headers.hasError || (headers.code ?? 0) >= 300)) return false;
-    return (headers?.get(EXPORT_FRAME_HEADER) || 'chunk') === 'chunk';
-}
-
-/**
- * Wraps a connection so that every export `chunk` frame received on a subscription
- * made through it is passed to `onChunk` first. The frame reaches the reader (and is
- * acknowledged) only after `onChunk` resolves. If `onChunk` throws, the reader's loop
- * throws the same error. All other calls go to the connection unchanged.
- *
- * @param service - The export's connection.
- * @param onChunk - Gets a copy of each chunk's bytes, in arrival order.
- * @returns A service to hand to `downloadExportViaNats`.
- */
-export function tapExportChunks(service: NatsService, onChunk: (data: Uint8Array) => Promise<void>): NatsService {
-    const connection = service.connection;
-    const tappedConnection = new Proxy(connection, {
-        get(target, property) {
-            if (property === 'subscribe') {
-                return (...args: unknown[]) => {
-                    const sub = (target.subscribe as (...a: unknown[]) => AsyncIterable<unknown> & object)(...args);
-                    return tapSubscription(sub, onChunk);
-                };
-            }
-            const value = Reflect.get(target, property, target);
-            return typeof value === 'function' ? value.bind(target) : value;
-        }
-    });
-    return new Proxy(service, {
-        get(target, property) {
-            if (property === 'connection') return tappedConnection;
-            return Reflect.get(target, property, target);
-        }
-    });
-}
-
-/**
- * Wraps one subscription: iterating it yields the same messages, after passing each
- * chunk frame to `onChunk`. Every other property is the subscription's own.
- */
-function tapSubscription<S extends AsyncIterable<unknown> & object>(
-    sub: S,
-    onChunk: (data: Uint8Array) => Promise<void>
-): S {
-    return new Proxy(sub, {
-        get(target, property) {
-            if (property === Symbol.asyncIterator) {
-                return async function* () {
-                    for await (const msg of target) {
-                        const m = msg as { data: Uint8Array | ArrayBuffer; headers?: { get(name: string): string; code?: number; hasError?: boolean } };
-                        if (isChunkFrame(m)) {
-                            const data = m.data instanceof Uint8Array ? m.data : new Uint8Array(m.data);
-                            await onChunk(data.slice());
-                        }
-                        yield msg;
-                    }
-                };
-            }
-            const value = Reflect.get(target, property, target);
-            return typeof value === 'function' ? value.bind(target) : value;
-        }
-    });
-}
-
-/**
  * Saves a finished export through a temporary download link, then releases the
  * object URL. Used where the browser has no save dialog.
  *
@@ -171,4 +94,41 @@ export function saveBlobViaLink(blob: Blob, fileName: string) {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
+}
+
+/**
+ * Runs an export and saves it: into `writable`, chunk by chunk, when the user chose a
+ * file, otherwise through a download link once the export completes.
+ *
+ * With a file, `run` gets a chunk consumer that writes to it; pass that on as
+ * `downloadExportViaNats`'s `onChunk`, so each write finishes before its chunk is
+ * acknowledged. The file is closed when the export completes. If the export or a
+ * write fails, or the export is cancelled, the file is aborted instead, which
+ * discards what was written; a file that was being replaced stays as it was.
+ *
+ * @param writable - The chosen file, or `null` to save through a download link.
+ * @param run - Starts the export, passing `onChunk` on to the download (it is
+ *   `undefined` without a file, and the result's Blob is saved instead).
+ * @param saveBlob - Saves the Blob; {@link saveBlobViaLink} unless a test passes one.
+ * @returns The export result.
+ * @throws Whatever the export, a write or closing the file throws.
+ */
+export async function runAndSaveExport(
+    writable: SaveFileWritable | null,
+    run: (onChunk?: (data: Uint8Array) => Promise<void>) => Promise<ExportStreamResult>,
+    saveBlob: (blob: Blob, fileName: string) => void = saveBlobViaLink
+): Promise<ExportStreamResult> {
+    if (!writable) {
+        const result = await run(undefined);
+        saveBlob(result.blob, result.fileName);
+        return result;
+    }
+    try {
+        const result = await run((data) => writable.write(data));
+        await writable.close();
+        return result;
+    } catch (err) {
+        await writable.abort(err).catch((abortErr) => console.error('Error discarding the export file:', abortErr));
+        throw err;
+    }
 }

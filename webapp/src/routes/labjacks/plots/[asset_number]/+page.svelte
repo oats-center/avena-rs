@@ -7,9 +7,8 @@
     import {
         isPickerCancelled,
         pickSaveFile,
-        saveBlobViaLink,
+        runAndSaveExport,
         suggestedExportFileName,
-        tapExportChunks,
         type SaveFileWritable
     } from "$lib/plot/export-sink";
     import { normalizeCalibration } from "$lib/calibration";
@@ -818,9 +817,10 @@
      * Where the browser has a save dialog (`showSaveFilePicker`), it is opened here,
      * synchronously, before the first `await` (browsers allow it only during the
      * click), and every chunk is written to the chosen file as it arrives, before it is
-     * acknowledged (see `tapExportChunks`). Closing the dialog without a file starts no
-     * export. Elsewhere (Firefox, Safari) the finished CSV is saved through a download
-     * link. A cancelled or failed export discards what was written.
+     * acknowledged, through the download's `onChunk` hook, so no other copy is kept (see
+     * `runAndSaveExport`). Closing the dialog without a file starts no export. Elsewhere
+     * (Firefox, Safari) the finished CSV is saved through a download link. A cancelled
+     * or failed export discards what was written.
      *
      * @param event - Form `submit` event. Its default action is prevented.
      */
@@ -870,32 +870,28 @@
                 if (abort.signal.aborted) return;
                 writable = await handle.createWritable();
             }
-            const file = writable;
 
-            const result = await runExportOnOwnConnection({
-                openConnection: () => connect(serverName, credentialsContent),
-                subject: archiveExportRequestSubject(config),
-                payload: request.payload,
-                signal: abort.signal,
-                onProgress: (received) => {
-                    exportProgress = received;
-                },
-                onSummary: (missing) => {
-                    exportWarning = missingChannelsWarning(missing);
-                },
-                wrapConnection: file ? (service) => tapExportChunks(service, (data) => file.write(data)) : undefined,
-            });
+            // Writes each chunk to the file before acknowledging it, or saves the
+            // finished Blob; a failed or cancelled export discards a partly written file.
+
+            const result = await runAndSaveExport(writable, (onChunk) =>
+                runExportOnOwnConnection({
+                    openConnection: () => connect(serverName, credentialsContent),
+                    subject: archiveExportRequestSubject(config),
+                    payload: request.payload,
+                    signal: abort.signal,
+                    onProgress: (received) => {
+                        exportProgress = received;
+                    },
+                    onSummary: (missing) => {
+                        exportWarning = missingChannelsWarning(missing);
+                    },
+                    onChunk,
+                })
+            );
 
             exportTotal = result.size;
             exportProgress = result.size;
-
-            if (file) {
-                writable = null;
-                await file.close();
-            } else {
-                saveBlobViaLink(result.blob, result.fileName);
-            }
-
             showExportModal = false;
             exportWarning = "";
         } catch (err) {
@@ -904,8 +900,6 @@
             console.error("Export failed", err);
             exportError = err instanceof Error ? err.message : "Export failed";
         } finally {
-            // Discard a partly written file (the original file, if one was replaced, stays).
-            writable?.abort().catch((err) => console.error("Error discarding the export file:", err));
             if (exportAbort === abort) {
                 exportAbort = null;
                 exporting = false;
@@ -1000,7 +994,9 @@ frozen trigger capture, axis settings and trigger state.
 Export: builds an `ExportRequestPayload` and calls `downloadExportViaNats` with subject
 `<root>.<site>.<box>.<source>.export.request` (from `archiveExportRequestSubject`).
 That helper streams the CSV in chunks and acknowledges each one; this page shows the
-progress and saves the result through a temporary download link. The form defaults to
+progress and writes each chunk to the file chosen in the save dialog before it is
+acknowledged (its `onChunk` hook), or, without a save dialog, saves the result through
+a temporary download link. The form defaults to
 the plotted channels and the last two minutes, takes times to the second in the
 browser's time zone (shown in the form, with the UTC range sent), and Cancel Download
 aborts a running export: no more chunks are read or acknowledged, the reply
