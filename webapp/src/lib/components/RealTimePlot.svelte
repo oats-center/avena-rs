@@ -137,10 +137,6 @@
         
         ctx = canvas.getContext('2d')!;
         ctx.scale(dpr, dpr);
-        
-        // Set canvas size in CSS
-        canvas.style.width = rect.width + 'px';
-        canvas.style.height = rect.height + 'px';
     }
     
     /**
