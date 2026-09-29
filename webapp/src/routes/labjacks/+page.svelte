@@ -172,6 +172,12 @@
      * reload and when the page is destroyed.
      */
     let natsService: any = null;
+    /**
+     * True once {@link loadLabJacks} has connected. Adding a config is disabled until then.
+     */
+    let connected = $state<boolean>(false);
+    /** True when sessionStorage holds no login data; the page then only links to `/`. */
+    let notLoggedIn = $state<boolean>(false);
     /** Incremented by each {@link loadLabJacks} call; older calls see they are stale. */
     let loadGeneration = 0;
     /** Set in `onDestroy`, so a load that finishes afterwards closes its connection. */
@@ -195,6 +201,7 @@
     function closeConnection() {
         const service = natsService;
         natsService = null;
+        connected = false;
         if (!service) return;
         try {
             service.connection.close().catch((err: unknown) => console.error("Error closing NATS connection:", err));
@@ -223,6 +230,7 @@
         const superseded = () => generation !== loadGeneration || destroyed;
         loading = true;
         error = "";
+        notLoggedIn = false;
         closeConnection();
         
         try {
@@ -230,7 +238,8 @@
             const credentialsContent = sessionStorage.getItem("credentialsContent");
             
             if (!serverName || !credentialsContent) {
-                error = "No NATS connection found. Please login first.";
+                error = "Not logged in. Log in to view and edit LabJack configurations.";
+                notLoggedIn = true;
                 loading = false;
                 return;
             }
@@ -246,12 +255,12 @@
                 return;
             }
             natsService = service;
+            connected = true;
             
             await loadCalibrations(service);
 
             // Get all LabJack config keys from avenabox bucket
             const keys = await getKeys(service, "avenabox", "*.*.*.config");
-            console.log("Found keys:", keys);
             
             const newLabJacks = new Map<string, LabJackConfig>();
             
@@ -560,8 +569,9 @@
 LabJack config list at `/labjacks`. It takes no URL parameters.
 
 Reads `serverName` and `credentialsContent` from sessionStorage (written by the login
-page) and opens a connection to central NATS, closed on retry and when leaving the page. If either item is missing it shows an
-error with a link back to `/`.
+page) and opens a connection to central NATS, closed on retry and when leaving the page. If either item is missing it shows
+only an error with a link back to `/`. Adding a config is disabled until the connection is
+open.
 
 KV bucket `avenabox`:
 - Reads every key matching `*.*.*.config` (one LabJack config each, shown as a card)
@@ -626,6 +636,8 @@ plot button on each card does a full page load of
             <button
                 onclick={handleAddNew}
                 class="btn btn-warning"
+                disabled={!connected}
+                title={connected ? undefined : "Connect to NATS to add a LabJack"}
             >
                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
@@ -642,20 +654,16 @@ plot button on each card does a full page load of
                 </svg>
                 <span>{error}</span>
                 <div class="flex space-x-2">
-                    {#if error.includes("No NATS connection")}
+                    {#if notLoggedIn}
+                        <a href="/" class="btn btn-sm btn-primary">Go to Login</a>
+                    {:else}
                         <button
-                            onclick={() => window.location.href = "/"}
-                            class="btn btn-sm btn-primary"
+                            onclick={loadLabJacks}
+                            class="btn btn-sm btn-error"
                         >
-                            Go to Login
+                            Retry
                         </button>
                     {/if}
-                    <button
-                        onclick={loadLabJacks}
-                        class="btn btn-sm btn-error"
-                    >
-                        Retry
-                    </button>
                 </div>
             </div>
         {/if}
@@ -666,6 +674,8 @@ plot button on each card does a full page load of
                 <span class="loading loading-spinner loading-lg text-warning"></span>
                 <span class="ml-4 text-lg">Loading LabJack configurations...</span>
             </div>
+        {:else if labjacks.size === 0 && !connected}
+            <!-- Not connected: the error above says why; show no empty state. -->
         {:else if labjacks.size === 0}
             <!-- Empty State -->
             <div class="text-center py-12">
@@ -681,6 +691,7 @@ plot button on each card does a full page load of
                 <button
                     onclick={handleAddNew}
                     class="btn btn-warning"
+                    disabled={!connected}
                 >
                     Add Your First LabJack
                 </button>
