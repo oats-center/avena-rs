@@ -184,9 +184,13 @@ open through them. Leaving the page cancels the export.
 Where the browser has a save dialog (Chrome, Edge and other Chromium browsers),
 Start Download first asks where to save the file, offering the LabJack's name
 (or the exporter's default name), and then writes each chunk to that file as it
-arrives, before acknowledging it. Closing the save dialog without choosing a file
-starts no export. Firefox and Safari have no such dialog; there the chunks are
-collected and saved as a normal download when the export completes.
+arrives, before acknowledging it: the page passes the file write as the `onChunk`
+hook of `downloadExportViaNats`, which awaits it before each ack and keeps no
+other copy of the export, so a slow disk slows the exporter down instead of
+filling memory. Closing the save dialog without choosing a file starts no export.
+Firefox and Safari have no such dialog; there the chunks are collected (folded
+into Blob parts every 8 MiB) and saved as a normal download when the export
+completes.
 
 Cancel Download stops a running export: the page stops reading and
 acknowledging chunks, releases the reply subscription, closes the export's
@@ -206,11 +210,10 @@ These are known and worth fixing, but none of them affects recorded data:
   the plot shows a gap. A channel that is not selected is not received at all,
   so selecting it again starts an empty plot. The archive and exports have
   every sample.
-- **Exports are also kept by the browser until they finish.** Even when the
-  chunks are written straight to the chosen file, `downloadExportViaNats`
-  still folds them into Blob parts every 8 MiB and keeps them in the browser's
-  Blob storage until the export completes; in Firefox and Safari that copy is
-  what gets saved. Little sits in JavaScript memory, but split very long ranges
-  into several downloads.
+- **Firefox and Safari keep the whole export until it finishes.** Without a
+  save dialog, the chunks are folded into Blob parts every 8 MiB and kept in
+  the browser's Blob storage until the export completes, then saved. Little
+  sits in JavaScript memory, but split very long ranges into several downloads
+  there.
 - **The credentials sit in `sessionStorage` as plain text** for as long as the
   tab is open. Log out or close the tab on shared machines.

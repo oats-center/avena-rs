@@ -44,7 +44,7 @@ were fixed in #21 and deployed to MU1 and MU2 on 2026-09-29.
   starting, or compute it from the T7's clock divisor) and use that for the sample
   interval. 100, 2000 and 2500 Hz are not affected.
 
-- [ ] `downloadExportViaNats` keeps its own in-memory copy of an export even when
+- [x] `downloadExportViaNats` keeps its own in-memory copy of an export even when
   the webapp streams it to a file. An `onChunk` hook awaited before each ack would
   remove that copy and the chunk tap in `lib/plot/export-sink.ts`.
 - [ ] Consider `sync_interval: always` in `nats-leaf.conf` so nats-server fsyncs its
