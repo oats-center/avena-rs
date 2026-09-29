@@ -91,7 +91,7 @@ Key-value metadata:
 
 | Key | Value |
 |---|---|
-| `calibration` | The channel's calibration when the file was written, as JSON, e.g. `{"id":"tp3505","type":"linear","a":70.25,"b":-9.1068}` |
+| `calibration` | The channel's calibration when the file was written, as JSON, e.g. `{"id":null,"type":"linear","a":70.25,"b":-9.1068,"unit":"kPa"}`. Older files may carry an `id` and no `unit`. |
 
 ### Encoding
 

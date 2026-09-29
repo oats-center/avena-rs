@@ -33,7 +33,7 @@ the box is set up.
     "measurement_units": ["kPa", "kPa", "kPa", "kPa"],
     "labjack_on_off": true,
     "calibrations": {
-      "8": { "id": "tp3505", "type": "linear", "a": 70.25, "b": -9.1068 }
+      "8": { "type": "linear", "a": 70.25, "b": -9.1068, "unit": "kPa" }
     }
   }
 }
@@ -80,7 +80,11 @@ overhead without more data.
 
 ## Calibrations
 
-Each entry has a `type` and an optional `id`, a label carried into exports.
+Each entry has a `type`, the formula's fields, an optional `unit` (the
+calibrated value's unit, such as `kPa` or `µε`) and an optional `id`, a label
+carried into exports. Older configurations name their calibrations with `id`;
+new ones usually leave it out. The archiver stores `unit` with the calibration
+in each Parquet file.
 
 | `type` | Fields | Converts `v` to |
 |---|---|---|

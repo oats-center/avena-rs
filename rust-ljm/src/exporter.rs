@@ -2576,6 +2576,23 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 
+    /// A calibration with a unit and no id, serialized as the archiver does, is read
+    /// back from Parquet metadata unchanged.
+    #[test]
+    fn calibration_unit_round_trips_through_parquet_metadata() {
+        let dir = std::env::temp_dir().join(format!("exporter-unit-{}", uuid::Uuid::new_v4()));
+        let spec: CalibrationSpec =
+            serde_json::from_str(r#"{"type":"linear","a":70.1,"b":-8.1,"unit":"kPa"}"#).unwrap();
+        write_part(&dir, 1, &[(1, 1.0)], &serde_json::to_string(&spec).unwrap());
+        let path = dir.join("part-0001.parquet");
+        let reader = SerializedFileReader::new(fs::File::open(&path).unwrap()).unwrap();
+        let read = read_calibration_from_metadata(&reader, &path);
+        assert_eq!(read, spec);
+        assert_eq!(read.unit.as_deref(), Some("kPa"));
+        assert_eq!(read.id, None);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
     /// Checks that `writeln!` rows match the earlier `format!` rows byte for byte.
     #[test]
     fn csv_lines_are_byte_identical_to_the_previous_format() {
