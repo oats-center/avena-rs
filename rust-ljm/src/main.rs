@@ -10,8 +10,10 @@
 //! `avenars.<site>.<box>.<source>.live.chNN`); legacy configurations publish to
 //! `<root>.<asset>.data.chNN` (see the `subjects` module).
 //!
-//! A configuration change in KV stops the active LabJack stream and restarts it with
-//! the new channel list, scan rate, and subject namespace. Setting
+//! A configuration change in KV that alters [`SampleConfig`] (channels, rates, identity
+//! and subject fields, `rotate_secs` or `labjack_on_off`) stops the active LabJack
+//! stream and restarts it with the new settings. Calibrations, filters and label fields
+//! are not part of it, so changing them leaves the stream running. Setting
 //! `labjack_on_off` to `false` stops sampling until the configuration changes again.
 //!
 //! # Configuration
