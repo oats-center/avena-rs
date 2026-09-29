@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
     import { connect, getKeys, getKeyValue, updateConfig, deleteKey } from "$lib/nats.svelte";
-    import { normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
+    import { normalizeCalibration, resolveCalibrationUnit, RAW_UNIT } from "$lib/calibration";
     import { planConfigSave } from "$lib/plot/config-key";
     import LabJackConfigModal from "$lib/components/LabJackConfigModal.svelte";
     import {
@@ -45,11 +45,6 @@
     let loadGeneration = 0;
     /** Set in `onDestroy`, so a load that finishes afterwards closes its connection. */
     let destroyed = false;
-    /**
-     * Calibration presets from `calibration.*` keys, keyed by preset id, offered in the
-     * modal.
-     */
-    let availableCalibrations = $state<Map<string, CalibrationSpec>>(new Map());
     
     onMount(async () => {
         await loadLabJacks();
@@ -74,10 +69,10 @@
     }
     
     /**
-     * Connects to central NATS and loads all LabJack configs and calibration presets.
+     * Connects to central NATS and loads all LabJack configs.
      *
      * Reads `serverName` and `credentialsContent` from sessionStorage and opens a new
-     * connection. Loads presets with {@link loadCalibrations}, then lists keys matching
+     * connection, then lists keys matching
      * `*.*.*.config` in bucket `avenabox` and parses each one with
      * {@link normalizeLabJackConfig}. A key that fails to parse is logged and skipped.
      * Replaces {@link labjacks} with the result. Sets `error` when login data is missing,
@@ -120,8 +115,6 @@
             natsService = service;
             connected = true;
             
-            await loadCalibrations(service);
-
             // Get all LabJack config keys from avenabox bucket
             const keys = await getKeys(service, "avenabox", "*.*.*.config");
             
@@ -149,35 +142,6 @@
         }
     }
 
-    /**
-     * Loads calibration presets from keys matching `calibration.*` in bucket `avenabox`.
-     *
-     * Each value is passed through `normalizeCalibration`. The preset id is the value's `id`
-     * field, or the key without the `calibration.` prefix. Errors are logged; a failure to
-     * list keys leaves {@link availableCalibrations} unchanged.
-     *
-     * @param service - Connection to read from.
-     */
-    async function loadCalibrations(service: any) {
-        try {
-            const keys = await getKeys(service, "avenabox", "calibration.*");
-            const presets = new Map<string, CalibrationSpec>();
-            for (const key of keys) {
-                try {
-                    const raw = await getKeyValue(service, "avenabox", key);
-                    const parsed = normalizeCalibration(JSON.parse(raw));
-                    const id = parsed.id ?? key.replace(/^calibration\./, "");
-                    presets.set(id, { ...parsed, id });
-                } catch (err) {
-                    console.error(`Failed to parse calibration ${key}:`, err);
-                }
-            }
-            availableCalibrations = presets;
-        } catch (err) {
-            console.error("Error loading calibrations:", err);
-        }
-    }
-    
     /**
      * Opens the modal to edit an existing config.
      *
@@ -216,10 +180,14 @@
                 scan_rate_hz: 1000,
                 channels_enabled: [0, 1, 2],
                 gains: 1,
-                data_formats: ["voltage", "temperature", "pressure"],
-                measurement_units: ["V", "°C", "PSI"],
+                data_formats: ["voltage", "voltage", "voltage"],
+                measurement_units: ["V", "V", "V"],
                 labjack_on_off: false,
-                calibrations: {}
+                calibrations: {
+                    "0": { type: "identity", unit: "V" },
+                    "1": { type: "identity", unit: "V" },
+                    "2": { type: "identity", unit: "V" }
+                }
             }
         };
         isAddingNew = true;
@@ -354,64 +322,19 @@
     }
 
     /**
-     * Saves a calibration preset to KV key `calibration.<id>` in bucket `avenabox`.
+     * Unit a channel's calibrated values are in, for the card's channel list.
      *
-     * The id is cleaned with {@link sanitizeCalibrationId} and written back into the stored
-     * value. On success the preset is added to {@link availableCalibrations}.
-     *
-     * @param spec - Preset from the modal. Its `id` becomes part of the key.
-     * @returns Resolves to `true` when the write succeeded, `false` when login data is
-     *   missing, the cleaned id is empty or the write failed.
+     * @param config - Config of the card.
+     * @param channel - Channel number.
+     * @param index - Position of the channel in `channels_enabled`.
+     * @returns The calibration's unit (see `resolveCalibrationUnit`), or `V?` for an
+     *   older calibrated channel whose unit was never set.
      */
-    async function handleSaveCalibration(spec: CalibrationSpec): Promise<boolean> {
-        try {
-            const serverName = sessionStorage.getItem("serverName");
-            const credentialsContent = sessionStorage.getItem("credentialsContent");
-            if (!serverName || !credentialsContent) {
-                error = "No NATS connection found";
-                return false;
-            }
-            const sanitizedId = sanitizeCalibrationId(spec.id ?? "");
-            if (!sanitizedId) {
-                return false;
-            }
-            const key = `calibration.${sanitizedId}`;
-            const normalized = { ...spec, id: sanitizedId };
-            const success = await updateConfig(serverName, credentialsContent, "avenabox", key, normalized);
-            if (success) {
-                const updated = new Map(availableCalibrations);
-                updated.set(sanitizedId, normalized);
-                availableCalibrations = updated;
-            }
-            return success;
-        } catch (err) {
-            console.error("Error saving calibration:", err);
-            return false;
-        }
+    function channelUnit(config: LabJackConfig, channel: number, index: number): string {
+        const calibration = normalizeCalibration(config.sensor_settings.calibrations?.[String(channel)]);
+        return resolveCalibrationUnit(calibration, config.sensor_settings.measurement_units[index]) ?? `${RAW_UNIT}?`;
     }
 
-    /**
-     * Turns a preset name into a KV key token.
-     *
-     * Trims, lowercases, replaces whitespace runs with `-` and drops any character outside
-     * `a-z`, `0-9`, `.`, `_` and `-`.
-     *
-     * @param raw - Preset id typed by the user.
-     * @returns The cleaned id. May be empty.
-     *
-     * @example
-     * ```ts
-     * sanitizeCalibrationId("  PT100 Probe #2 "); // "pt100-probe-2"
-     * ```
-     */
-    function sanitizeCalibrationId(raw: string): string {
-        return raw
-            .trim()
-            .toLowerCase()
-            .replace(/\s+/g, "-")
-            .replace(/[^a-z0-9._-]/g, "");
-    }
-    
     /** Closes the modal without saving and clears the edit state. */
     function handleModalClose() {
         showModal = false;
@@ -439,16 +362,16 @@ open.
 
 KV bucket `avenabox`:
 - Reads every key matching `*.*.*.config` (one LabJack config each, shown as a card)
-  and every key matching `calibration.*` (calibration presets).
+  (older versions also read `calibration.*` preset keys; this page no longer does).
 - Writes a config to `<site>.<box>.<source>.config` on save (an edit that changes site,
   box or source moves it to the new key and then deletes the old one), deletes a config
-  key on delete, and writes `calibration.<id>` when a preset is saved from the modal. Writes
+  key on delete. Writes
   and deletes go through `updateConfig` and `deleteKey`, which each open their own
   short-lived connection.
 
 The page subscribes to no subjects. Editing and adding are done in
-`LabJackConfigModal`, which gets the config, `isAddingNew`, all loaded configs, the
-calibration presets and the `onSave`, `onSaveCalibration` and `onClose` callbacks. The
+`LabJackConfigModal`, which gets the config, `isAddingNew`, all loaded configs and the
+`onSave` and `onClose` callbacks. The
 plot button on each card is a link to `/labjacks/plots/<asset_number>?key=<kv key>`. The
 Enabled/Disabled badge shows the config's `labjack_on_off` flag, not whether the box is
 running.
@@ -639,7 +562,7 @@ running.
                                             {#each config.sensor_settings.channels_enabled as channel, index}
                                                 <span class="badge badge-outline badge-sm">
                                                     Ch {channel}: {config.sensor_settings.data_formats[index] || 'N/A'} 
-                                                    ({config.sensor_settings.measurement_units[index] || 'N/A'})
+                                                    ({channelUnit(config, channel, index)})
                                                 </span>
                                             {/each}
                                         </div>
@@ -679,8 +602,6 @@ running.
             config={editingConfig}
             isAddingNew={isAddingNew}
             existingLabJacks={labjacks}
-            availableCalibrations={availableCalibrations}
-            onSaveCalibration={handleSaveCalibration}
             onSave={handleSave}
             onClose={handleModalClose}
         />

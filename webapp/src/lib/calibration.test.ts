@@ -84,3 +84,22 @@ describe('formatCalibration', () => {
         expect(formatCalibration({ type: 'polynomial', coeffs: [] })).toBe('y = 0');
     });
 });
+
+describe('calibration presets', () => {
+    /** Source of every non-test .ts and .svelte file under src/, by path. */
+    const sources = import.meta.glob(['/src/**/*.{ts,svelte}', '!/src/**/*.test.ts'], {
+        query: '?raw',
+        import: 'default',
+        eager: true
+    }) as Record<string, string>;
+
+    it('are no longer read, written or offered anywhere in the webapp', () => {
+        expect(Object.keys(sources)).toContain('/src/lib/components/LabJackConfigModal.svelte');
+        const leftovers = Object.entries(sources)
+            .filter(([, text]) =>
+                /availableCalibrations|onSaveCalibration|presetIdInputs|handleSavePreset|applyPreset|loadCalibrations|"calibration\.\*"|`calibration\.\$\{|Save Preset/.test(text)
+            )
+            .map(([path]) => path);
+        expect(leftovers).toEqual([]);
+    });
+});
