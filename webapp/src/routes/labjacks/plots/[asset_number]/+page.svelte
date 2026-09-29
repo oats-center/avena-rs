@@ -1668,7 +1668,7 @@ subscription is released and nothing is saved.
                         </div>
                         <div class="flex justify-between">
                             <span>NATS Subject Pattern:</span>
-                            <span class="badge badge-accent badge-sm font-mono">{liveLabJackChannelPattern(labjackConfig)}</span>
+                            <span class="badge badge-accent badge-sm font-mono h-auto break-all">{liveLabJackChannelPattern(labjackConfig)}</span>
                         </div>
                         <div class="flex justify-between">
                             <span>Channel Data Status:</span>
