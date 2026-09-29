@@ -1875,7 +1875,8 @@ subscription is released and nothing is saved.
                                             type="number"
                                             step="0.01"
                                             class="input input-bordered"
-                                            value={channelAxis?.yMin ?? -1}
+                                            value={(channelAxis?.autoY ?? true) ? "" : (channelAxis?.yMin ?? -1)}
+                                            placeholder={(channelAxis?.autoY ?? true) ? "auto" : undefined}
                                             disabled={channelAxis?.autoY ?? true}
                                             onchange={(e) => {
                                                 if (e.target instanceof HTMLInputElement) {
@@ -1894,7 +1895,8 @@ subscription is released and nothing is saved.
                                             type="number"
                                             step="0.01"
                                             class="input input-bordered"
-                                            value={channelAxis?.yMax ?? 1}
+                                            value={(channelAxis?.autoY ?? true) ? "" : (channelAxis?.yMax ?? 1)}
+                                            placeholder={(channelAxis?.autoY ?? true) ? "auto" : undefined}
                                             disabled={channelAxis?.autoY ?? true}
                                             onchange={(e) => {
                                                 if (e.target instanceof HTMLInputElement) {
