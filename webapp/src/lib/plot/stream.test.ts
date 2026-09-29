@@ -117,6 +117,34 @@ describe('queue and decode order', () => {
         );
     });
 
+    it('draining a few messages per frame gives the same buffer, in order, as one drain', () => {
+        const streamer = new FakeStreamer(2000, 100);
+        const queue = new ScanMessageQueue();
+        const all = createLiveChannel();
+        const bounded = createLiveChannel();
+        const chunkStarts: number[] = [];
+        for (let m = 0; m < 30; m++) {
+            const { payload } = streamer.nextBatch(m % 5 === 0 ? 100_000n : 0n);
+            queue.push(0, { payload, receivedAt: m });
+            queue.push(1, { payload, receivedAt: m });
+        }
+        drainChannelQueue(queue, 0, all, decode, identity, 1_000_000);
+        let frames = 0;
+        while (queue.size(1) > 0) {
+            const before = queue.size(1);
+            const taken = drainChannelQueue(queue, 1, bounded, decode, identity, 1_000_000,
+                (start) => chunkStarts.push(start), 7);
+            expect(taken).toBe(Math.min(7, before));
+            expect(queue.size(1)).toBe(before - taken);
+            frames++;
+        }
+        expect(frames).toBe(5);
+        expect(bounded.buffer.map((p) => p.timestamp)).toEqual(all.buffer.map((p) => p.timestamp));
+        expect(bounded.buffer.map((p) => p.receivedAt)).toEqual(all.buffer.map((p) => p.receivedAt));
+        expect(chunkStarts).toEqual(Array.from({ length: 30 }, (_, i) => i * 100));
+        expectStrictlyIncreasing(bounded.buffer);
+    });
+
     it('clears one channel without touching the others', () => {
         const streamer = new FakeStreamer(100, 10);
         const queue = new ScanMessageQueue(2);

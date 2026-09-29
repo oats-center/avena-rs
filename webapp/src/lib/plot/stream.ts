@@ -312,12 +312,20 @@ export class ScanMessageQueue {
         return true;
     }
 
-    /** Removes and returns all queued messages of a channel, oldest first. */
-    drain(channel: number): QueuedScanMessage[] {
+    /**
+     * Removes and returns the oldest queued messages of a channel, oldest first.
+     *
+     * @param max - Most messages to take; the rest stay queued, in order, for the next
+     *   call. Default: all of them.
+     */
+    drain(channel: number, max: number = Number.POSITIVE_INFINITY): QueuedScanMessage[] {
         const queue = this.queues.get(channel);
         if (!queue || queue.length === 0) return [];
-        this.queues.set(channel, []);
-        return queue;
+        if (queue.length <= max) {
+            this.queues.set(channel, []);
+            return queue;
+        }
+        return queue.splice(0, Math.max(0, Math.floor(max)));
     }
 
     /** Number of messages waiting for a channel. */
@@ -390,6 +398,9 @@ export function createLiveChannel(): LiveChannel {
  * @param maxPoints - Largest buffer length.
  * @param onChunk - Called after each applied batch with the index in `live.buffer` of the
  *   batch's first point and whether the buffer was reset first.
+ * @param maxMessages - Most messages to take in this call. The rest stay queued in
+ *   order, so draining in several calls gives the same buffer as one call. Default:
+ *   all of them.
  * @returns Number of messages taken from the queue.
  */
 export function drainChannelQueue(
@@ -399,9 +410,10 @@ export function drainChannelQueue(
     decode: (payload: ArrayBuffer | Uint8Array) => ScanData | null,
     calibration: CalibrationSpec,
     maxPoints: number,
-    onChunk?: (chunkStartIndex: number, reset: boolean, chunk: DataPoint[]) => void
+    onChunk?: (chunkStartIndex: number, reset: boolean, chunk: DataPoint[]) => void,
+    maxMessages: number = Number.POSITIVE_INFINITY
 ): number {
-    const messages = queue.drain(channel);
+    const messages = queue.drain(channel, maxMessages);
     for (const message of messages) {
         let scan: ScanData | null = null;
         try {

@@ -179,18 +179,35 @@
      */
     const TARGET_SAMPLES_PER_WINDOW = 1000;
     /**
-     * Period of the timer that decodes pending messages and copies buffers into reactive
-     * state, in ms.
+     * Messages taken from one channel's queue at a time. Channels take turns, so one
+     * busy channel cannot starve the other.
      */
-    const UI_SNAPSHOT_INTERVAL_MS = 100;
+    const DECODE_BATCH_MESSAGES = 50;
+    /**
+     * Decoding time allowed per animation frame, in ms. At least one batch per channel
+     * is always decoded; what does not fit stays queued, in order, for the next frame.
+     */
+    const FRAME_DECODE_BUDGET_MS = 8;
+    /** Decoding time allowed per run of the background timer, in ms. */
+    const BACKGROUND_DECODE_BUDGET_MS = 50;
+    /**
+     * Shortest time between two copies of the buffers into reactive state (and so
+     * between redraws), in ms: about 30 redraws per second at most.
+     */
+    const MIN_SNAPSHOT_INTERVAL_MS = 33;
+    /**
+     * Period of the fallback timer that keeps decoding while the browser runs no
+     * animation frames (a background tab), in ms.
+     */
+    const BACKGROUND_PUMP_INTERVAL_MS = 1000;
     /**
      * Live snapshots cover this multiple of the channel's X window, so the plot edge is
      * never empty.
      */
     const SNAPSHOT_OVERSCAN_FACTOR = 1.25;
     /**
-     * Most undecoded messages held per channel between ticks. Normally a tick finds a
-     * handful; this is reached only if decoding stalls for a long time (for example a
+     * Most undecoded messages held per channel between frames. Normally a frame finds at
+     * most a few; this is reached only if decoding stalls for a long time (for example a
      * background tab whose timers the browser throttles). Then the oldest are dropped,
      * counted, shown in Data Statistics, and appear as a gap in the plot.
      */
@@ -253,8 +270,14 @@
     let channelPrebufferReady = $state<Map<number, boolean>>(new Map());
     /** Per channel, the current trigger capture, if any. */
     let channelTriggerCaptures = $state<Map<number, TriggerCapture>>(new Map());
-    /** Timer that decodes queued messages and refreshes the plots every tick. */
-    let uiNowTimer: ReturnType<typeof setInterval> | null = null;
+    /** Pending `requestAnimationFrame` of the decode and redraw loop. */
+    let frameHandle = 0;
+    /** Fallback timer that decodes while no animation frames run. */
+    let backgroundTimer: ReturnType<typeof setInterval> | null = null;
+    /** `performance.now()` of the last decode pass. */
+    let lastPumpAt = 0;
+    /** `performance.now()` of the last {@link flushUiSnapshots}. */
+    let lastFlushAt = 0;
     /**
      * Automatic X window in seconds, from {@link deriveAutoTimeWindowSec}; the default
      * for new channels.
@@ -278,8 +301,8 @@
     let exportTotal = $state<number | null>(null);
     /**
      * Rolling live buffers and stream state, one per channel. Not reactive: they are
-     * changed in place on every message and copied into {@link channelData} once per
-     * tick. Buffers are sorted by sample time with no duplicates (see `$lib/plot/stream`).
+     * changed in place on every message and copied into {@link channelData} when they change
+     * (at most about 30 times a second). Buffers are sorted by sample time with no duplicates (see `$lib/plot/stream`).
      */
     let liveChannels = new Map<number, LiveChannel>();
     /**
@@ -289,7 +312,7 @@
     let frozenChannelBuffers = new Map<number, DataPoint[]>();
     /**
      * Every received, not yet decoded message per selected channel, in arrival order.
-     * Drained completely on each tick.
+     * Drained in order by {@link processPendingVisualizationBatches}.
      */
     let scanQueue = new ScanMessageQueue(MAX_QUEUED_MESSAGES_PER_CHANNEL);
     /**
@@ -386,7 +409,7 @@
         return Math.max(0.05, TARGET_SAMPLES_PER_WINDOW / scanRateHz);
     }
 
-    /** Marks the buffers as changed so the next tick copies them into reactive state. */
+    /** Marks the buffers as changed so the next frame copies them into reactive state. */
     function markUiSnapshotDirty() {
         uiSnapshotDirty = true;
     }
@@ -558,8 +581,8 @@
     }
 
     /**
-     * Decodes every queued message of each selected channel, in arrival order, and
-     * appends the samples to the channel's buffer.
+     * Decodes queued messages of each selected channel, in arrival order, and appends
+     * the samples to the channel's buffer.
      *
      * Each sample gets the time `firstSampleUnixNs + i * sampleIntervalNs` from its
      * `Scan`, and the channel's calibration from `sensor_settings.calibrations`. A `NaN`
@@ -567,10 +590,34 @@
      * is plotted whatever its size. Missing time between messages gets a gap marker,
      * repeated or late messages are skipped, and a timeline that jumps backward starts a
      * new buffer (see `drainChannelQueue` in `$lib/plot/stream`). After each message the
-     * trigger logic runs on the new points. Called once per tick.
+     * trigger logic runs on the new points.
+     *
+     * Work is bounded: channels take turns decoding {@link DECODE_BATCH_MESSAGES}
+     * messages each until the queues are empty or `budgetMs` has passed (at least one
+     * turn always runs). Messages not decoded stay queued, in order, for the next call;
+     * none are dropped or reordered.
+     *
+     * @param budgetMs - Time allowed for this call, in ms.
      */
-    function processPendingVisualizationBatches() {
+    function processPendingVisualizationBatches(budgetMs: number) {
         if (!labjackConfig) return;
+        const deadline = performance.now() + budgetMs;
+        let backlog = true;
+        while (backlog) {
+            backlog = decodeOneTurn();
+            if (performance.now() >= deadline) break;
+        }
+    }
+
+    /**
+     * Decodes up to {@link DECODE_BATCH_MESSAGES} queued messages of each selected
+     * channel.
+     *
+     * @returns `true` if some channel still has queued messages.
+     */
+    function decodeOneTurn(): boolean {
+        if (!labjackConfig) return false;
+        let backlog = false;
 
         for (const channel of labjackConfig.sensor_settings.channels_enabled) {
             if (!selectedPlotChannels.has(channel) || scanQueue.size(channel) === 0) continue;
@@ -594,10 +641,13 @@
                 maxDataPoints,
                 (chunkStartIndex, reset, chunk) => {
                     handleNewChunk(channel, liveChannel.buffer, chunkStartIndex, reset, chunk);
-                }
+                },
+                DECODE_BATCH_MESSAGES
             );
             markUiSnapshotDirty();
+            if (scanQueue.size(channel) > 0) backlog = true;
         }
+        return backlog;
     }
 
     
@@ -1441,22 +1491,51 @@
         }
     }
 
-    // One timer drives both decoding and redraws, so the plots update at most every
-    // UI_SNAPSHOT_INTERVAL_MS no matter how fast messages arrive.
-    onMount(() => {
-        uiNowTimer = setInterval(() => {
-            processPendingVisualizationBatches();
+    /**
+     * One pass of the decode and redraw loop: decodes queued messages within
+     * `budgetMs`, then copies the buffers into reactive state if they changed and
+     * {@link MIN_SNAPSHOT_INTERVAL_MS} has passed since the last copy.
+     *
+     * @param budgetMs - Decoding time allowed, in ms.
+     */
+    function pumpLiveData(budgetMs: number) {
+        const now = performance.now();
+        lastPumpAt = now;
+        processPendingVisualizationBatches(budgetMs);
+        if (uiSnapshotDirty && performance.now() - lastFlushAt >= MIN_SNAPSHOT_INTERVAL_MS) {
             flushUiSnapshots();
-        }, UI_SNAPSHOT_INTERVAL_MS);
+            lastFlushAt = performance.now();
+        }
+    }
+
+    /** Runs {@link pumpLiveData} on every animation frame. */
+    function onAnimationFrame() {
+        pumpLiveData(FRAME_DECODE_BUDGET_MS);
+        frameHandle = requestAnimationFrame(onAnimationFrame);
+    }
+
+    // Decoding and redraws run on animation frames. Browsers pause animation frames in
+    // background tabs, so a slow timer keeps decoding there and the queue does not fill.
+    onMount(() => {
+        frameHandle = requestAnimationFrame(onAnimationFrame);
+        backgroundTimer = setInterval(() => {
+            if (performance.now() - lastPumpAt > BACKGROUND_PUMP_INTERVAL_MS / 2) {
+                pumpLiveData(BACKGROUND_DECODE_BUDGET_MS);
+            }
+        }, BACKGROUND_PUMP_INTERVAL_MS);
     });
     
-    // Stop the timer, unsubscribe and close this page's connection when leaving the page.
+    // Stop the loop, unsubscribe and close this page's connection when leaving the page.
     // A load still in progress sees `destroyed` and closes its own connection.
     onDestroy(() => {
         destroyed = true;
-        if (uiNowTimer) {
-            clearInterval(uiNowTimer);
-            uiNowTimer = null;
+        if (frameHandle) {
+            cancelAnimationFrame(frameHandle);
+            frameHandle = 0;
+        }
+        if (backgroundTimer) {
+            clearInterval(backgroundTimer);
+            backgroundTimer = null;
         }
         closeLiveConnection();
         scanQueue.clear();
@@ -1484,10 +1563,13 @@ subject each, built by `liveLabJackChannelSubject`:
 `<root>.<asset>.data.chNN` for legacy ones. Selecting a channel subscribes it and
 starts a fresh trace; deselecting unsubscribes it and drops its buffer. Each message
 is a FlatBuffer `Scan`. Every message is queued
-(bounded; overflow drops the oldest and is shown in Data Statistics). Every 100 ms a
-timer decodes all queued messages in order, applies the channel's calibration, appends
+(bounded; overflow drops the oldest and is shown in Data Statistics). On each
+animation frame the page decodes queued messages in order, within a time budget
+(what does not fit waits, in order, for the next frame; a 1 s timer takes over in
+background tabs), applies the channel's calibration, appends
 to a rolling buffer sorted by sample time (NaN and missing time become gaps; duplicates
-are skipped), runs the trigger logic and copies the buffers into reactive state. Each channel can run in Free Run, Trigger Normal or Trigger Single.
+are skipped), runs the trigger logic and, at most about 30 times a second, copies the buffers into
+reactive state. Each channel can run in Free Run, Trigger Normal or Trigger Single.
 
 Hands off to one `RealTimePlot` per selected channel, passing the live snapshot, the
 frozen trigger capture, axis settings and trigger state.
