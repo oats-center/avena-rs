@@ -17,6 +17,10 @@ import {
     type ChannelPlotMode,
     type ChannelStreamStatus
 } from './channel';
+import type { CalibrationSpec } from '../calibration';
+import { describeFilters, hasActiveFilters, type ChannelFilterSettings } from '../filter-settings';
+import { planFilters, type FilterPlan } from '../filters';
+import { LiveChannelFilter } from './live-filter';
 import { createLiveChannel, type DataPoint, type LiveChannel } from './stream';
 import { hasRequiredPreBuffer, type TriggerCapture, type TriggerSettings } from './trigger';
 
@@ -52,6 +56,17 @@ export class ChannelView {
      * message. Sorted by sample time with no duplicates (see `stream.ts`).
      */
     live: LiveChannel = createLiveChannel();
+    /**
+     * The channel's noise filters, or `null` when none runs at the configured rate.
+     * Not reactive; see `live-filter.ts`.
+     */
+    filter: LiveChannelFilter | null = null;
+    /** What runs at the configured rate, for the filter notes; `null` without filters. */
+    filterPlan = $state.raw<FilterPlan | null>(null);
+    /** Short description of the configured filters, e.g. `despike, −10 Hz`; `""` for none. */
+    filterDescription = $state('');
+    /** Filtered / Raw switch of the plot. Not saved. */
+    showFiltered = $state(true);
 
     /**
      * @param channel - LabJack channel number.
@@ -70,10 +85,47 @@ export class ChannelView {
      */
     resetStream() {
         this.live = createLiveChannel();
+        this.filter?.reset();
         this.clearTrigger();
         this.prebufferReady = false;
         this.liveData = [];
         this.streamStatus = null;
+    }
+
+    /**
+     * Sets up the channel's noise filters from its config.
+     *
+     * @param settings - The channel's `sensor_settings.filters` entry, if any.
+     * @param calibration - The channel's calibration.
+     * @param scanRateHz - Configured scan rate, used for the notes; the filter itself
+     *   follows the rate of the data.
+     */
+    configureFilter(settings: ChannelFilterSettings | undefined, calibration: CalibrationSpec, scanRateHz: number) {
+        this.filter = null;
+        this.filterPlan = null;
+        this.filterDescription = '';
+        if (!settings || !hasActiveFilters(settings)) return;
+        const plan = planFilters(settings, scanRateHz);
+        this.filterPlan = plan;
+        this.filterDescription = describeFilters(settings);
+        if (plan.active) {
+            this.filter = new LiveChannelFilter(settings, calibration);
+            this.filter.showFiltered = this.showFiltered;
+        }
+    }
+
+    /**
+     * Switches the plot between filtered and raw (calibrated) values. The live buffer
+     * is switched in place and the trigger is re-armed, since its level was crossed by
+     * the other trace.
+     *
+     * @param show - `true` for filtered.
+     */
+    setShowFiltered(show: boolean) {
+        if (this.showFiltered === show) return;
+        this.showFiltered = show;
+        this.filter?.setShowFiltered(show, this.live.buffer);
+        this.clearTrigger();
     }
 
     /** Arms the channel again: clears the trigger flag, time and capture. */

@@ -5,6 +5,7 @@
  * @module
  */
 import type { ExportRequestPayload } from '../exporter';
+import { normalizeChannelFilters, type ChannelFilterMap } from '../filter-settings';
 
 /** Default length of the export range, ending now, in ms. */
 export const DEFAULT_EXPORT_RANGE_MS = 2 * 60 * 1000;
@@ -121,18 +122,23 @@ export type ExportRequestResult =
  *
  * Checks that times and at least one channel are set and that start is not after end.
  * The payload carries the asset, the sorted channels, RFC 3339 start and end,
- * `box_id`, and a file name made from `labjack_name` (spaces become `_`).
+ * `box_id`, and a file name made from `labjack_name` (spaces become `_`). With
+ * `filters`, the ticked channels that have filters on are sent in `filters`, so the
+ * exporter adds a `filtered_value` column; without any, the field is left out.
  *
  * @param config - Loaded config, or `null`.
  * @param start - Start `datetime-local` value.
  * @param end - End `datetime-local` value.
  * @param channels - Ticked channels.
+ * @param filters - The config's `sensor_settings.filters` when filtered values are
+ *   wanted, else `undefined`.
  */
 export function buildExportRequest(
     config: ExportSource | null,
     start: string,
     end: string,
-    channels: Iterable<number>
+    channels: Iterable<number>,
+    filters?: ChannelFilterMap
 ): ExportRequestResult {
     if (!config) return { ok: false, error: 'Configuration not loaded' };
     if (!start || !end) return { ok: false, error: 'Please select a start and end time' };
@@ -151,6 +157,12 @@ export function buildExportRequest(
         return { ok: false, error: 'Start time must be before end time' };
     }
 
+    const requestFilters: ChannelFilterMap = {};
+    for (const channel of sorted) {
+        const settings = normalizeChannelFilters(filters?.[String(channel)]);
+        if (settings) requestFilters[String(channel)] = settings;
+    }
+
     return {
         ok: true,
         payload: {
@@ -159,7 +171,8 @@ export function buildExportRequest(
             start: startIso,
             end: endIso,
             box_id: config.box_id || undefined,
-            download_name: config.labjack_name ? `${config.labjack_name.replace(/\s+/g, '_')}.csv` : undefined
+            download_name: config.labjack_name ? `${config.labjack_name.replace(/\s+/g, '_')}.csv` : undefined,
+            ...(Object.keys(requestFilters).length > 0 ? { filters: requestFilters } : {})
         }
     };
 }

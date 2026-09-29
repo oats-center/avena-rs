@@ -122,6 +122,21 @@ A calibrated plot also shows a Raw badge with the latest reading in volts
 before calibration, which is handy for checking a sensor against its data
 sheet.
 
+### Noise filters
+
+A channel with `filters` in its configuration (see
+[LabJack configuration](../reference/kv-config.md#filters)) is filtered on the
+way into its buffer by `src/lib/plot/live-filter.ts`: spikes and the 10 Hz and
+11.9 Hz square waves are removed from the raw volts, the calibration is applied,
+then the causal high-pass and low-pass filters run. Each point keeps both
+values; a Filtered / Raw switch on the channel card chooses which one is drawn
+and triggered on, without saving anything, and the plot shows a FILTERED badge
+while filtered values are drawn. The despike window holds back the newest
+`ceil(2.5 ms × rate) − 1` samples (2 ms at 2 kHz), so the trace ends that much
+before the newest sample; every sample is still drawn once, in order. The
+filters add about 0.3 µs of work per sample. Filters that cannot run at the
+channel's rate are named under the card's header.
+
 ### Status and connection
 
 The connection badge under Data Statistics follows the NATS connection's own

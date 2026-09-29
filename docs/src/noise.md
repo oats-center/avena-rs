@@ -31,6 +31,11 @@ follow-up report that accompanies the escalation note.
 This brings SG194 to about 1.5 times its 2020 noise level. What remains is
 mostly items 2 and 8, which need hardware changes.
 
+Steps 1 to 3 can be switched on per channel in the box configuration (`filters`,
+see [LabJack configuration](reference/kv-config.md#filters)). They apply to the
+live plots and, on request, to an extra column of exports; the archive keeps the
+raw readings.
+
 ## Hardware fixes, in order of value
 
 1. Find and remove the T7-clocked 10 Hz source: check what is connected to the

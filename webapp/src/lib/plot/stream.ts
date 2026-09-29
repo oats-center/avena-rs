@@ -29,6 +29,7 @@
  */
 import { applyCalibration, type CalibrationSpec } from '../calibration';
 import type { ScanData } from '../flatbuffer-parser';
+import type { LiveChannelFilter } from './live-filter';
 
 /** One sample as stored in the live buffers and passed to `RealTimePlot`. */
 export interface DataPoint {
@@ -45,6 +46,13 @@ export interface DataPoint {
     sourceTimestamp?: number | null;
     /** Browser time the message arrived, Unix ms. Used for the lag readout. */
     receivedAt?: number;
+    /**
+     * Calibrated value after the channel's noise filters (`NaN` where there is none).
+     * Set only on channels with filters on; see `live-filter.ts`.
+     */
+    filtered?: number;
+    /** Calibrated value before the filters. Set with `filtered`. */
+    unfiltered?: number;
 }
 
 /** Value LJM writes into scans it could not fill after a buffer overflow. */
@@ -382,6 +390,11 @@ export interface LiveChannel {
     stream: ChannelStreamState | null;
     /** Counters for display. */
     stats: ChannelStreamStats;
+    /**
+     * The buffer was emptied for a reset while the filter held back every new point;
+     * the next appended chunk is reported as a reset.
+     */
+    resetPending?: boolean;
 }
 
 /** Creates an empty {@link LiveChannel}. */
@@ -407,6 +420,8 @@ export function createLiveChannel(): LiveChannel {
  * @param maxMessages - Most messages to take in this call. The rest stay queued in
  *   order, so draining in several calls gives the same buffer as one call. Default:
  *   all of them.
+ * @param filter - The channel's noise filters, or `null`. Points then reach the buffer
+ *   through it, a few samples late (see `live-filter.ts`).
  * @returns Number of messages taken from the queue.
  */
 export function drainChannelQueue(
@@ -417,7 +432,8 @@ export function drainChannelQueue(
     calibration: CalibrationSpec,
     maxPoints: number,
     onChunk?: (chunkStartIndex: number, reset: boolean, chunk: DataPoint[]) => void,
-    maxMessages: number = Number.POSITIVE_INFINITY
+    maxMessages: number = Number.POSITIVE_INFINITY,
+    filter: LiveChannelFilter | null = null
 ): number {
     const messages = queue.drain(channel, maxMessages);
     for (const message of messages) {
@@ -444,9 +460,21 @@ export function drainChannelQueue(
         }
         if (result.gap) live.stats.gaps++;
 
-        appendToBuffer(live.buffer, result.points, maxPoints);
-        const chunkStartIndex = Math.max(0, live.buffer.length - result.points.length);
-        onChunk?.(chunkStartIndex, result.reset, result.points);
+        let points = result.points;
+        let reset = result.reset;
+        if (filter) {
+            points = filter.process(result, scan.sequence, scan.sampleIntervalNs);
+            reset = reset || live.resetPending === true;
+            if (points.length === 0) {
+                live.resetPending = reset;
+                continue;
+            }
+            live.resetPending = false;
+        }
+
+        appendToBuffer(live.buffer, points, maxPoints);
+        const chunkStartIndex = Math.max(0, live.buffer.length - points.length);
+        onChunk?.(chunkStartIndex, reset, points);
     }
     return messages.length;
 }

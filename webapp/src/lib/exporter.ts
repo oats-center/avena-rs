@@ -15,6 +15,7 @@
  *
  * @module
  */
+import type { ChannelFilterMap } from "./filter-settings";
 import { createInbox, headers } from "@nats-io/nats-core";
 import type { NatsService } from "./nats.svelte";
 
@@ -46,6 +47,11 @@ export interface ExportRequestPayload {
    * not read it; the box is chosen by the request subject.
    */
   box_id?: string;
+  /**
+   * Noise filters per channel, copied from the config's `sensor_settings.filters`. When
+   * set, the CSV gets a `filtered_value` column (see `docs/src/reference/export-protocol.md`).
+   */
+  filters?: ChannelFilterMap;
 }
 
 /** Finished export assembled from the exporter's reply frames. */

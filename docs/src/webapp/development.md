@@ -30,14 +30,19 @@ on the network.
 | `src/lib/flatbuffer-parser.ts` | Decoding live `Scan` messages |
 | `src/lib/calibration.ts` | Volts to engineering units, matching `rust-ljm/src/calibration.rs` |
 | `src/lib/labjack-config.ts` | LabJack configuration types and filling in missing fields |
+| `src/lib/filter-settings.ts`, `src/lib/filters.ts` | Per-channel noise filter settings and the filter pipeline, matching `rust-ljm/src/filters.rs` |
 | `src/lib/plot/` | The live plot's data path, per-channel state, trigger logic, drawing helpers, and the export form, connection and file saving |
 | `src/lib/exporter.ts` | The client side of the [export protocol](../reference/export-protocol.md) |
 | `src/lib/sampler/` | FlatBuffers code generated from `rust-ljm/src/data.fbs`; do not edit |
 
-`subjects.ts` and `calibration.ts` duplicate logic that also exists in Rust. A
-change to subject names or calibration formulas has to be made in both places,
-or the webapp will subscribe to the wrong subjects or show different numbers
-from the exports.
+`subjects.ts`, `calibration.ts` and `filters.ts` duplicate logic that also
+exists in Rust. A change to subject names, calibration formulas or the filters
+has to be made in both places, or the webapp will subscribe to the wrong
+subjects or show different numbers from the exports. For the filters,
+`testdata/filter-vectors.json` holds the webapp's output on synthetic signals and
+`cargo test` checks the Rust pipeline against it; regenerate it with
+`UPDATE_FILTER_VECTORS=1 pnpm vitest run src/lib/filters.test.ts` after a
+deliberate change.
 
 ## Building and running it for others
 

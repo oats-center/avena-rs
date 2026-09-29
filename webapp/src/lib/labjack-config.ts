@@ -9,6 +9,7 @@ import {
     resolveCalibrationUnit,
     type CalibrationSpec
 } from "./calibration";
+import { normalizeFilterMap, type ChannelFilterMap } from "./filter-settings";
 
 /** `sensor_settings` of a LabJack config document. */
 export interface SensorSettings {
@@ -34,6 +35,12 @@ export interface SensorSettings {
     labjack_on_off: boolean;
     /** Volts-to-units conversion and its unit per channel, keyed by channel number as a string. */
     calibrations?: Record<string, CalibrationSpec>;
+    /**
+     * Noise filters per channel, keyed by channel number as a string (see
+     * `filter-settings.ts`). Applied only where data is read: live plots and exports.
+     * Absent when no channel has a filter on.
+     */
+    filters?: ChannelFilterMap;
 }
 
 /** One LabJack config document. */
@@ -83,7 +90,9 @@ export const DEFAULT_SENSOR_SETTINGS: Readonly<SensorSettings> = Object.freeze({
  * (for `scan_rate_hz`) when the new ones are absent. Missing or non-finite numbers take
  * the values in {@link DEFAULT_SENSOR_SETTINGS}. `data_formats` and `measurement_units`
  * are padded with `"voltage"` and `"V"` to one entry per enabled channel. Arrays and
- * `calibrations` are shallow copies.
+ * `calibrations` are shallow copies. `filters` is cleaned with `normalizeFilterMap` and
+ * set only when some channel has a filter on, so a config without filters keeps its
+ * shape.
  *
  * @param rawSensor - Parsed `sensor_settings` from KV or from the edit modal. May be
  *   `undefined` or partial.
@@ -107,6 +116,9 @@ export function normalizeSensorSettings(rawSensor: any): SensorSettings {
                 ? { ...rawSensor.calibrations }
                 : {}
     };
+
+    const filters = normalizeFilterMap(rawSensor?.filters);
+    if (Object.keys(filters).length > 0) sensor.filters = filters;
 
     if (!Number.isFinite(sensor.scans_per_read)) sensor.scans_per_read = DEFAULT_SENSOR_SETTINGS.scans_per_read;
     if (!Number.isFinite(sensor.scan_rate_hz)) sensor.scan_rate_hz = DEFAULT_SENSOR_SETTINGS.scan_rate_hz;

@@ -58,6 +58,16 @@
     }
 
     /**
+     * Switches between filtered and raw values and redraws.
+     *
+     * @param show - `true` for filtered.
+     */
+    function setShowFiltered(show: boolean) {
+        view.setShowFiltered(show);
+        onchange();
+    }
+
+    /**
      * Applies a typed trigger number; a rejected value is put back into the input.
      *
      * @param field - Setting being edited.
@@ -95,6 +105,23 @@ component only edits it.
                 <span class="badge badge-info badge-sm">
                     {channelStatusLabel(view.mode, view.prebufferReady, view.triggered)}
                 </span>
+                {#if view.filter}
+                    <!-- Filtered / Raw view switch; not saved to the config. -->
+                    <div class="join" role="group" aria-label="Channel {channel} plotted values">
+                        <button
+                            type="button"
+                            class="btn btn-xs join-item {view.showFiltered ? 'btn-success' : ''}"
+                            aria-pressed={view.showFiltered}
+                            onclick={() => setShowFiltered(true)}
+                        >Filtered</button>
+                        <button
+                            type="button"
+                            class="btn btn-xs join-item {!view.showFiltered ? 'btn-neutral' : ''}"
+                            aria-pressed={!view.showFiltered}
+                            onclick={() => setShowFiltered(false)}
+                        >Raw</button>
+                    </div>
+                {/if}
                 {#if view.triggered}
                     <span class="text-xs text-success">
                         Triggered at {new Date(view.triggerTime).toLocaleTimeString()}
@@ -105,6 +132,18 @@ component only edits it.
 
         {#if unitInfo.warning}
             <p class="text-sm text-warning -mt-4 mb-4">{unitInfo.warning}</p>
+        {/if}
+
+        {#if view.filterPlan}
+            <p class="text-xs text-base-content/70 -mt-4 mb-4" data-testid="filter-note-{channel}">
+                Filters: {view.filterDescription}.
+                {#if view.filter}
+                    {view.showFiltered ? "Showing filtered values" : "Showing raw values; the filters keep running"}{#if view.filterPlan.delaySamples > 0}; the trace ends {view.filterPlan.delaySamples} samples ({(view.filterPlan.delaySamples * 1000 / view.filterPlan.fs).toFixed(1)} ms) before the newest sample (despike window){/if}.
+                {/if}
+                {#if view.filterPlan.skipped.length > 0}
+                    <span class="text-warning">Not applied at {view.filterPlan.fs} Hz: {view.filterPlan.skipped.join("; ")}.</span>
+                {/if}
+            </p>
         {/if}
 
         <div class="mb-6 p-4 bg-base-200 rounded-lg">
@@ -361,6 +400,7 @@ component only edits it.
                 yMax={view.axis.yMax}
                 invertX={view.axis.invertX}
                 invertY={view.axis.invertY}
+                tag={view.filter && view.showFiltered ? "FILTERED" : ""}
             />
         </div>
     </div>

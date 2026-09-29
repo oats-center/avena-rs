@@ -34,6 +34,7 @@ avenars.<site_id>.<box_id>.<source_id>.export.request
 | `format` | no | `csv`, the default and the only format supported. |
 | `download_name` | no | File name reported in the `meta` frame. Default `labjack_asset<NNN>_<start>_<end>.csv`. |
 | `ack_subject` | no | Subject the client acknowledges chunks on. Strongly recommended; see below. |
+| `filters` | no | Noise filters per channel, keyed by channel number as a string, in the shape of the config's `sensor_settings.filters` (see [LabJack configuration](kv-config.md#filters)). When a requested channel has any filter on, the CSV gets a `filtered_value` column; see [Filtered values](#filtered-values). |
 
 ## Replies
 
@@ -68,6 +69,51 @@ timestamp,channel,raw_value,calibrated_value,calibration_id
 | `calibration_id` | The calibration's `id` if it has one, otherwise its `type`: `identity`, `linear` or `polynomial` |
 
 Rows come channel by channel, and within a channel in file order.
+
+## Filtered values
+
+The exporter does not read the box configuration, so a client that wants filtered
+values sends the channels' filter settings in `filters`; the webapp copies them
+from the configuration when "Include filtered values" is ticked:
+
+```json
+"filters": { "8": { "despike": true, "remove_10hz": true, "remove_11_9hz": true,
+                    "highpass_hz": 1.0, "lowpass_hz": 100.0 } }
+```
+
+If no requested channel has a filter on (the field is missing, empty, not an
+object, or every switch is off), the CSV is byte for byte the same as without
+it. Otherwise the header and every row get a sixth column:
+
+```text
+timestamp,channel,raw_value,calibrated_value,calibration_id,filtered_value
+2026-09-22T12:00:00.008+00:00,ch08,3.7219,252.34,tp3505,0.8127
+```
+
+| Column | Meaning |
+|---|---|
+| `filtered_value` | The sample after the channel's filters, in calibrated units. On a channel without filters it equals `calibrated_value`. Empty when it cannot be computed: a sample stored as `NaN`, or a row whose timestamp repeats or precedes the one before it. |
+
+How it is computed, for each filtered channel:
+
+- The exporter also reads 30 s before `start` (so the 10 Hz and 11.9 Hz templates
+  have learnt the interference by the first row) and, after `end`, twenty time
+  constants of the lowest cutoff (at least 1 s, at most 2 min) plus 0.1 s, so the
+  backward pass has settled. Only rows in the requested range are sent.
+- The sample interval is the median step of the first 32 rows of each stretch.
+  Up to 4 missing samples are filled in as `NaN` and filtered through; a longer
+  gap, a step off the sample grid or a new rate starts every filter again,
+  templates included (after a gap the stream may be a new run with another
+  phase).
+- Despike and the templates run as in the live plot; the calibration stored with
+  each row's file is applied next; the high-pass and low-pass filters run forward
+  and then backward over each stretch (zero phase, −6 dB at the cutoff). Long
+  stretches are processed in blocks of 65,536 samples, each backward pass
+  starting from the settling margin past the block, so memory stays bounded.
+- Filters that cannot run at the data's rate (see
+  [LabJack configuration](kv-config.md#filters)) are skipped.
+
+An exporter from before this field ignores it and sends the five plain columns.
 
 ## Flow control
 

@@ -148,6 +148,8 @@
     /** Aborts the running export; `null` when none runs. */
     let exportAbort: AbortController | null = null;
     let exportChannels = $state<Set<number>>(new Set());
+    /** "Include filtered values" box of the export form. On by default when a channel has filters. */
+    let exportIncludeFiltered = $state<boolean>(false);
     let exportError = $state<string>("");
     /** Exporter's missing-channel notice. Cleared when the download finishes. */
     let exportWarning = $state<string>("");
@@ -373,7 +375,8 @@
                 (chunkStartIndex, reset, chunk) => {
                     handleNewChunk(view, liveChannel.buffer, chunkStartIndex, reset, chunk);
                 },
-                DECODE_BATCH_MESSAGES
+                DECODE_BATCH_MESSAGES,
+                view.filter
             );
             markUiSnapshotDirty();
             if (scanQueue.size(channel) > 0) backlog = true;
@@ -563,8 +566,15 @@
         if (!labjackConfig) return;
         const autoTimeWindow = deriveAutoTimeWindowSec(labjackConfig.sensor_settings.scan_rate_hz);
         const views = new Map<number, ChannelView>();
-        for (const channel of labjackConfig.sensor_settings.channels_enabled) {
-            views.set(channel, new ChannelView(channel, autoTimeWindow));
+        const settings = labjackConfig.sensor_settings;
+        for (const channel of settings.channels_enabled) {
+            const view = new ChannelView(channel, autoTimeWindow);
+            view.configureFilter(
+                settings.filters?.[String(channel)],
+                normalizeCalibration(settings.calibrations?.[String(channel)]),
+                settings.scan_rate_hz
+            );
+            views.set(channel, view);
         }
         channelViews = views;
         scanQueue.clear();
@@ -763,6 +773,7 @@
         const plotted = getRenderablePlotChannels();
         exportChannels = new Set(plotted.length > 0 ? plotted : labjackConfig.sensor_settings.channels_enabled);
         exportConfig = $state.snapshot(labjackConfig) as LabJackConfig;
+        exportIncludeFiltered = Object.keys(exportConfig.sensor_settings.filters ?? {}).length > 0;
         const range = defaultExportRange(new Date());
         exportEnd = range.end;
         exportStart = range.start;
@@ -827,7 +838,13 @@
     async function handleExportSubmit(event: Event) {
         event.preventDefault();
         const config = exportConfig;
-        const request = buildExportRequest(config, exportStart, exportEnd, exportChannels);
+        const request = buildExportRequest(
+            config,
+            exportStart,
+            exportEnd,
+            exportChannels,
+            exportIncludeFiltered ? config?.sensor_settings.filters : undefined
+        );
         if (!request.ok) {
             exportError = request.error;
             return;
@@ -983,7 +1000,9 @@ is a FlatBuffer `Scan`. Every message is queued
 (bounded; overflow drops the oldest and is shown in Data Statistics). On each
 animation frame the page decodes queued messages in order, within a time budget
 (what does not fit waits, in order, for the next frame; a 1 s timer takes over in
-background tabs), applies the channel's calibration, appends
+background tabs), applies the channel's calibration and, when the config has noise
+filters for the channel, runs the causal filters (`$lib/plot/live-filter`; the
+channel card switches between filtered and raw values), appends
 to a rolling buffer sorted by sample time (NaN and missing time become gaps; duplicates
 are skipped), runs the trigger logic and, at most about 30 times a second, copies the buffers into
 reactive state. Each channel can run in Free Run, Trigger Normal or Trigger Single.
@@ -1178,6 +1197,8 @@ subscription is released and nothing is saved.
             {exporting}
             progress={exportProgress}
             total={exportTotal}
+            filteredChannels={exportConfig.sensor_settings.channels_enabled.filter((ch) => exportConfig?.sensor_settings.filters?.[String(ch)])}
+            bind:includeFiltered={exportIncludeFiltered}
             ontoggle={toggleExportChannel}
             onsubmit={handleExportSubmit}
             onclose={closeExportModal}

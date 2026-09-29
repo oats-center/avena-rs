@@ -54,6 +54,8 @@
         invertX?: boolean;
         /** Mirrors the value axis. */
         invertY?: boolean;
+        /** Badge naming what is plotted, such as `FILTERED`; `""` for none. */
+        tag?: string;
     }
     
     let {
@@ -75,7 +77,8 @@
         yMin = -1,
         yMax = 1,
         invertX = false,
-        invertY = false
+        invertY = false,
+        tag = ""
     }: Props = $props();
     
     let canvas: HTMLCanvasElement;
@@ -630,7 +633,8 @@
     }
 
     /**
-     * Stacks status badges in the top right corner of the plot area: PREBUFFERING, and
+     * Stacks status badges in the top right corner of the plot area: the `tag` (such as
+     * FILTERED), PREBUFFERING, and
      * FROZEN or COLLECTING (frozen mode after a trigger). The trigger level has its own
      * label in the top margin.
      */
@@ -640,6 +644,11 @@
         let top = margin.top + 6;
         const right = plotWidth - margin.right - 6;
 
+
+        if (tag) {
+            drawBadge(tag, right, top, 'rgba(34, 197, 94, 0.18)', 'rgba(34, 197, 94, 0.8)');
+            top += 22;
+        }
 
         if (prebuffering) {
             drawBadge('PREBUFFERING', right, top, 'rgba(59, 130, 246, 0.18)', 'rgba(59, 130, 246, 0.8)');
@@ -978,6 +987,8 @@
      * buffer is cleared, so the axis can shrink again, then schedules a redraw.
      */
     $effect(() => {
+        // A new tag (filtered or raw values) is another trace; let autoscale start over.
+        tag;
         if (!yAutoScale) {
             stickyAutoExtrema = null;
         } else if (mode !== 'frozen' && data.length === 0) {
@@ -994,7 +1005,7 @@
         // Bare reads register these props as dependencies.
         timeWindow; unit; isTriggered; triggerTime; frozenPreWindowSec; frozenPostWindowSec;
         frozenCollecting; showTriggerThreshold; triggerThreshold; prebuffering;
-        yMin; yMax; invertX; invertY;
+        yMin; yMax; invertX; invertY; tag;
         scheduleRender();
     });
 </script>

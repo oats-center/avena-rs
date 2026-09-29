@@ -15,6 +15,12 @@
         syncChannelCalibrations,
         type LabJackConfig
     } from "$lib/labjack-config";
+    import {
+        describeFilters,
+        normalizeChannelFilters,
+        type ChannelFilterSettings
+    } from "$lib/filter-settings";
+    import { planFilters } from "$lib/filters";
 
     /** Component props. See the `@component` block below. */
     interface Props {
@@ -337,6 +343,48 @@
     }
     
     /**
+     * Returns a channel's noise filter settings (only the active ones).
+     *
+     * @param channel - Channel number.
+     */
+    function getFilters(channel: number): ChannelFilterSettings {
+        return normalizeChannelFilters(formData.sensor_settings.filters?.[String(channel)]) ?? {};
+    }
+
+    /**
+     * Turns one noise filter of a channel on or off, or sets a cutoff. A channel with
+     * no filter on is removed from `filters`, and `filters` itself when it is empty, so
+     * a config without filters keeps its shape.
+     *
+     * @param channel - Channel number.
+     * @param field - Filter to change.
+     * @param value - `true`/`false` for a switch; a number, or `undefined` for off, for a cutoff.
+     */
+    function setFilter(channel: number, field: keyof ChannelFilterSettings, value: boolean | number | undefined) {
+        const key = String(channel);
+        const next = normalizeChannelFilters({ ...getFilters(channel), [field]: value });
+        const filters = { ...(formData.sensor_settings.filters ?? {}) };
+        if (next) filters[key] = next;
+        else delete filters[key];
+        if (Object.keys(filters).length > 0) formData.sensor_settings.filters = filters;
+        else delete formData.sensor_settings.filters;
+    }
+
+    /**
+     * Reads a cutoff box: blank, zero or not a number turns the filter off.
+     *
+     * @param channel - Channel number.
+     * @param field - `highpass_hz` or `lowpass_hz`.
+     * @param input - The input element; rewritten with the stored value.
+     */
+    function commitCutoff(channel: number, field: "highpass_hz" | "lowpass_hz", input: HTMLInputElement) {
+        const text = input.value.trim();
+        const number = Number(text);
+        setFilter(channel, field, text !== "" && Number.isFinite(number) && number > 0 ? number : undefined);
+        input.value = String(getFilters(channel)[field] ?? "");
+    }
+
+    /**
      * Checks the whole form and replaces `errors` with the problems found.
      *
      * Requires a name and, when adding, a name and asset number not used by another
@@ -464,6 +512,12 @@
         if (labels.has(channel)) {
             labels.delete(channel);
             delete calibrations[String(channel)];
+            if (settings.filters?.[String(channel)]) {
+                const filters = { ...settings.filters };
+                delete filters[String(channel)];
+                if (Object.keys(filters).length > 0) settings.filters = filters;
+                else delete settings.filters;
+            }
         } else {
             labels.set(channel, { format: "voltage", unit: "V" });
             calibrations[String(channel)] = { type: "identity", unit: RAW_UNIT };
@@ -547,7 +601,10 @@ Fields edited:
 - `sensor_settings`: `scans_per_read`, `scan_rate_hz`, `gains`, `labjack_on_off`
   (Online/Offline), `channels_enabled` (toggles 0 to `max_channels - 1`), and per
   enabled channel its sensor type (`data_formats`), its calibration (identity, linear
-  `a`/`b`, or polynomial coefficients) and the calibration's unit.
+  `a`/`b`, or polynomial coefficients), the calibration's unit, and its noise filters
+  (`filters`: spike removal, 10 Hz and 11.9 Hz removal, high-pass and low-pass
+  cutoffs), which apply only where the data is read. Filters that cannot run at the
+  scan rate are named under them.
 
 Each channel has one calibration, edited in place and saved with the form; there are
 no named presets. The calibration stores its unit (`calibrations[ch].unit`), which is
@@ -905,6 +962,8 @@ No props have defaults.
                                 {@const key = String(channel)}
                                 {@const sensorType = findSensorType(formData.sensor_settings.data_formats[index])}
                                 {@const isStrain = formData.sensor_settings.data_formats[index] === "strain"}
+                                {@const filters = getFilters(channel)}
+                                {@const plan = planFilters(filters, formData.sensor_settings.scan_rate_hz)}
                                 <div class="card bg-base-200 border border-base-300">
                                     <div class="card-body p-4">
                                         <div class="flex flex-wrap items-baseline justify-between gap-2">
@@ -1114,6 +1173,65 @@ No props have defaults.
                                                 />
                                             </div>
                                         {/if}
+
+                                        <!-- Noise filters: applied only when the data is read (live plot, exports). -->
+                                        <div class="mt-4 rounded-box border border-base-300 p-4" aria-label="Channel {channel} noise filters">
+                                            <div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+                                                <h5 class="font-medium text-sm text-base-content">Filters</h5>
+                                                <span class="text-xs text-base-content/60">
+                                                    {describeFilters(filters) || "None"} · live plot and exports only; the archive keeps the raw data
+                                                </span>
+                                            </div>
+                                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                                <label class="label cursor-pointer justify-start gap-2">
+                                                    <input id="filter-despike-{channel}" type="checkbox" class="toggle toggle-sm toggle-success"
+                                                        checked={filters.despike === true}
+                                                        onchange={(event) => setFilter(channel, "despike", (event.currentTarget as HTMLInputElement).checked)} />
+                                                    <span class="label-text">Remove spikes</span>
+                                                </label>
+                                                <label class="label cursor-pointer justify-start gap-2">
+                                                    <input id="filter-10hz-{channel}" type="checkbox" class="toggle toggle-sm toggle-success"
+                                                        checked={filters.remove_10hz === true}
+                                                        onchange={(event) => setFilter(channel, "remove_10hz", (event.currentTarget as HTMLInputElement).checked)} />
+                                                    <span class="label-text">Remove 10 Hz</span>
+                                                </label>
+                                                <label class="label cursor-pointer justify-start gap-2">
+                                                    <input id="filter-119hz-{channel}" type="checkbox" class="toggle toggle-sm toggle-success"
+                                                        checked={filters.remove_11_9hz === true}
+                                                        onchange={(event) => setFilter(channel, "remove_11_9hz", (event.currentTarget as HTMLInputElement).checked)} />
+                                                    <span class="label-text">Remove 11.9 Hz</span>
+                                                </label>
+                                            </div>
+                                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+                                                <div class="form-control">
+                                                    <label class="label" for="filter-highpass-{channel}">
+                                                        <span class="label-text">High-pass (Hz, blank = off)</span>
+                                                    </label>
+                                                    <input id="filter-highpass-{channel}" type="text" inputmode="decimal" placeholder="e.g. 1"
+                                                        value={filters.highpass_hz ?? ""}
+                                                        onchange={(event) => commitCutoff(channel, "highpass_hz", event.currentTarget as HTMLInputElement)}
+                                                        class="input input-bordered input-sm w-full focus:input-primary" />
+                                                </div>
+                                                <div class="form-control">
+                                                    <label class="label" for="filter-lowpass-{channel}">
+                                                        <span class="label-text">Low-pass (Hz, blank = off)</span>
+                                                    </label>
+                                                    <input id="filter-lowpass-{channel}" type="text" inputmode="decimal" placeholder="e.g. 100"
+                                                        value={filters.lowpass_hz ?? ""}
+                                                        onchange={(event) => commitCutoff(channel, "lowpass_hz", event.currentTarget as HTMLInputElement)}
+                                                        class="input input-bordered input-sm w-full focus:input-primary" />
+                                                </div>
+                                            </div>
+                                            {#if plan.skipped.length > 0}
+                                                <p class="text-xs text-warning mt-2" role="status">
+                                                    Not applied at {formData.sensor_settings.scan_rate_hz} Hz: {plan.skipped.join("; ")}.
+                                                </p>
+                                            {:else if plan.delaySamples > 0}
+                                                <p class="text-xs text-base-content/60 mt-2">
+                                                    The live plot shows filtered data {(plan.delaySamples * 1000 / plan.fs).toFixed(1)} ms late (despike window).
+                                                </p>
+                                            {/if}
+                                        </div>
                                     </div>
                                 </div>
                             {/each}

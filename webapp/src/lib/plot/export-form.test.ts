@@ -64,3 +64,20 @@ describe('buildExportRequest', () => {
         expect(bare.ok && bare.payload.download_name).toBeUndefined();
     });
 });
+
+describe('buildExportRequest filters', () => {
+    const config = { asset_number: 1001, box_id: 'i69-mu1', labjack_name: 'i69 lj2' };
+    const filters = { '6': { despike: true, highpass_hz: 1 }, '8': { lowpass_hz: 40 }, '9': { despike: false } };
+
+    it('sends the filters of the ticked channels that have any', () => {
+        const result = buildExportRequest(config, '2026-09-22T12:00:00', '2026-09-22T12:01:00', [6, 7, 9], filters);
+        expect(result.ok && result.payload.filters).toEqual({ '6': { despike: true, highpass_hz: 1 } });
+    });
+
+    it('leaves the field out without filters, so the CSV is the plain one', () => {
+        const plain = buildExportRequest(config, '2026-09-22T12:00:00', '2026-09-22T12:01:00', [6]);
+        expect(plain.ok && 'filters' in plain.payload).toBe(false);
+        const none = buildExportRequest(config, '2026-09-22T12:00:00', '2026-09-22T12:01:00', [7, 9], filters);
+        expect(none.ok && 'filters' in none.payload).toBe(false);
+    });
+});

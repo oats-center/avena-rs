@@ -267,3 +267,24 @@ describe('sensor types', () => {
         expect(sensorFormatForUnit('my-sensor', 'kPa')).toBe('my-sensor');
     });
 });
+
+describe('filters on load and save', () => {
+    it('keeps a config without filters free of a filters field', () => {
+        const saved = roundTrip({ channels_enabled: [6], data_formats: ['voltage'], measurement_units: ['V'] });
+        expect('filters' in saved).toBe(false);
+    });
+
+    it('keeps the active filters of each channel and drops the rest', () => {
+        const saved = roundTrip({
+            channels_enabled: [6, 7],
+            data_formats: ['strain', 'strain'],
+            measurement_units: ['V', 'V'],
+            filters: {
+                '6': { despike: true, remove_10hz: true, remove_11_9hz: false, highpass_hz: 1, lowpass_hz: null },
+                '7': { despike: false, highpass_hz: 0 },
+                bad: { despike: true }
+            }
+        });
+        expect(saved.filters).toEqual({ '6': { despike: true, remove_10hz: true, highpass_hz: 1 } });
+    });
+});

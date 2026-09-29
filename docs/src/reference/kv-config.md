@@ -34,6 +34,10 @@ the box is set up.
     "labjack_on_off": true,
     "calibrations": {
       "8": { "type": "linear", "a": 70.25, "b": -9.1068, "unit": "kPa" }
+    },
+    "filters": {
+      "8": { "despike": true, "remove_10hz": true, "remove_11_9hz": true,
+             "highpass_hz": 1.0, "lowpass_hz": 40.0 }
     }
   }
 }
@@ -72,6 +76,7 @@ is present. Older documents with none of them publish on
 | `measurement_units` | string list | Unit of each enabled channel after calibration. Labels only. |
 | `labjack_on_off` | boolean | `false` stops streaming until it is set back to `true`. |
 | `calibrations` | object | Conversion from volts to engineering units, keyed by channel number as a string. Optional. |
+| `filters` | object | Noise filters for reading the data, keyed by channel number as a string. Optional; see [Filters](#filters). |
 
 `scans_per_read` and `scan_rate_hz` together set how often messages are sent:
 100 scans per read at 100 Hz is one message per channel per second. Aim for
@@ -98,6 +103,36 @@ exporter writes both the raw and the calibrated value to every CSV row. The
 archiver stores the calibration that was active in each Parquet file's
 metadata, and starts a new file when it changes, so old files keep the
 calibration they were recorded with.
+
+## Filters
+
+Each entry switches on noise filters for one channel. They are applied only where
+the data is read: the live plot in the webapp and, when asked for, an extra
+`filtered_value` column in exports (see [Export protocol](export-protocol.md)).
+The streamer and the archiver ignore them, so the archive always keeps the raw
+readings, and changing them restarts nothing. What each filter removes, and why,
+is in [Noise on the I-69 sensor inputs](../noise.md).
+
+| Field | Type | Meaning |
+|---|---|---|
+| `despike` | boolean | Strip narrow upward spikes: running minimum, then running maximum, over `ceil(2.5 ms × rate)` samples. Keeps pulses of about 5 ms and longer. Needs a rate above 400 Hz (two or more samples); ignored below. |
+| `remove_10hz` | boolean | Subtract the 10 Hz square wave: a template of one 100 ms cycle, aligned on the sample count and learnt from the last 30 s. Needs `rate / 10` to be a whole number of samples, 4 or more; ignored otherwise. |
+| `remove_11_9hz` | boolean | Subtract the 11.906 Hz square wave the same way, with a template in phase bins of its (fractional) period. Needs at least 4 samples per period. |
+| `highpass_hz` | number | High-pass cutoff, Hz: 2nd-order Butterworth. |
+| `lowpass_hz` | number | Low-pass cutoff, Hz: 2nd-order Butterworth. Ignored at or above 0.45 × rate. |
+
+Every field is optional; a missing, `false`, `null` or non-positive value turns
+that filter off, and a missing map (or channel) means no filtering. They run in
+the order of the table. The spike and template stages work on the raw volts, where
+the interference adds; the calibration is applied next, and the high-pass and
+low-pass filters run on the calibrated values, so a high-passed pressure reading
+is centred on 0 kPa rather than on the calibration's offset.
+
+The live plot uses causal filters, which add no delay except the despike window
+(`ceil(2.5 ms × rate) − 1` samples, 2 ms at 2 kHz). Exports use the same spike
+and template stages and run the high-pass and low-pass filters forward and
+backward (zero phase, doubling their order: −6 dB at the cutoff). A webapp from
+before this field was added drops it when it saves the configuration.
 
 ## No calibration presets
 

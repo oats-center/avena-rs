@@ -21,6 +21,10 @@
         progress: number;
         /** Final size once known, else `null`. */
         total: number | null;
+        /** Channels with noise filters in the config; the filtered-values box shows when any. */
+        filteredChannels?: number[];
+        /** Whether to ask for a `filtered_value` column. Bindable. */
+        includeFiltered?: boolean;
         /** Called when a channel box is ticked or unticked. */
         ontoggle: (channel: number, checked: boolean) => void;
         /** Called on Start Download (form submit). */
@@ -39,6 +43,8 @@
         exporting,
         progress,
         total,
+        filteredChannels = [],
+        includeFiltered = $bindable(false),
         ontoggle,
         onsubmit,
         onclose
@@ -48,8 +54,9 @@
 <!--
 @component
 Export Historical Data dialog of the plot page: start and end time (to the second, in
-the browser's time zone, with the UTC range shown), the channels, errors and warnings,
-and a progress bar while downloading. All state and the download itself live in the
+the browser's time zone, with the UTC range shown), the channels, whether to include
+filtered values (shown when a channel has noise filters), errors and warnings, and a
+progress bar while downloading. All state and the download itself live in the
 page; this component shows them and reports input.
 -->
 <div class="modal modal-open">
@@ -113,6 +120,25 @@ page; this component shows them and reports input.
                     {/each}
                 </div>
             </div>
+
+            {#if filteredChannels.length > 0}
+                <label class="flex items-start gap-2 text-sm">
+                    <input
+                        type="checkbox"
+                        class="checkbox checkbox-success checkbox-sm mt-0.5"
+                        bind:checked={includeFiltered}
+                        disabled={exporting}
+                    />
+                    <span>
+                        Include filtered values
+                        <span class="block text-xs text-base-content/60">
+                            Adds a <code>filtered_value</code> column computed on the box with the
+                            filters of channel{filteredChannels.length > 1 ? "s" : ""} {filteredChannels.join(", ")} (zero phase). Raw and
+                            calibrated values are exported as always.
+                        </span>
+                    </span>
+                </label>
+            {/if}
 
             {#if error}
                 <div class="alert alert-error text-sm">

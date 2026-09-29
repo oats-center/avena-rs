@@ -5,7 +5,10 @@
 //! `<PARQUET_DIR>/assetNNN/YYYY-MM-DD/chNN/*.parquet`. This binary reads those files
 //! back for a requested asset, channel list and time range, applies the calibration
 //! stored in each file's metadata, and sends the rows as CSV with the columns
-//! `timestamp,channel,raw_value,calibrated_value,calibration_id`.
+//! `timestamp,channel,raw_value,calibrated_value,calibration_id`. A request that
+//! names noise filters for a channel ([`ExportRequest::filters`]) gets a sixth
+//! column, `filtered_value`, computed by the zero-phase pipeline in [`filters`] over
+//! the range plus margins; the archive itself is never changed.
 //!
 //! It runs in one of two modes that share the request format ([`ExportRequest`])
 //! and the scanning logic:
@@ -112,12 +115,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::io::Write as _;
 mod calibration;
+mod filters;
 mod nats_config;
 mod subjects;
 #[cfg(test)]
 mod test_nats;
 
 use calibration::{CalibrationFormula, CalibrationSpec};
+use filters::{ChannelFilterSettings, ExportFilter};
 
 /// NATS header whose value names the frame type of each worker-mode reply message.
 const EXPORT_FRAME_HEADER: &str = "Avena-Export-Frame";
@@ -316,6 +321,162 @@ struct ExportRequest {
     /// the acks arrive. Missing or blank disables backpressure. Ignored in direct
     /// mode.
     ack_subject: Option<String>,
+    /// Noise filters per channel, keyed by channel number as a string, in the shape
+    /// of the config's `sensor_settings.filters` (see [`filters`]). When a requested
+    /// channel has any filter on, every row gets a `filtered_value` column. Absent,
+    /// empty or all off: the CSV is exactly as without this field.
+    #[serde(default)]
+    filters: Option<serde_json::Value>,
+}
+
+/// CSV header of an export without filters.
+const CSV_HEADER: &[u8] = b"timestamp,channel,raw_value,calibrated_value,calibration_id\n";
+/// CSV header of an export with filters.
+const CSV_HEADER_FILTERED: &[u8] =
+    b"timestamp,channel,raw_value,calibrated_value,calibration_id,filtered_value\n";
+
+/// Filters asked for by an export request, per channel.
+#[derive(Debug, Clone, Default)]
+struct ExportFilters {
+    /// Active settings of the requested channels that have any filter on.
+    by_channel: std::collections::HashMap<u8, ChannelFilterSettings>,
+}
+
+impl ExportFilters {
+    /// Reads the request's `filters` for its channels.
+    ///
+    /// # Returns
+    ///
+    /// `None` when no requested channel has a filter on (the export is then exactly
+    /// as without filters). Keys that are not channel numbers, entries that are not
+    /// objects and switches that are not `true` are ignored.
+    fn from_request(req: &ExportRequest) -> Option<Self> {
+        let map = req.filters.as_ref()?.as_object()?;
+        let by_channel: std::collections::HashMap<u8, ChannelFilterSettings> = map
+            .iter()
+            .filter_map(|(key, value)| {
+                let channel = key.trim().parse::<u8>().ok()?;
+                let settings = ChannelFilterSettings::from_value(value);
+                (req.channels.contains(&channel) && settings.is_active())
+                    .then_some((channel, settings))
+            })
+            .collect();
+        (!by_channel.is_empty()).then_some(Self { by_channel })
+    }
+
+    /// The channel's settings when it has any filter on.
+    fn for_channel(&self, channel: u8) -> Option<&ChannelFilterSettings> {
+        self.by_channel.get(&channel)
+    }
+}
+
+/// Calibration of a row in a filtered export, shared by the rows of one file.
+type SharedCalibration = Arc<(CalibrationSpec, String)>;
+
+/// One row of a filtered export.
+struct FilterInputRow {
+    timestamp_unix_ns: i64,
+    raw_value: f64,
+    calibration: SharedCalibration,
+}
+
+/// Seconds read before the export range so the templates have learnt the
+/// interference by the first exported row (their memory).
+const FILTER_LEAD_IN_S: f64 = filters::TEMPLATE_MEMORY_S;
+
+/// Reads one channel over the export range plus lead-in and settling margins and
+/// runs it through the zero-phase filter pipeline, one merge slice at a time.
+///
+/// Rows come out in time order through [`Self::next_batch`], only those inside the
+/// export range, each with its filtered calibrated value. Memory stays bounded by
+/// one slice plus the filter's backward-pass block (see [`filters::ExportFilter`]).
+struct FilteredChannelRows {
+    /// File groups of the channel's day folders, in time order.
+    groups: Vec<Vec<FileSpan>>,
+    /// `(group index, from_ns, to_ns)` slices still to read.
+    slices: std::collections::VecDeque<(usize, i64, i64)>,
+    filter: ExportFilter<FilterInputRow>,
+    start_ns: i64,
+    end_ns: i64,
+    finished: bool,
+}
+
+impl FilteredChannelRows {
+    /// Lists the slices to read.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if an existing day folder cannot be listed.
+    fn new(
+        root: &Path,
+        asset: u32,
+        channel: u8,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+        settings: &ChannelFilterSettings,
+    ) -> Result<Self> {
+        let start_ns = datetime_to_unix_ns(start);
+        let end_ns = datetime_to_unix_ns(end);
+        let lead_in = ChronoDuration::milliseconds((FILTER_LEAD_IN_S * 1000.0) as i64);
+        let settle = ChronoDuration::milliseconds(
+            ((filters::settle_seconds(settings) + 0.1) * 1000.0).ceil() as i64,
+        );
+        let (from, to) = (start - lead_in, end + settle);
+        let (from_ns, to_ns) = (datetime_to_unix_ns(from), datetime_to_unix_ns(to));
+        let mut groups = Vec::new();
+        let mut slices = std::collections::VecDeque::new();
+        for day in date_range(from.date_naive(), to.date_naive()) {
+            let day_dir = root
+                .join(format!("asset{asset:03}"))
+                .join(day.format("%Y-%m-%d").to_string())
+                .join(format!("ch{channel:02}"));
+            if !day_dir.exists() {
+                continue;
+            }
+            for group in overlapping_file_groups(&day_dir, from_ns, to_ns)? {
+                for (a, b) in merge_slices(&group, from_ns, to_ns) {
+                    slices.push_back((groups.len(), a, b));
+                }
+                groups.push(group);
+            }
+        }
+        Ok(Self {
+            groups,
+            slices,
+            filter: ExportFilter::new(settings.clone()),
+            start_ns,
+            end_ns,
+            finished: false,
+        })
+    }
+
+    /// Reads the next slice and returns the rows it completes; `None` when done.
+    fn next_batch(&mut self) -> Option<Vec<filters::FilteredRow<FilterInputRow>>> {
+        let calibrate = |row: &FilterInputRow, value: f64| row.calibration.0.apply(value);
+        let mut out = Vec::new();
+        if let Some((group, from_ns, to_ns)) = self.slices.pop_front() {
+            let merged = read_merged_rows(&self.groups[group], from_ns, to_ns);
+            let calibrations: Vec<SharedCalibration> =
+                merged.calibrations.into_iter().map(Arc::new).collect();
+            for (timestamp_unix_ns, raw_value, calibration) in merged.rows {
+                let row = FilterInputRow {
+                    timestamp_unix_ns,
+                    raw_value,
+                    calibration: calibrations[calibration].clone(),
+                };
+                self.filter
+                    .push(timestamp_unix_ns, raw_value, row, &calibrate, &mut out);
+            }
+        } else if !self.finished {
+            self.finished = true;
+            self.filter.finish(&calibrate, &mut out);
+        } else {
+            return None;
+        }
+        let (start_ns, end_ns) = (self.start_ns, self.end_ns);
+        out.retain(|r| (start_ns..=end_ns).contains(&r.row.timestamp_unix_ns));
+        Some(out)
+    }
 }
 
 /// Default export format used when a request omits `format`.
@@ -642,7 +803,8 @@ async fn process_nats_request(
         Some(subject) => Some(nc.subscribe(subject.to_string()).await?),
         None => None,
     };
-    let mut stream = NatsCsvStreamer::new(nc, reply, ack_sub, req.asset, start, end);
+    let mut stream = NatsCsvStreamer::new(nc, reply, ack_sub, req.asset, start, end)
+        .with_filters(ExportFilters::from_request(&req));
     let missing = stream
         .stream_channels(&state.parquet_root, &req.channels)
         .await?;
@@ -813,7 +975,8 @@ async fn serve_export_request<S: ExportSink + Send>(
 
     sink.send_meta(&file_name, "text/csv").await?;
 
-    let mut stream = CsvStreamer::new(sink, req.asset, start, end);
+    let mut stream = CsvStreamer::new(sink, req.asset, start, end)
+        .with_filters(ExportFilters::from_request(&req));
     let missing = stream.stream_channels(parquet_root, &req.channels).await?;
     stream.finish(missing).await?;
     Ok(())
@@ -955,6 +1118,8 @@ struct CsvStreamer<'a, S: ExportSink + Send> {
     start: DateTime<Utc>,
     /// Inclusive end of the export range.
     end: DateTime<Utc>,
+    /// Filters asked for; `None` for a plain export.
+    filters: Option<ExportFilters>,
 }
 
 /// CSV stream builder for NATS worker exports.
@@ -994,6 +1159,8 @@ struct NatsCsvStreamer {
     start: DateTime<Utc>,
     /// Inclusive end of the export range.
     end: DateTime<Utc>,
+    /// Filters asked for; `None` for a plain export.
+    filters: Option<ExportFilters>,
 }
 
 impl NatsCsvStreamer {
@@ -1025,7 +1192,7 @@ impl NatsCsvStreamer {
         end: DateTime<Utc>,
     ) -> Self {
         let mut chunk = Vec::with_capacity(Self::CHUNK_SIZE);
-        chunk.extend_from_slice(b"timestamp,channel,raw_value,calibrated_value,calibration_id\n");
+        chunk.extend_from_slice(CSV_HEADER);
         Self {
             client,
             reply,
@@ -1038,7 +1205,88 @@ impl NatsCsvStreamer {
             asset,
             start,
             end,
+            filters: None,
         }
+    }
+
+    /// Sets the filters of the export. With `Some`, the header gets a
+    /// `filtered_value` column and every row a value for it.
+    fn with_filters(mut self, filters: Option<ExportFilters>) -> Self {
+        if filters.is_some() {
+            self.chunk.clear();
+            self.chunk.extend_from_slice(CSV_HEADER_FILTERED);
+        }
+        self.filters = filters;
+        self
+    }
+
+    /// Appends one row of a filtered export: the plain columns, then the filtered
+    /// value (empty when it is not finite).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the resulting flush fails.
+    async fn push_filtered_record(
+        &mut self,
+        timestamp: &str,
+        channel: u8,
+        raw_value: f64,
+        calibrated_value: f64,
+        calibration_id: &str,
+        filtered_value: f64,
+    ) -> Result<()> {
+        write!(
+            self.chunk,
+            "{timestamp},ch{channel:02},{raw_value},{calibrated_value},{calibration_id},"
+        )?;
+        if filtered_value.is_finite() {
+            write!(self.chunk, "{filtered_value}")?;
+        }
+        self.chunk.push(b'\n');
+        if self.chunk.len() >= Self::CHUNK_SIZE {
+            self.flush().await?;
+        }
+        Ok(())
+    }
+
+    /// Streams one channel through its filters (see [`FilteredChannelRows`]).
+    ///
+    /// # Returns
+    ///
+    /// `true` if at least one row in the range was emitted.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a day folder cannot be listed or a row cannot be sent.
+    async fn stream_channel_filtered(
+        &mut self,
+        root: &Path,
+        channel: u8,
+        settings: &ChannelFilterSettings,
+    ) -> Result<bool> {
+        let mut rows =
+            FilteredChannelRows::new(root, self.asset, channel, self.start, self.end, settings)?;
+        let mut formatter = Rfc3339Formatter::new();
+        let mut found = false;
+        while let Some(batch) = rows.next_batch() {
+            for filtered in batch {
+                let row = filtered.row;
+                let (spec, calibration_id) = &*row.calibration;
+                let ts = formatter.format(row.timestamp_unix_ns);
+                let calibrated_value = spec.apply(row.raw_value);
+                found = true;
+                self.push_filtered_record(
+                    ts,
+                    channel,
+                    row.raw_value,
+                    calibrated_value,
+                    calibration_id,
+                    filtered.filtered,
+                )
+                .await?;
+            }
+        }
+        Ok(found)
     }
 
     /// Streams all requested channels, one after another, in the given order.
@@ -1290,6 +1538,14 @@ impl NatsCsvStreamer {
     /// Returns an error if an existing day directory cannot be listed or a row cannot
     /// be sent.
     async fn stream_channel(&mut self, root: &Path, channel: u8) -> Result<bool> {
+        if let Some(settings) = self
+            .filters
+            .as_ref()
+            .and_then(|f| f.for_channel(channel))
+            .cloned()
+        {
+            return self.stream_channel_filtered(root, channel, &settings).await;
+        }
         let start_ns = datetime_to_unix_ns(self.start);
         let end_ns = datetime_to_unix_ns(self.end);
         let mut found = false;
@@ -1338,8 +1594,22 @@ impl NatsCsvStreamer {
             let ts = formatter.format(timestamp_unix_ns);
             let calibrated_value = spec.apply(raw_value);
             *found = true;
-            self.push_record(ts, channel, raw_value, calibrated_value, calibration_id)
+            if self.filters.is_some() {
+                // A channel without filters in a filtered export: its filtered value is
+                // its calibrated value.
+                self.push_filtered_record(
+                    ts,
+                    channel,
+                    raw_value,
+                    calibrated_value,
+                    calibration_id,
+                    calibrated_value,
+                )
                 .await?;
+            } else {
+                self.push_record(ts, channel, raw_value, calibrated_value, calibration_id)
+                    .await?;
+            }
         }
         Ok(())
     }
@@ -1359,7 +1629,7 @@ impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
     /// * `end` - Inclusive end of the export range.
     fn new(sink: &'a mut S, asset: u32, start: DateTime<Utc>, end: DateTime<Utc>) -> Self {
         let mut chunk = Vec::with_capacity(Self::CHUNK_SIZE);
-        chunk.extend_from_slice(b"timestamp,channel,raw_value,calibrated_value,calibration_id\n");
+        chunk.extend_from_slice(CSV_HEADER);
         Self {
             sink,
             chunk,
@@ -1367,7 +1637,88 @@ impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
             asset,
             start,
             end,
+            filters: None,
         }
+    }
+
+    /// Sets the filters of the export. With `Some`, the header gets a
+    /// `filtered_value` column and every row a value for it.
+    fn with_filters(mut self, filters: Option<ExportFilters>) -> Self {
+        if filters.is_some() {
+            self.chunk.clear();
+            self.chunk.extend_from_slice(CSV_HEADER_FILTERED);
+        }
+        self.filters = filters;
+        self
+    }
+
+    /// Appends one row of a filtered export: the plain columns, then the filtered
+    /// value (empty when it is not finite).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the resulting flush fails.
+    async fn push_filtered_record(
+        &mut self,
+        timestamp: &str,
+        channel: u8,
+        raw_value: f64,
+        calibrated_value: f64,
+        calibration_id: &str,
+        filtered_value: f64,
+    ) -> Result<()> {
+        write!(
+            self.chunk,
+            "{timestamp},ch{channel:02},{raw_value},{calibrated_value},{calibration_id},"
+        )?;
+        if filtered_value.is_finite() {
+            write!(self.chunk, "{filtered_value}")?;
+        }
+        self.chunk.push(b'\n');
+        if self.chunk.len() >= Self::CHUNK_SIZE {
+            self.flush().await?;
+        }
+        Ok(())
+    }
+
+    /// Streams one channel through its filters (see [`FilteredChannelRows`]).
+    ///
+    /// # Returns
+    ///
+    /// `true` if at least one row in the range was emitted.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a day folder cannot be listed or a row cannot be sent.
+    async fn stream_channel_filtered(
+        &mut self,
+        root: &Path,
+        channel: u8,
+        settings: &ChannelFilterSettings,
+    ) -> Result<bool> {
+        let mut rows =
+            FilteredChannelRows::new(root, self.asset, channel, self.start, self.end, settings)?;
+        let mut formatter = Rfc3339Formatter::new();
+        let mut found = false;
+        while let Some(batch) = rows.next_batch() {
+            for filtered in batch {
+                let row = filtered.row;
+                let (spec, calibration_id) = &*row.calibration;
+                let ts = formatter.format(row.timestamp_unix_ns);
+                let calibrated_value = spec.apply(row.raw_value);
+                found = true;
+                self.push_filtered_record(
+                    ts,
+                    channel,
+                    row.raw_value,
+                    calibrated_value,
+                    calibration_id,
+                    filtered.filtered,
+                )
+                .await?;
+            }
+        }
+        Ok(found)
     }
 
     /// Streams all requested channels, one after another, in the given order.
@@ -1499,6 +1850,14 @@ impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
     /// Returns an error if an existing day directory cannot be listed or a row cannot
     /// be sent.
     async fn stream_channel(&mut self, root: &Path, channel: u8) -> Result<bool> {
+        if let Some(settings) = self
+            .filters
+            .as_ref()
+            .and_then(|f| f.for_channel(channel))
+            .cloned()
+        {
+            return self.stream_channel_filtered(root, channel, &settings).await;
+        }
         let start_ns = datetime_to_unix_ns(self.start);
         let end_ns = datetime_to_unix_ns(self.end);
         let mut found = false;
@@ -1547,8 +1906,22 @@ impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
             let ts = formatter.format(timestamp_unix_ns);
             let calibrated_value = spec.apply(raw_value);
             *found = true;
-            self.push_record(ts, channel, raw_value, calibrated_value, calibration_id)
+            if self.filters.is_some() {
+                // A channel without filters in a filtered export: its filtered value is
+                // its calibrated value.
+                self.push_filtered_record(
+                    ts,
+                    channel,
+                    raw_value,
+                    calibrated_value,
+                    calibration_id,
+                    calibrated_value,
+                )
                 .await?;
+            } else {
+                self.push_record(ts, channel, raw_value, calibrated_value, calibration_id)
+                    .await?;
+            }
         }
         Ok(())
     }
@@ -3053,5 +3426,162 @@ mod tests {
             "end to end CSV: reference {e_old:.3} s, new {e_new:.3} s ({:.1}x)",
             e_old / e_new
         );
+    }
+
+    /// Runs a direct-mode export with a `filters` field and returns the CSV.
+    async fn export_filtered(
+        root: &Path,
+        channels: &[u8],
+        start: i64,
+        end: i64,
+        filters: serde_json::Value,
+    ) -> Vec<u8> {
+        let req = ExportRequest {
+            asset: 1001,
+            channels: channels.to_vec(),
+            start: at(start).to_rfc3339(),
+            end: at(end).to_rfc3339(),
+            format: ExportFormat::Csv,
+            download_name: None,
+            ack_subject: None,
+            filters: Some(filters),
+        };
+        let mut sink = CollectingSink::default();
+        serve_export_request(root, &mut sink, &req).await.unwrap();
+        sink.chunks.concat()
+    }
+
+    /// 100 Hz samples from `from` for `count` samples: 0.5 V, a 10 Hz square wave of
+    /// ±3 mV locked to the sample count and a 12 ms pulse of 20 mV at sample 7000.
+    fn square_samples(from: i64, count: i64) -> Vec<(i64, f64)> {
+        (from..from + count)
+            .map(|i| {
+                let square = if i % 10 < 5 { 0.003 } else { -0.003 };
+                let pulse = if i == 7000 { 0.02 } else { 0.0 };
+                (DAY_START + i * 10_000_000, 0.5 + square + pulse)
+            })
+            .collect()
+    }
+
+    /// Filters that are off, or on for channels not requested, leave the export
+    /// byte for byte as without them.
+    #[tokio::test]
+    async fn exports_without_active_filters_are_unchanged() {
+        let root = std::env::temp_dir().join(format!("exporter-nofilt-{}", uuid::Uuid::new_v4()));
+        let dir = root
+            .join("asset1001")
+            .join(at(DAY_START).date_naive().format("%Y-%m-%d").to_string());
+        write_part(&dir.join("ch08"), 1, &samples(0, 3_000), LINEAR);
+        let (start, end) = (DAY_START + 100 * STEP, DAY_START + 2_000 * STEP);
+        let plain = export_chunks(&root, 1001, &[8], start, end).await.concat();
+        assert!(plain.starts_with(CSV_HEADER));
+        for filters in [
+            serde_json::json!({}),
+            serde_json::json!({"8": {"despike": false, "highpass_hz": null, "lowpass_hz": 0}}),
+            serde_json::json!({"9": {"remove_10hz": true}}),
+            serde_json::json!("not a map"),
+        ] {
+            assert_eq!(
+                export_filtered(&root, &[8], start, end, filters).await,
+                plain
+            );
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    /// A filtered export keeps every plain column and adds `filtered_value`: the
+    /// zero-phase pipeline over the range plus the lead-in and settling margins,
+    /// and the calibrated value on channels without filters.
+    #[tokio::test]
+    async fn filtered_exports_add_a_filtered_value_column() {
+        let root = std::env::temp_dir().join(format!("exporter-filt-{}", uuid::Uuid::new_v4()));
+        let dir = root
+            .join("asset1001")
+            .join(at(DAY_START).date_naive().format("%Y-%m-%d").to_string());
+        // 120 s at 100 Hz in files of 30 s, and channel 9 unfiltered.
+        for part in 0..4 {
+            write_part(
+                &dir.join("ch08"),
+                part,
+                &square_samples(part as i64 * 3_000, 3_000),
+                LINEAR,
+            );
+        }
+        write_part(&dir.join("ch09"), 1, &samples(0, 900), IDENTITY);
+        let start = DAY_START + 6_000 * 10_000_000;
+        let end = DAY_START + 8_000 * 10_000_000;
+        let settings = serde_json::json!({"remove_10hz": true, "highpass_hz": 1.0});
+        let filtered = export_filtered(
+            &root,
+            &[8, 9],
+            start,
+            end,
+            serde_json::json!({"8": settings.clone()}),
+        )
+        .await;
+        let plain = export_chunks(&root, 1001, &[8, 9], start, end)
+            .await
+            .concat();
+
+        let text = String::from_utf8(filtered).unwrap();
+        let plain = String::from_utf8(plain).unwrap();
+        let mut lines = text.lines();
+        assert_eq!(
+            lines.next().unwrap().as_bytes(),
+            CSV_HEADER_FILTERED.strip_suffix(b"\n").unwrap()
+        );
+        let rows: Vec<&str> = lines.collect();
+        let plain_rows: Vec<&str> = plain.lines().skip(1).collect();
+        assert_eq!(rows.len(), plain_rows.len());
+
+        // The reference: the filter over exactly the rows the exporter reads.
+        let settings = ChannelFilterSettings::from_value(&settings);
+        let from = start - (FILTER_LEAD_IN_S * 1e9) as i64;
+        let to =
+            end + ((filters::settle_seconds(&settings) + 0.1) * 1000.0).ceil() as i64 * 1_000_000;
+        let spec: CalibrationSpec = serde_json::from_str(LINEAR).unwrap();
+        let calibrate = |_: &i64, v: f64| spec.apply(v);
+        let mut filter = ExportFilter::new(settings);
+        let mut out = Vec::new();
+        for (ts, v) in square_samples(0, 12_000) {
+            if (from..=to).contains(&ts) {
+                filter.push(ts, v, ts, &calibrate, &mut out);
+            }
+        }
+        filter.finish(&calibrate, &mut out);
+        let want: std::collections::HashMap<i64, f64> =
+            out.into_iter().map(|r| (r.row, r.filtered)).collect();
+
+        let mut square_left: f64 = 0.0;
+        for (row, plain_row) in rows.iter().zip(&plain_rows) {
+            let (head, value) = row.rsplit_once(',').unwrap();
+            assert_eq!(head, *plain_row);
+            let fields: Vec<&str> = head.split(',').collect();
+            let value: f64 = value.parse().unwrap();
+            if fields[1] == "ch09" {
+                assert_eq!(value, fields[3].parse::<f64>().unwrap());
+                continue;
+            }
+            let ts = datetime_to_unix_ns(DateTime::parse_from_rfc3339(fields[0]).unwrap().into());
+            assert_eq!(value, want[&ts], "row {row}");
+            let index = (ts - DAY_START) / 10_000_000;
+            if (index - 7000).abs() > 150 {
+                square_left = square_left.max(value.abs());
+            }
+        }
+        // The square wave is 0.1875 kPa after calibration; away from the pulse and
+        // the high-pass tail around it the filtered rows stay near zero, and the
+        // pulse is kept.
+        assert!(square_left < 0.01, "square wave left: {square_left}");
+        let pulse = rows
+            .iter()
+            .find(|r| {
+                r.contains("ch08")
+                    && r.starts_with(&at(DAY_START + 7000 * 10_000_000).to_rfc3339()[..22])
+            })
+            .unwrap();
+        let pulse: f64 = pulse.rsplit_once(',').unwrap().1.parse().unwrap();
+        assert!((pulse - 1.25).abs() < 0.1, "pulse {pulse}");
+        fs::remove_dir_all(root).unwrap();
     }
 }
