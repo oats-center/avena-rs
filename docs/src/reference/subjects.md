@@ -7,8 +7,9 @@ identity:
 <root>.<site_id>.<box_id>.<source_id>.<purpose>...
 ```
 
-The root is `avenars`. Every token is lowercased, and spaces, `.` and `/` are
-turned into `-`, so a name can never add a level to the subject or introduce a
+The root is `avenars`. Every token is lowercased, spaces, `.` and `/` are
+turned into `-`, and anything other than letters, digits, `-` and `_` is
+dropped, so a name can never add a level to the subject or introduce a
 wildcard. For site `i69`, box `i69-mu1` and LabJack `i69-lj2`:
 
 | Subject | Direction | Carries |

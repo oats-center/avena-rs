@@ -55,6 +55,46 @@ It prints progress every 1,000 files and a summary at the end, and exits with
 an error if any file failed; a failed file keeps its original. Run it with
 `nice -n 19` on a box that is recording.
 
+## dedupe
+
+Removes duplicate samples from the archive. Before the archiver had its replay
+guard, JetStream sometimes fed it the whole stream again, and it wrote the same
+windows again into new part files (up to twelve copies on MU1). `dedupe`
+rewrites each affected channel folder so every sample is stored once, in one
+file per aligned window (and per calibration, if a folder mixes them), the
+layout the archiver writes today. The exporter already skips exact copies, so
+this mostly saves disk space and brings each window back to one file.
+
+```bash
+cd rust-ljm
+cargo build --release --bin dedupe
+./target/release/dedupe <parquet_root> --dry-run   # report only
+./target/release/dedupe <parquet_root>
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--dry-run` | off | Build and check every new folder, then delete it and keep the original |
+| `--rotate-secs N` | `300` | Window length; must match the configuration's `rotate_secs` |
+
+Two samples are duplicates only when the timestamp, the value (bit for bit) and
+the file's metadata all match. Samples with the same timestamp but different
+values are all kept and reported as conflicts. One rule crosses metadata: when
+the same sample is stored both under an identity (or missing) calibration and
+under a real one, only the calibrated copy is kept, because an identity
+calibration only means the channel had not been configured yet. A sample
+stored only under identity is kept.
+
+For each folder it writes the new files to `ch<NN>.dedupe-tmp`, reads them
+back, checks that every row of every original file is present, then swaps the
+folders (the original becomes `ch<NN>.dedupe-old` and is deleted after the
+swap). It skips folders for today and yesterday (UTC), which the archiver may
+still be writing, folders holding `.inprogress` or quarantined files, and
+folders that are already clean. A run can be stopped and started again: a
+leftover staging folder is deleted and an interrupted swap is finished or
+rolled back. It prints one line per rewritten folder and a summary, and exits
+with an error if any folder failed; a failed folder is left as it was.
+
 ## subscriber
 
 Captures live samples to CSV without the archiver, for checking a stream by
@@ -98,9 +138,22 @@ edge node.
 ./scripts/install-edge-services.sh --profile shared/edge-boxes/<box>.json [--start]
 ```
 
+It also installs `wait-for-local-nats`, the `10-nats-ready.conf` drop-in for
+each Rust service, the health-metrics timer and Alloy's container unit. It does
+not install `nats-leaf.conf`; see [Everyday
+tasks](../operations/tasks.md#update-the-nats-server-configuration).
 `--start` restarts the services and Alloy after installing. Without it the
 units are enabled but left as they were. It expects the client credentials in
 `rust-ljm/apt.creds`.
+
+## wait-for-local-nats.sh
+
+Waits until the local NATS server reports JetStream healthy
+(`http://127.0.0.1:8222/healthz?js-enabled-only=true`), polling once a second
+for up to 600 seconds. The installer puts it in
+`/usr/local/libexec/avena-rs/wait-for-local-nats` and runs it before each Rust
+service through the `10-nats-ready.conf` drop-ins (see [Services on an edge
+node](../operations/services.md)).
 
 ## edge-status.sh
 

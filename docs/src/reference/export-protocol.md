@@ -68,7 +68,10 @@ timestamp,channel,raw_value,calibrated_value,calibration_id
 | `calibrated_value` | `raw_value` with the calibration stored in that sample's file |
 | `calibration_id` | The calibration's `id` if it has one, otherwise its `type`: `identity`, `linear` or `polynomial` |
 
-Rows come channel by channel, and within a channel in file order.
+Rows come channel by channel, and within a channel in time order. If the
+archive holds the same sample more than once (the same timestamp and raw
+value, left by an archiver that was fed the same messages again), it is sent
+once. Rows with the same timestamp but different values are all sent.
 
 ## Filtered values
 

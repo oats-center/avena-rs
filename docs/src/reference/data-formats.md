@@ -47,8 +47,8 @@ per million, the streamer nudges the timeline toward the system clock by at
 most 1 ms a minute, and never by more than half a sample interval, so
 timestamps within a run always increase. Two things can still move timestamps
 in one jump: the first minute of a run, when the initial anchor is corrected
-once, and a system clock step of 2 s or more. Both are logged. Sort by
-timestamp rather than relying on file order.
+once, and a system clock step of 2 s or more that lasts three minutes. Both are
+logged. Sort by timestamp rather than relying on file order.
 
 ## Parquet archive
 
@@ -56,6 +56,9 @@ The archiver writes one file per channel per time window:
 
 ```text
 <parquet_dir>/
+  .archiver-state/
+    labjacks/
+      avenars.i69.i69-mu1.i69-lj2.live.ch08.json
   asset1001/
     2026-09-23/
       ch08/
@@ -74,11 +77,19 @@ The archiver writes one file per channel per time window:
   empty on disk until the window closes.
 - `*.quarantined-*` files are unfinished files set aside after a crash; see
   [Troubleshooting](../operations/troubleshooting.md#quarantined-files-appear).
+- `.archiver-state/` holds the archiver's replay-guard checkpoints, described
+  [below](#replay-guard-checkpoints). It is not part of the data.
 
 Each file holds the samples of one channel for one aligned window of
 `rotate_secs` (normally :00 to :05, :05 to :10 and so on, in UTC). A window can
 be split across two files if the archiver restarted during it, and a file can
 be shorter than a window at the start or end of recording.
+
+Archives written before the replay guard can hold the same samples more than
+once, in extra part files for the same window, because the archiver was fed
+the same JetStream messages again. The exporter sends each exact copy once,
+and `dedupe` rewrites such folders (see [Command-line
+tools](tools.md#dedupe)).
 
 ### Schema
 
@@ -113,3 +124,27 @@ import pyarrow.parquet as pq, json
 table = pq.read_table("part-0092.parquet")
 calibration = json.loads(pq.ParquetFile("part-0092.parquet").metadata.metadata[b"calibration"])
 ```
+
+## Replay-guard checkpoints
+
+The archiver keeps one small JSON file per channel under
+`<parquet_dir>/.archiver-state/<stream>/<subject>.json` (or under
+`ARCHIVER_STATE_DIR`):
+
+```json
+{
+  "stream": "labjacks",
+  "stream_created_unix_ns": 1790000000000000000,
+  "subject": "avenars.i69.i69-mu1.i69-lj2.live.ch08",
+  "archived_through_seq": 812345
+}
+```
+
+`archived_through_seq` is the consumer's ack floor: every message on that
+subject up to this stream sequence is inside a closed, synced Parquet file. The
+file is replaced atomically and synced, about once a minute and when the
+channel stops. It is trusted only while the stream name, its creation time and
+the subject match and the stream has not been rewound below it; see
+[Troubleshooting](../operations/troubleshooting.md#the-archiver-writes-old-data-again).
+Deleting the folder is safe: the guard then starts again from the consumer's
+current progress.

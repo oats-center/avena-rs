@@ -5,7 +5,9 @@ node you never set these by hand: `render-edge-config.py` writes them from the
 [box profile](profile.md) into `/etc/avena-rs/<service>.env.json`, and
 `avena-service-run.sh` exports them before starting the binary. Relative paths
 in `NATS_CREDS_FILE`, `OUTPUT_DIR` and `PARQUET_DIR` are resolved against the
-`rust-ljm` directory.
+folder holding `avena-service-run.sh`: `/usr/local/libexec/avena-rs` on an
+installed box, `rust-ljm` when it is run from a checkout. The profiles use
+absolute paths, so this rarely matters.
 
 The tables list what each binary actually reads, with the default the code
 uses when the variable is unset.
@@ -16,7 +18,7 @@ uses when the variable is unset.
 |---|---|---|
 | `NATS_SERVERS` | `nats://127.0.0.1:4222` | Comma-separated URLs of the local NATS server. |
 | `NATS_CREDS_FILE` | `apt.creds` | Credentials file for that connection. |
-| `JS_DOMAIN` | default domain | The box's JetStream domain, e.g. `edge-i69-mu1`. |
+| `JS_DOMAIN` | default domain | The box's JetStream domain, e.g. `edge-i69-mu1`. Read by the streamer and the archiver; the exporter uses core NATS only. |
 
 ## streamer
 
@@ -50,10 +52,15 @@ configuration document, not from the environment. The renderer also writes
 | Variable | Default | Meaning |
 |---|---|---|
 | `PARQUET_DIR` | `parquet` | Root of the archive. |
-| `CFG_BUCKET`, `CFG_KEY` | as for the streamer | The configuration to follow. |
+| `CFG_BUCKET` | `avenabox` | Local key-value bucket holding the configuration. |
+| `CFG_KEY` | `labjackd.config.macbook` | Key of the configuration to follow. Always set it. |
 | `CENTRAL_NATS_SERVERS`, `CFG_NATS_SERVERS` and the other `CENTRAL_*` variables | as for the streamer | Optional configuration mirror, same behavior as the streamer. |
 | `ARCHIVER_STATE_DIR` | `.archiver-state` under `PARQUET_DIR` | Where each channel's replay-guard checkpoint is kept. |
 | `ARCHIVER_REPLAY_GUARD` | on | `off` (or `0`, `false`, `no`) turns off the guard that skips messages already archived when JetStream loses a consumer's progress. |
+
+The renderer also writes `NATS_SUBJECT`, `SITE_ID`, `BOX_ID`, `SOURCE_TYPE` and
+`SOURCE_ID` into `archiver.env.json`. The archiver does not read them; like the
+streamer, it takes its channels and subjects from the configuration document.
 
 ## exporter
 

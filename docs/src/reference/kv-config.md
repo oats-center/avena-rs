@@ -118,7 +118,7 @@ is in [Noise on the I-69 sensor inputs](../noise.md).
 | `despike` | boolean | Strip narrow upward spikes: running minimum, then running maximum, over `ceil(2.5 ms × rate)` samples. Keeps pulses of about 5 ms and longer. Needs a rate above 400 Hz (two or more samples); ignored below. |
 | `remove_10hz` | boolean | Subtract the 10 Hz square wave: a template of one 100 ms cycle, aligned on the sample count and learnt from the last 30 s. Needs `rate / 10` to be a whole number of samples, 4 or more; ignored otherwise. |
 | `remove_11_9hz` | boolean | Subtract the 11.906 Hz square wave the same way, with a template in phase bins of its (fractional) period. Needs at least 4 samples per period. |
-| `highpass_hz` | number | High-pass cutoff, Hz: 2nd-order Butterworth. |
+| `highpass_hz` | number | High-pass cutoff, Hz: 2nd-order Butterworth. Ignored at or above 0.45 × rate. |
 | `lowpass_hz` | number | Low-pass cutoff, Hz: 2nd-order Butterworth. Ignored at or above 0.45 × rate. |
 
 Every field is optional; a missing, `false`, `null` or non-positive value turns

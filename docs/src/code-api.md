@@ -16,6 +16,7 @@ and that is where the interesting code lives.
 | [`exporter`](api/rust/exporter/index.html) | CSV export worker |
 | [`subscriber`](api/rust/subscriber/index.html) | Diagnostic live capture to CSV |
 | [`recompress`](api/rust/recompress/index.html) | Rewrites old Parquet files in the current format |
+| [`dedupe`](api/rust/dedupe/index.html) | Removes duplicate samples from archive folders |
 
 ## Webapp library
 
