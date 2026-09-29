@@ -52,6 +52,8 @@ configuration document, not from the environment. The renderer also writes
 | `PARQUET_DIR` | `parquet` | Root of the archive. |
 | `CFG_BUCKET`, `CFG_KEY` | as for the streamer | The configuration to follow. |
 | `CENTRAL_NATS_SERVERS`, `CFG_NATS_SERVERS` and the other `CENTRAL_*` variables | as for the streamer | Optional configuration mirror, same behavior as the streamer. |
+| `ARCHIVER_STATE_DIR` | `.archiver-state` under `PARQUET_DIR` | Where each channel's replay-guard checkpoint is kept. |
+| `ARCHIVER_REPLAY_GUARD` | on | `off` (or `0`, `false`, `no`) turns off the guard that skips messages already archived when JetStream loses a consumer's progress. |
 
 ## exporter
 

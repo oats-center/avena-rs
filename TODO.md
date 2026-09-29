@@ -6,37 +6,46 @@ were fixed in #21 and deployed to MU1 and MU2 on 2026-09-29.
 
 ## Rust services
 
-- [ ] **Find what makes the archiver replay its backlog.** Both boxes re-archived the
+- [x] **Find what makes the archiver replay its backlog.** Both boxes re-archived the
   whole JetStream stream several times (MU1 up to 12 copies of each window between
   Aug 27 and Sep 23, MU2 about 2). The durable consumers were never re-created, and
   plain archiver restarts did not replay; the bursts line up with boots and NATS
-  restarts. `dedupe` removed the copies and the exporter now skips duplicates, but
-  the cause is still open. A test: restart `nats-leaf` on one box while watching
-  the consumers' ack floor and the day folders that get new files.
-- [ ] **Export cancel has no protocol message.** After the webapp cancels, the edge
+  restarts. `dedupe` removed the copies and the exporter now skips duplicates. Cause: nats-server renames a consumer's state file
+  without an fsync, so a power cut on XFS can leave it empty and the consumer
+  restarts from the beginning of the stream. The archiver now keeps its own synced
+  checkpoint and skips messages it already archived.
+- [x] **Export cancel has no protocol message.** After the webapp cancels, the edge
   exporter keeps sending up to 8 more chunks until its ack timeout (about 30 s).
   A cancel frame would stop it at once.
-- [ ] **Empty identity fields in the KV key.** Subjects fall back to `asset<NNN>`
+- [x] **Empty identity fields in the KV key.** Subjects fall back to `asset<NNN>`
   for a missing or empty source, but the webapp's `labjackConfigKey` falls back to
   `unknown-source`. Pick one.
 
 ## Webapp
 
-- [ ] **Split the plot page.** `routes/labjacks/plots/[asset_number]/+page.svelte`
+- [x] **Split the plot page.** `routes/labjacks/plots/[asset_number]/+page.svelte`
   is about 2,000 lines with parallel per-channel maps. Move to one state object per
   channel plus `ChannelCard`, `ExportDialog` and `StatsPanel` components.
-- [ ] **Unticking Auto Y-Scale** starts the limits at -1 and 1 instead of the
+- [x] **Unticking Auto Y-Scale** starts the limits at -1 and 1 instead of the
   current auto range, so the plot jumps.
-- [ ] **A reload or Retry closes the connection** an export in progress is using.
-- [ ] **Stream exports to disk.** Exports are kept in memory as Blob parts;
+- [x] **A reload or Retry closes the connection** an export in progress is using.
+- [x] **Stream exports to disk.** Exports are kept in memory as Blob parts;
   streaming to a file needs the save picker opened from the export click handler.
-- [ ] **Small cleanups:** the inline invalid-asset branch in the plot page is now
+- [x] **Small cleanups:** the inline invalid-asset branch in the plot page is now
   unreachable (`+page.ts` handles it); the trigger plot shows the level twice
   (label box and LEVEL badge); at 390 px the time axis shows only two ticks.
 
+## Still open
+
+- [ ] `downloadExportViaNats` keeps its own in-memory copy of an export even when
+  the webapp streams it to a file. An `onChunk` hook awaited before each ack would
+  remove that copy and the chunk tap in `lib/plot/export-sink.ts`.
+- [ ] Consider `sync_interval: always` in `nats-leaf.conf` so nats-server fsyncs its
+  state; weigh the extra writes on the box disks first.
+
 ## Setup and operations
 
-- [ ] **Add `wait-for-local-nats` to the installer.** The script and the
+- [x] **Add `wait-for-local-nats` to the installer.** The script and the
   `10-nats-ready.conf` drop-ins for the three services are installed by hand on
   both boxes but are not in `scripts/`.
 - [ ] **Data caveat.** MU1 timestamps from the 2026-09-25 reboot to the

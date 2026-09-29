@@ -39,10 +39,11 @@ subjects.
 
 If a configuration has a structured root but lacks a field, the tokens fall
 back to `unknown-site` and `unknown-box`. The source token falls back to the
-LabJack name, and then to `asset<NNN>` for live channel subjects or
-`unknown-source` for the stream wildcard and the export subject. Those
-fallbacks do not agree with each other, so always set `site_id`, `box_id` and
-`source_id`.
+LabJack name and then to `asset<NNN>`, the same way for live channel subjects,
+the stream wildcard, the export subject and the configuration key. An empty
+string counts as missing. `unknown-source` is used only when there is no asset
+number either. Setting `site_id`, `box_id` and `source_id` explicitly is still
+the clearest choice.
 
 ## Legacy subjects
 
