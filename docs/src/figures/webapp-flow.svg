@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 460" width="900" height="460" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
   <title id="t">Webapp pages and their NATS traffic</title>
-  <desc id="d">The connect page tests a connection and stores the server and credentials in session storage. The LabJack list page reads configurations and calibration presets from the avenabox bucket and writes them back through the config form. The plot page subscribes to the live channel subjects, draws them with RealTimePlot, and requests exports from the edge exporter.</desc>
+  <desc id="d">The connect page tests a connection and stores the server and credentials in session storage. The LabJack list page reads configurations from the avenabox bucket and writes them back through the config form. The plot page subscribes to the live channel subjects, draws them with RealTimePlot, and requests exports from the edge exporter.</desc>
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#52514e"/>
@@ -54,7 +54,6 @@
   <rect x="580" y="96" width="270" height="92" rx="6" fill="#ffffff" stroke="#eb6834" stroke-width="1.5"/>
   <text class="t" x="594" y="118">KV bucket avenabox</text>
   <text class="s" x="594" y="138">&lt;site&gt;.&lt;box&gt;.&lt;source&gt;.config</text>
-  <text class="s" x="594" y="156">calibration.&lt;id&gt; (presets)</text>
   <text class="l" x="594" y="176">edge streamers mirror their key</text>
 
   <rect x="580" y="232" width="270" height="56" rx="6" fill="#ffffff" stroke="#eb6834" stroke-width="1.5"/>

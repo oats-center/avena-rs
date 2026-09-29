@@ -99,9 +99,10 @@ archiver stores the calibration that was active in each Parquet file's
 metadata, and starts a new file when it changes, so old files keep the
 calibration they were recorded with.
 
-## Calibration presets
+## No calibration presets
 
-The webapp also keeps reusable calibrations in the same bucket, one per key
-`calibration.<id>`, so a sensor's calibration can be picked from a list instead
-of typed in again. The services never read these keys; only the copy inside a
-box's configuration takes effect.
+Each channel's calibration lives only inside its box's configuration. Earlier
+versions of the webapp also kept named presets under `calibration.<id>` keys in
+the same bucket. The services never read them, the webapp no longer does either,
+and they have been removed.
+
