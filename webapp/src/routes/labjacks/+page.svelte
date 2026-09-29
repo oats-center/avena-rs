@@ -236,7 +236,8 @@
      * @param key - KV key in `avenabox` to delete.
      */
     async function handleDelete(key: string) {
-        if (!confirm(`Are you sure you want to delete LabJack "${key}"?`)) {
+        const name = labjacks.get(key)?.labjack_name ?? key;
+        if (!confirm(`Delete LabJack "${name}" (key "${key}") from KV? This cannot be undone.`)) {
             return;
         }
         
@@ -596,16 +597,6 @@ running.
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                                         </svg>
                                     </button>
-                                    <button
-                                        onclick={() => handleDelete(key)}
-                                        class="btn btn-sm btn-error btn-circle"
-                                        title="Delete Configuration"
-                                        aria-label="Delete Configuration"
-                                    >
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                                        </svg>
-                                    </button>
                                 </div>
                             </div>
 
@@ -660,6 +651,20 @@ running.
                                         </span>
                                     </div>
                                 </div>
+                            </div>
+
+                            <!-- Delete sits apart from Edit so it is not hit by mistake. -->
+                            <div class="card-actions justify-end mt-4 pt-4 border-t border-base-200">
+                                <button
+                                    onclick={() => handleDelete(key)}
+                                    class="btn btn-xs btn-outline btn-error"
+                                    title="Delete this configuration from KV"
+                                >
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                    </svg>
+                                    Delete
+                                </button>
                             </div>
                         </div>
                     </div>
