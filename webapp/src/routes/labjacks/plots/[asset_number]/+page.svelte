@@ -3,7 +3,7 @@
     import { page } from "$app/stores";
     import { connect, getKeyValue, getKeys } from "$lib/nats.svelte";
     import { downloadExportViaNats, type ExportRequestPayload } from "$lib/exporter";
-    import { applyCalibration, normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
+    import { normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
     import { archiveExportRequestSubject, liveLabJackChannelPattern, liveLabJackChannelSubject } from "$lib/subjects";
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
     import { parseAssetNumberParam } from "$lib/plot/route";
@@ -288,11 +288,6 @@
     let channelStreamStatus = $state<Map<number, { dropped: number; gaps: number; resets: number; skipped: number; decodeErrors: number }>>(new Map());
     /** Channels chosen for plotting, at most two. Only these are decoded. */
     let selectedPlotChannels = $state<Set<number>>(new Set());
-    /**
-     * Channels whose card is on or near the screen. Kept by {@link
-     * observeChannelVisibility}; not read elsewhere.
-     */
-    let visibleChannels = $state<Set<number>>(new Set());
     /** True when buffers changed since the last {@link flushUiSnapshots}. */
     let uiSnapshotDirty = false;
     
@@ -305,7 +300,6 @@
         const nextAssetNumber = parseAssetNumberParam($page.params.asset_number);
         const nextConfigKey = $page.url.searchParams.get('key')?.trim() || "";
         assetNumber = nextAssetNumber ?? Number.NaN;
-        console.log("Loading plot config", { assetNumber: nextAssetNumber, key: nextConfigKey });
         untrack(() => loadLabJackConfig());
     });
 
@@ -358,7 +352,6 @@
         maxDataPoints = Math.ceil(sr * requiredSeconds * 1.1) + scansPerRead;
         trimAllChannelBuffers();
         markUiSnapshotDirty();
-        console.log(`Max data points in rolling buffer: ${maxDataPoints}`);
     }
 
     /**
@@ -379,17 +372,6 @@
             return 1;
         }
         return Math.max(0.05, TARGET_SAMPLES_PER_WINDOW / scanRateHz);
-    }
-
-    /**
-     * Returns the points to plot. Currently returns `data` unchanged.
-     *
-     * @param data - Snapshot of one channel.
-     * @returns The same array.
-     */
-    function downsampleForDisplay(data: DataPoint[]): DataPoint[] {
-        // Preserve all points so the plotted shape matches what was received.
-        return data;
     }
 
     /** Marks the buffers as changed so the next tick copies them into reactive state. */
@@ -597,16 +579,6 @@
             markUiSnapshotDirty();
         }
     }
-
-    /** {@link channelData} passed through {@link downsampleForDisplay}. */
-    let channelDisplayData = $derived(
-        new Map(
-            Array.from(channelData.entries()).map(([channel, data]) => {
-                return [channel, downsampleForDisplay(data)];
-            })
-        )
-    );
-
 
     
     /**
@@ -816,56 +788,9 @@
             labjackConfig.sensor_settings.channels_enabled,
             selectedPlotChannels
         );
-        visibleChannels = new Set<number>(labjackConfig.sensor_settings.channels_enabled);
         uiSnapshotDirty = false;
     }
 
-    /**
-     * Svelte action that tracks whether a channel card is on or near the screen.
-     *
-     * Adds the channel to {@link visibleChannels} at once, then updates it from an
-     * `IntersectionObserver` with a 300 px margin above and below the viewport. On destroy
-     * it disconnects the observer and removes the channel.
-     *
-     * @param node - The channel card element.
-     * @param channel - LabJack channel number.
-     * @returns The action object with `destroy`.
-     */
-    function observeChannelVisibility(node: HTMLElement, channel: number) {
-        const initiallyVisible = new Set(visibleChannels);
-        initiallyVisible.add(channel);
-        visibleChannels = initiallyVisible;
-
-        const observer = new IntersectionObserver(
-            (entries) => {
-                const visible = entries.some((entry) => entry.isIntersecting);
-                const next = new Set(visibleChannels);
-                if (visible) {
-                    next.add(channel);
-                } else {
-                    next.delete(channel);
-                }
-                visibleChannels = next;
-            },
-            {
-                root: null,
-                threshold: 0,
-                rootMargin: "300px 0px 300px 0px"
-            }
-        );
-
-        observer.observe(node);
-
-        return {
-            destroy() {
-                observer.disconnect();
-                const next = new Set(visibleChannels);
-                next.delete(channel);
-                visibleChannels = next;
-            }
-        };
-    }
-    
     /**
      * Subscribes to the live subject of every enabled channel.
      *
@@ -1034,16 +959,6 @@
         channelTriggerCaptures = new Map(channelTriggerCaptures);
     }
 
-
-    /**
-     * Handles the Re-arm button: clears the trigger and the frozen plot.
-     *
-     * @param channel - LabJack channel number.
-     */
-    function resetChannelTrigger(channel: number) {
-        clearTriggerState(channel);
-    }
-
     /**
      * Tells whether a mode uses the trigger.
      *
@@ -1125,7 +1040,7 @@
      */
     function getPlotConfig(channel: number) {
         const mode = channelModes.get(channel) ?? "free_run";
-        const liveData = channelDisplayData.get(channel) || [];
+        const liveData = channelData.get(channel) || [];
         const capture = channelTriggerCaptures.get(channel);
 
         if (isTriggerMode(mode) && capture) {
@@ -1619,10 +1534,7 @@ progress and saves the result through a temporary download link.
                     {@const isPrebufferReady = channelPrebufferReady.get(channel) ?? false}
                     
                     <!-- Combined Channel Section -->
-                    <div
-                        class="card bg-base-100 shadow-xl border border-base-200"
-                        use:observeChannelVisibility={channel}
-                    >
+                    <div class="card bg-base-100 shadow-xl border border-base-200">
                         <div class="card-body">
                             <!-- Channel Header -->
                             <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
@@ -1887,7 +1799,7 @@ progress and saves the result through a temporary download link.
                                         <div class="form-control justify-end">
                                             <button
                                                 class="btn btn-outline btn-warning mt-8"
-                                                onclick={() => resetChannelTrigger(channel)}
+                                                onclick={() => clearTriggerState(channel)}
                                             >
                                                 Re-arm Trigger
                                             </button>

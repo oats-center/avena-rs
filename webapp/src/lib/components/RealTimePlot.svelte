@@ -88,27 +88,8 @@
     /** Smallest autoscale grid step, in `unit`. Keeps a flat signal from collapsing the axis. */
     const MIN_AUTO_Y_INTERVAL = 0.01;
     
-    // Color palette for different channels. Only index 0 is used today (one trace per plot).
-    const colors = [
-        '#3B82F6', // Blue
-        '#EF4444', // Red
-        '#10B981', // Green
-        '#F59E0B', // Yellow
-        '#8B5CF6', // Purple
-        '#06B6D4', // Cyan
-        '#F97316', // Orange
-        '#84CC16'  // Lime
-    ];
-    
-    /**
-     * Returns the trace color for a channel index, cycling through the palette.
-     *
-     * @param channelIndex - Zero-based index; wraps modulo the palette length.
-     * @returns A CSS hex color.
-     */
-    function getChannelColor(channelIndex: number): string {
-        return colors[channelIndex % colors.length];
-    }
+    /** Trace color (one trace per plot). */
+    const TRACE_COLOR = '#3B82F6';
     
     /**
      * Matches the canvas backing store to its on-screen size and the device pixel ratio.
@@ -148,7 +129,6 @@
         ctx.lineWidth = 1;
         
         // Vertical grid lines (time)
-        const timeStep = timeWindow / 10;
         for (let i = 0; i <= 10; i++) {
             const x = margin.left + (i / 10) * (plotWidth - margin.left - margin.right);
             ctx.beginPath();
@@ -781,7 +761,7 @@
 
         // Draw data
         if (range && visibleData.length > 0) {
-            drawDataLine(visibleData, range, referenceTime, getChannelColor(0));
+            drawDataLine(visibleData, range, referenceTime, TRACE_COLOR);
         }
 
         drawThresholdLine(range);
