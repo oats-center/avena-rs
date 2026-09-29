@@ -1077,7 +1077,8 @@
     }
 
     /**
-     * Merges changes into a channel's axis settings. Numeric limits are checked by
+     * Merges changes into a channel's axis settings and clears the channel's axis input
+     * message, which described an earlier rejected value. Numeric limits are checked by
      * {@link commitAxisLimit} before they get here.
      *
      * @param channel - LabJack channel number.
@@ -1086,6 +1087,11 @@
     function updateAxisSettings(channel: number, updates: Partial<AxisSettings>) {
         const current = axisSettings.get(channel);
         if (!current) return;
+        if (axisInputErrors.has(channel)) {
+            const nextErrors = new Map(axisInputErrors);
+            nextErrors.delete(channel);
+            axisInputErrors = nextErrors;
+        }
 
         axisSettings.set(channel, { ...current, ...updates });
         axisSettings = new Map(axisSettings);
