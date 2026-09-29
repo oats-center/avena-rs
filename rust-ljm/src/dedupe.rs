@@ -27,6 +27,12 @@
 //! by their bit patterns. Samples with the same timestamp but different values are all
 //! kept and counted as conflicts.
 //!
+//! One exception crosses metadata: when the same sample is stored both under an
+//! identity (or missing) calibration and under a real one, only the calibrated copy is
+//! kept. An identity calibration means no sensor had been configured yet, and the raw
+//! value is the same in both copies, so the identity copy carries no extra information.
+//! A sample stored only under identity is kept.
+//!
 //! Each channel folder is handled on its own:
 //!
 //! 1. Every part file is read once to find its metadata and which windows its rows
@@ -50,7 +56,7 @@
 //! (swap finished) or renamed back (swap interrupted).
 
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, hash_map::Entry},
     fs,
     path::{Path, PathBuf},
 };
@@ -98,6 +104,9 @@ struct FolderStats {
     rows_after: usize,
     /// Kept rows that share a timestamp with a different value in the same group.
     conflicts: usize,
+    /// Identity-calibration rows dropped because a calibrated copy of the same sample
+    /// was kept.
+    superseded: usize,
     /// Bytes of the original part files.
     bytes_before: u64,
     /// Bytes of the new part files.
@@ -140,6 +149,57 @@ fn metadata_key(metadata: &[KeyValue]) -> Vec<(String, Option<String>)> {
         .iter()
         .map(|kv| (kv.key.clone(), kv.value.clone()))
         .collect()
+}
+
+/// Returns whether the metadata has no real calibration.
+///
+/// True when there is no `calibration` entry, when it cannot be parsed, or when its
+/// `type` is `identity`.
+///
+/// # Arguments
+///
+/// * `metadata` - File-level key-value metadata.
+fn is_identity(metadata: &[KeyValue]) -> bool {
+    let Some(json) = metadata
+        .iter()
+        .find(|kv| kv.key == "calibration")
+        .and_then(|kv| kv.value.as_deref())
+    else {
+        return true;
+    };
+    serde_json::from_str::<serde_json::Value>(json)
+        .ok()
+        .and_then(|v| {
+            v.get("type")
+                .and_then(|t| t.as_str())
+                .map(|t| t == "identity")
+        })
+        .unwrap_or(true)
+}
+
+/// Removes identity-calibration rows whose sample is also kept under a real
+/// calibration.
+///
+/// # Arguments
+///
+/// * `rows` - Sorted, deduplicated rows of one window; changed in place.
+/// * `identity` - For each metadata group, whether it has no real calibration.
+///
+/// # Returns
+///
+/// The number of rows removed.
+fn drop_superseded(rows: &mut Vec<Row>, identity: &[bool]) -> usize {
+    let calibrated: HashSet<(i64, u64)> = rows
+        .iter()
+        .filter(|r| !identity[r.0])
+        .map(|r| (r.1, r.2))
+        .collect();
+    if calibrated.is_empty() {
+        return 0;
+    }
+    let before = rows.len();
+    rows.retain(|r| !(identity[r.0] && calibrated.contains(&(r.1, r.2))));
+    before - rows.len()
 }
 
 /// Reads a whole part file.
@@ -217,13 +277,11 @@ impl<'a> PartCache<'a> {
             if !part.windows.contains(&window) {
                 continue;
             }
-            if !self.loaded.contains_key(&i) {
-                self.loaded.insert(i, read_part(&part.path)?);
-            }
-            out.push((
-                i,
-                rows_in_window(&self.loaded[&i], part.group, window, rotate_secs),
-            ));
+            let archive = match self.loaded.entry(i) {
+                Entry::Occupied(entry) => entry.into_mut(),
+                Entry::Vacant(entry) => entry.insert(read_part(&part.path)?),
+            };
+            out.push((i, rows_in_window(archive, part.group, window, rotate_secs)));
             if part.windows.last() == Some(&window) {
                 self.loaded.remove(&i);
             }
@@ -404,6 +462,7 @@ fn dedupe_folder(channel_dir: &Path, rotate_secs: u64, dry_run: bool) -> Result<
     if is_clean(&parts, empty_files, repeated) {
         return Ok(Outcome::Clean);
     }
+    let identity: Vec<bool> = groups.iter().map(|g| is_identity(g)).collect();
     let all_windows: BTreeSet<i64> = parts
         .iter()
         .flat_map(|p| p.windows.iter().copied())
@@ -422,6 +481,7 @@ fn dedupe_folder(channel_dir: &Path, rotate_secs: u64, dry_run: bool) -> Result<
                 .flat_map(|(_, r)| r)
                 .collect();
             stats.conflicts += sort_unique(&mut rows);
+            stats.superseded += drop_superseded(&mut rows, &identity);
             stats.rows_after += rows.len();
             for (group, metadata) in groups.iter().enumerate() {
                 let archive = Archive {
@@ -456,12 +516,14 @@ fn dedupe_folder(channel_dir: &Path, rotate_secs: u64, dry_run: bool) -> Result<
         }
         stats.files_after = staged.len();
 
-        // Pass 3: every original row must be in the staged file for its window.
+        // Pass 3: every original row must be in the staged file for its window, or, for
+        // an identity row, its sample must be in a calibrated staged file.
         let mut cache = PartCache::new(&parts);
         let mut checked = 0usize;
         for &window in &all_windows {
             let mut present: HashSet<Row> = HashSet::new();
-            for group in 0..groups.len() {
+            let mut calibrated: HashSet<(i64, u64)> = HashSet::new();
+            for (group, &group_is_identity) in identity.iter().enumerate() {
                 if let Some(path) = staged.get(&(window, group)) {
                     let back = read_part(path)?;
                     if back
@@ -471,16 +533,18 @@ fn dedupe_folder(channel_dir: &Path, rotate_secs: u64, dry_run: bool) -> Result<
                     {
                         bail!("{} holds rows outside its window", path.display());
                     }
-                    present.extend(
-                        back.timestamps
-                            .iter()
-                            .zip(&back.values)
-                            .map(|(ts, v)| (group, *ts, v.to_bits())),
-                    );
+                    for (ts, v) in back.timestamps.iter().zip(&back.values) {
+                        present.insert((group, *ts, v.to_bits()));
+                        if !group_is_identity {
+                            calibrated.insert((*ts, v.to_bits()));
+                        }
+                    }
                 }
             }
             for (i, rows) in cache.window_rows(window, rotate_secs)? {
-                if let Some(missing) = rows.iter().find(|r| !present.contains(r)) {
+                if let Some(missing) = rows.iter().find(|r| {
+                    !(present.contains(r) || identity[r.0] && calibrated.contains(&(r.1, r.2)))
+                }) {
                     bail!(
                         "row at {} ns from {} is missing from the new folder",
                         missing.1,
@@ -622,12 +686,17 @@ fn main() -> Result<()> {
             Ok(Outcome::Rewritten(s)) => {
                 rewritten += 1;
                 println!(
-                    "{}: {} files -> {}, {} rows -> {}{}, {:.1} MB -> {:.1} MB",
+                    "{}: {} files -> {}, {} rows -> {}{}{}, {:.1} MB -> {:.1} MB",
                     folder.display(),
                     s.files_before,
                     s.files_after,
                     s.rows_before,
                     s.rows_after,
+                    if s.superseded > 0 {
+                        format!(" ({} identity copies dropped)", s.superseded)
+                    } else {
+                        String::new()
+                    },
                     if s.conflicts > 0 {
                         format!(" ({} conflicting timestamps kept)", s.conflicts)
                     } else {
@@ -641,6 +710,7 @@ fn main() -> Result<()> {
                 total.rows_before += s.rows_before;
                 total.rows_after += s.rows_after;
                 total.conflicts += s.conflicts;
+                total.superseded += s.superseded;
                 total.bytes_before += s.bytes_before;
                 total.bytes_after += s.bytes_after;
             }
@@ -656,11 +726,12 @@ fn main() -> Result<()> {
         }
     }
     println!(
-        "done: rewritten {rewritten} folders ({} files -> {}, {} rows -> {}, {} conflicts, {:.2} GB -> {:.2} GB), clean {clean}, skipped {skipped}, failed {failed}",
+        "done: rewritten {rewritten} folders ({} files -> {}, {} rows -> {}, {} identity copies dropped, {} conflicts, {:.2} GB -> {:.2} GB), clean {clean}, skipped {skipped}, failed {failed}",
         total.files_before,
         total.files_after,
         total.rows_before,
         total.rows_after,
+        total.superseded,
         total.conflicts,
         total.bytes_before as f64 / 1e9,
         total.bytes_after as f64 / 1e9
@@ -836,6 +907,51 @@ mod tests {
         // Days on or after the cutoff are not listed.
         let early = NaiveDate::from_ymd_opt(2026, 9, 15).unwrap();
         assert!(channel_folders(&root, early).unwrap().is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    /// A sample stored under identity and under a real calibration keeps only the
+    /// calibrated copy; samples stored only under identity are kept.
+    #[test]
+    fn identity_copies_give_way_to_calibrated_copies() {
+        let (root, dir) = temp_channel("identity");
+        let identity = calibration(r#"{"id":null,"type":"identity"}"#);
+        let linear = calibration(r#"{"id":"tp3586","type":"linear","a":70.1,"b":-9.1}"#);
+        write_part(&dir, 1, &samples(0, 30000), identity.clone());
+        write_part(&dir, 2, &samples(0, 20000), linear.clone());
+        write_part(&dir, 3, &samples(30000, 100), identity.clone());
+
+        let Outcome::Rewritten(stats) = dedupe_folder(&dir, 300, false).unwrap() else {
+            panic!("expected a rewrite");
+        };
+        assert_eq!(stats.superseded, 20000);
+        assert_eq!(stats.rows_after, 30100);
+        let files = read_folder(&dir);
+        let calibrated: Vec<_> = files
+            .iter()
+            .filter(|(_, a)| metadata_key(&a.metadata) == metadata_key(&linear))
+            .collect();
+        let raw: Vec<_> = files
+            .iter()
+            .filter(|(_, a)| metadata_key(&a.metadata) == metadata_key(&identity))
+            .collect();
+        assert_eq!(
+            calibrated
+                .iter()
+                .map(|(_, a)| a.timestamps.len())
+                .sum::<usize>(),
+            20000
+        );
+        assert_eq!(
+            raw.iter().map(|(_, a)| a.timestamps.len()).sum::<usize>(),
+            10100
+        );
+        assert!(
+            raw.iter()
+                .all(|(_, a)| a.timestamps[0] >= BASE + 20000 * STEP)
+        );
+        assert!(is_identity(&[]));
+        assert!(!is_identity(&linear));
         fs::remove_dir_all(root).unwrap();
     }
 }
