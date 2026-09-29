@@ -65,6 +65,15 @@ closed and synced. While a window is open its file exists only as an empty
 A file is also closed after 60 seconds without data, for example when the
 streamer stops.
 
+The archiver also keeps a small checkpoint per channel in
+`rust-ljm/parquet/.archiver-state/`: the consumer's ack floor, saved once a
+minute and on shutdown with an fsync. If JetStream later hands a consumer
+messages at or below that sequence (it lost the consumer's progress, see
+[Troubleshooting](troubleshooting.md#the-archiver-writes-old-data-again)), the
+archiver acknowledges them without writing them again. When a channel's
+subject changes, the existing consumer is left as it is and a consumer named
+`<old name>-f<hash>` is used for the new subject.
+
 **exporter** listens on `avenars.<site>.<box>.<source>.export.request` and
 answers each request with CSV read from the Parquet archive. It opens no TCP
 port in the normal (worker) mode.
@@ -87,6 +96,7 @@ connection count.
 | `/etc/containers/systemd/` | Quadlet container units, `nats-leaf.conf`, `config.alloy`, and `creds/leaf.creds` |
 | `/home/user/nats/` | The local JetStream store. Never delete it while the box is in service. |
 | `rust-ljm/parquet/asset<NNN>/<YYYY-MM-DD>/ch<NN>/` | The archive, one `part-NNNN.parquet` per window |
+| `rust-ljm/parquet/.archiver-state/` | Archiver replay checkpoints, one small JSON file per channel. Safe to delete; the guard then starts again from the consumer's current progress. |
 | `/var/lib/avena-rs/metrics/avena.prom` | Health metrics for Alloy |
 
 The source checkout in `/home/user/avena-rs` is only used to build and

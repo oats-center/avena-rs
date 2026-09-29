@@ -76,6 +76,32 @@ acknowledged, so JetStream delivers them again once the consumer's `ack_wait`
 has passed (about 18 minutes) and they are written into a new file. The
 quarantined file can be deleted once the new file exists.
 
+## The archiver writes old data again
+
+JetStream stores each durable consumer's progress in
+`/home/user/nats/jetstream/.../streams/<stream>/obs/<consumer>/o.dat`. The server
+replaces that file without an fsync, so a power cut can leave it empty. The
+consumer then comes back with no progress and, because the archiver's
+consumers deliver the whole stream, every message still in the stream is
+delivered again. A corrupt `o.dat` makes the server drop the consumer (log line
+`Error adding consumer ... corrupt state file`), and the archiver creates it
+again, also from the start of the stream.
+
+The archiver protects against this with its checkpoints. After such a restart
+its log shows, per channel:
+
+```text
+[logger] Consumer '...' ack floor 0 is behind the archiver checkpoint 812345 for ...: JetStream lost the consumer's progress. ...
+[logger] Channel 08: skipped 812345 already-archived message(s), stream sequences 1..=812345
+```
+
+The skipped messages are acknowledged without writing, so no new files appear
+for old windows. A checkpoint is ignored, with a log line, when the stream was
+recreated or ends below the checkpoint; every message is then written as
+before. Set `ARCHIVER_REPLAY_GUARD=off` in the archiver's environment to turn
+the guard off, or `ARCHIVER_STATE_DIR` to keep the checkpoints elsewhere.
+Copies written before the guard existed can be removed with `dedupe`.
+
 ## The readings themselves look wrong
 
 The software records whatever voltage arrives at the LabJack input. Two

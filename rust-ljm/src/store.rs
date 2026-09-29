@@ -37,6 +37,9 @@
 //!   `CFG_JS_DOMAIN`.
 //! * `CENTRAL_NATS_CREDS_FILE` - Credentials file for the central server. Default: the
 //!   value used for `NATS_CREDS_FILE`.
+//! * `ARCHIVER_STATE_DIR` - Directory for the replay-guard checkpoints. Default:
+//!   `<PARQUET_DIR>/.archiver-state`.
+//! * `ARCHIVER_REPLAY_GUARD` - `off` (or `0`, `false`, `no`) turns the replay guard off.
 //!
 //! # Design
 //!
@@ -63,6 +66,14 @@
 //! * **Quarantine of unfinished files.** At startup every leftover `.parquet.inprogress`
 //!   file (no footer, from a crash) is renamed aside and kept for diagnosis (see
 //!   [`quarantine_incomplete_files`]). Its samples come back through redelivery.
+//! * **Replay guard.** JetStream can lose a durable consumer's progress (its state file
+//!   is replaced without an fsync, so a power cut can leave it empty) and then deliver
+//!   the whole stream again under deliver policy `all`. Each channel saves the
+//!   consumer's ack floor to its own fsynced checkpoint and acks messages at or below it
+//!   without writing them (see [`ReplayState`] and [`replay_guard`]).
+//! * **Filters are never edited in place.** When a channel's subject changes, an existing
+//!   consumer with the old filter is left alone and a consumer named after the new
+//!   subject is used (see [`filtered_consumer_name`]).
 
 use async_nats;
 use async_nats::ConnectOptions;
@@ -90,7 +101,10 @@ use tokio::time::Duration;
 mod archive_format;
 mod calibration;
 mod nats_config;
+mod replay_guard;
 mod subjects;
+#[cfg(test)]
+mod test_nats;
 mod sample_data_generated {
     #![allow(dead_code, unused_imports)]
     include!("data_generated.rs");
@@ -99,6 +113,7 @@ use sample_data_generated::sampler;
 
 use archive_format::{SAMPLE_SCHEMA, writer_properties_for_calibration};
 use calibration::CalibrationSpec;
+use replay_guard::ReplayGuard;
 use serde::{Deserialize, Serialize};
 
 /// Error type used by the archiver for fallible async setup and IO paths.
@@ -1339,6 +1354,244 @@ async fn close_and_settle(
     }
 }
 
+/// How often each writer task saves its replay-guard checkpoint (60 s).
+const CHECKPOINT_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Skipped messages between two progress lines while the replay guard is skipping.
+const SKIP_LOG_EVERY: u64 = 10_000;
+
+/// Reads the replay-guard settings.
+///
+/// `ARCHIVER_REPLAY_GUARD=off` (also `0`, `false` or `no`) turns the guard off.
+/// Otherwise checkpoints live in `ARCHIVER_STATE_DIR`, or in `.archiver-state` under
+/// the Parquet root when that is not set.
+///
+/// # Arguments
+///
+/// * `parquet_root` - Root output directory.
+///
+/// # Returns
+///
+/// The checkpoint directory, or `None` when the guard is off.
+fn replay_state_dir_from_env(parquet_root: &Path) -> Option<PathBuf> {
+    replay_state_dir(
+        env_nonempty("ARCHIVER_REPLAY_GUARD").as_deref(),
+        env_nonempty("ARCHIVER_STATE_DIR").as_deref(),
+        parquet_root,
+    )
+}
+
+/// Pure part of [`replay_state_dir_from_env`].
+fn replay_state_dir(
+    guard: Option<&str>,
+    dir: Option<&str>,
+    parquet_root: &Path,
+) -> Option<PathBuf> {
+    if guard.is_some_and(|v| {
+        matches!(
+            v.trim().to_ascii_lowercase().as_str(),
+            "off" | "0" | "false" | "no"
+        )
+    }) {
+        return None;
+    }
+    Some(
+        dir.map(PathBuf::from)
+            .unwrap_or_else(|| parquet_root.join(".archiver-state")),
+    )
+}
+
+/// Durable consumer name used when the base consumer filters on another subject.
+///
+/// The base name gets `-f` and an FNV-1a hash of the subject, so each subject gets
+/// its own stable consumer and no consumer's filter is ever changed in place.
+///
+/// # Examples
+///
+/// ```text
+/// filtered_consumer_name("archiver-mu1-labjack-lj2-8-current", "avenars.i69.mu1.lj2.live.ch08")
+///     -> "archiver-mu1-labjack-lj2-8-current-f<8 hex digits>"
+/// ```
+fn filtered_consumer_name(base: &str, subject: &str) -> String {
+    let mut hash: u32 = 0x811c_9dc5;
+    for byte in subject.bytes() {
+        hash ^= u32::from(byte);
+        hash = hash.wrapping_mul(0x0100_0193);
+    }
+    format!("{base}-f{hash:08x}")
+}
+
+/// Replay protection for one channel writer.
+///
+/// JetStream can lose a durable consumer's progress (an empty or missing consumer state
+/// file after a power cut) and then deliver the whole stream again. This keeps the
+/// archiver's own checkpoint of the consumer's ack floor per stream and subject (see
+/// [`replay_guard`]) and acks messages at or below it without writing them.
+struct ReplayState {
+    /// Skips messages at or below the trusted checkpoint.
+    guard: ReplayGuard,
+    /// Checkpoint file; `None` when the guard is off.
+    path: Option<PathBuf>,
+    /// Stream name, stored in the checkpoint.
+    stream: String,
+    /// Stream creation time in Unix nanoseconds, stored in the checkpoint.
+    stream_created_unix_ns: i64,
+    /// Channel subject, stored in the checkpoint.
+    subject: String,
+    /// Floor last written to the checkpoint file.
+    saved: u64,
+    /// When the checkpoint was last refreshed.
+    last_refresh: Instant,
+}
+
+impl ReplayState {
+    /// Loads the checkpoint for a channel and compares it with the consumer.
+    ///
+    /// A checkpoint that does not match the stream as it is now is ignored with a log
+    /// line (see [`replay_guard::trusted_floor`]). If the consumer's ack floor is below a
+    /// trusted checkpoint, JetStream has lost the consumer's progress; that is logged
+    /// and the messages up to the checkpoint will be skipped.
+    ///
+    /// # Arguments
+    ///
+    /// * `state_dir` - Checkpoint directory, or `None` when the guard is off.
+    /// * `stream` - Stream info as fetched when the channel started.
+    /// * `subject` - Channel subject.
+    /// * `consumer_name` - Durable consumer name, for log lines.
+    /// * `consumer_ack_floor` - The consumer's ack floor stream sequence.
+    fn attach(
+        state_dir: Option<&Path>,
+        stream: &jetstream::stream::Info,
+        subject: &str,
+        consumer_name: &str,
+        consumer_ack_floor: u64,
+    ) -> Self {
+        let stream_created_unix_ns = stream.created.unix_timestamp_nanos() as i64;
+        let mut state = Self {
+            guard: ReplayGuard::new(0),
+            path: state_dir
+                .map(|dir| replay_guard::checkpoint_path(dir, &stream.config.name, subject)),
+            stream: stream.config.name.clone(),
+            stream_created_unix_ns,
+            subject: subject.to_string(),
+            saved: 0,
+            last_refresh: Instant::now(),
+        };
+        let Some(path) = state.path.as_deref() else {
+            return state;
+        };
+        match replay_guard::load(path) {
+            Ok(None) => {}
+            Ok(Some(checkpoint)) => match replay_guard::trusted_floor(
+                &checkpoint,
+                &state.stream,
+                stream_created_unix_ns,
+                stream.state.last_sequence,
+                subject,
+            ) {
+                Ok(floor) => {
+                    state.saved = floor;
+                    state.guard = ReplayGuard::new(floor);
+                    if consumer_ack_floor < floor {
+                        eprintln!(
+                            "[logger] Consumer '{consumer_name}' ack floor {consumer_ack_floor} is behind the archiver checkpoint {floor} for {subject}: JetStream lost the consumer's progress. Messages up to stream sequence {floor} are already archived and will be acked without writing."
+                        );
+                    }
+                }
+                Err(reason) => eprintln!(
+                    "[logger] Ignoring replay checkpoint {}: {reason}",
+                    path.display()
+                ),
+            },
+            Err(err) => eprintln!(
+                "[logger] Ignoring unreadable replay checkpoint {}: {err}",
+                path.display()
+            ),
+        }
+        state
+    }
+
+    /// Logs the first skipped message of a run and then every [`SKIP_LOG_EVERY`].
+    fn note_skip(&self, channel: u8, stream_seq: u64) {
+        let skipped = self.guard.skipped_in_run();
+        if skipped == 1 {
+            eprintln!(
+                "[logger] Channel {channel:02}: stream sequence {stream_seq} is at or below the archiver checkpoint {}; acking already-archived messages without writing them",
+                self.guard.floor()
+            );
+        } else if skipped.is_multiple_of(SKIP_LOG_EVERY) {
+            eprintln!(
+                "[logger] Channel {channel:02}: skipped {skipped} already-archived message(s) so far"
+            );
+        }
+    }
+
+    /// Logs the end of a run of skipped messages, if one was in progress.
+    fn end_skip_run(&mut self, channel: u8) {
+        if let Some(run) = self.guard.take_run() {
+            eprintln!(
+                "[logger] Channel {channel:02}: skipped {} already-archived message(s), stream sequences {}..={}",
+                run.count, run.first, run.last
+            );
+        }
+    }
+
+    /// Saves the consumer's ack floor as the new checkpoint if it has moved up.
+    ///
+    /// Without `force` this runs at most once per [`CHECKPOINT_INTERVAL`]. Failures are
+    /// logged; the old checkpoint stays valid, only less recent.
+    ///
+    /// # Arguments
+    ///
+    /// * `consumer` - The channel's durable consumer.
+    /// * `channel` - Channel number, for log lines.
+    /// * `force` - Refresh now, regardless of the interval.
+    async fn checkpoint(
+        &mut self,
+        consumer: &mut jetstream::consumer::PullConsumer,
+        channel: u8,
+        force: bool,
+    ) {
+        let Some(path) = self.path.clone() else {
+            return;
+        };
+        if !force && self.last_refresh.elapsed() < CHECKPOINT_INTERVAL {
+            return;
+        }
+        self.last_refresh = Instant::now();
+        let floor = match consumer.info().await {
+            Ok(info) => info.ack_floor.stream_sequence,
+            Err(err) => {
+                eprintln!(
+                    "[logger] Channel {channel:02}: cannot read consumer info for the replay checkpoint: {err}"
+                );
+                return;
+            }
+        };
+        if floor <= self.saved {
+            return;
+        }
+        let checkpoint = replay_guard::Checkpoint {
+            stream: self.stream.clone(),
+            stream_created_unix_ns: self.stream_created_unix_ns,
+            subject: self.subject.clone(),
+            archived_through_seq: floor,
+        };
+        match tokio::task::spawn_blocking(move || replay_guard::save(&path, &checkpoint)).await {
+            Ok(Ok(())) => {
+                self.saved = floor;
+                self.guard.raise(floor);
+            }
+            Ok(Err(err)) => {
+                eprintln!("[logger] Channel {channel:02}: cannot save the replay checkpoint: {err}")
+            }
+            Err(err) => {
+                eprintln!("[logger] Channel {channel:02}: replay checkpoint task failed: {err}")
+            }
+        }
+    }
+}
+
 /// Consumer settings that let acks wait until a file is closed.
 ///
 /// `ack_wait` must outlast one full rotation window plus the idle-close delay,
@@ -1372,6 +1625,12 @@ fn archiver_consumer_config(consumer_name: &str, subject: &str, rotate_secs: u64
 ///
 /// The consumer is created with [`archiver_consumer_config`] if it does not exist. An
 /// existing consumer whose `ack_wait` or `max_ack_pending` differs is updated in place.
+/// An existing consumer that filters on a different subject is left alone, and the
+/// consumer named by [`filtered_consumer_name`] is used instead.
+///
+/// Messages at or below the replay-guard checkpoint are acked without being written
+/// (see [`ReplayState`]), and the checkpoint is refreshed from the consumer's ack floor
+/// every [`CHECKPOINT_INTERVAL`] and when the task ends.
 ///
 /// The spawned task reads messages and writes them with [`process_scan_payload`],
 /// holding each message unacked until its file is closed. It closes the open file and
@@ -1400,6 +1659,8 @@ fn archiver_consumer_config(consumer_name: &str, subject: &str, rotate_secs: u64
 /// * `rotate_secs` - Rotation window length in seconds.
 /// * `calibration` - Initial calibration for the channel.
 /// * `parquet_root` - Root output directory.
+/// * `state_dir` - Directory for replay-guard checkpoints (see [`ReplayState`]);
+///   `None` turns the guard off.
 ///
 /// # Errors
 ///
@@ -1415,12 +1676,35 @@ async fn spawn_channel_logger(
     rotate_secs: u64,
     calibration: CalibrationSpec,
     parquet_root: PathBuf,
+    state_dir: Option<PathBuf>,
 ) -> Result<ChannelLogger, DynError> {
     let stream = js.get_stream(stream_name.as_str()).await?;
-    let desired = archiver_consumer_config(&consumer_name, &subject, rotate_secs);
-    let mut consumer = stream
-        .get_or_create_consumer(consumer_name.as_str(), desired.clone())
+    let mut durable_name = consumer_name.clone();
+    let mut consumer: jetstream::consumer::PullConsumer = stream
+        .get_or_create_consumer(
+            durable_name.as_str(),
+            archiver_consumer_config(&durable_name, &subject, rotate_secs),
+        )
         .await?;
+    // A durable consumer's filter is never changed in place. Updating it keeps the
+    // old delivery position, so messages on the new subject below that position would
+    // be skipped, and not updating it would leave the channel reading the old subject.
+    // A consumer named after the new subject starts cleanly instead.
+    let existing_filter = consumer.cached_info().config.filter_subject.clone();
+    if existing_filter != subject {
+        durable_name = filtered_consumer_name(&consumer_name, &subject);
+        eprintln!(
+            "[logger] Consumer '{}' filters on '{}', not {}; using consumer '{}' for the new subject",
+            consumer_name, existing_filter, subject, durable_name
+        );
+        consumer = stream
+            .get_or_create_consumer(
+                durable_name.as_str(),
+                archiver_consumer_config(&durable_name, &subject, rotate_secs),
+            )
+            .await?;
+    }
+    let desired = archiver_consumer_config(&durable_name, &subject, rotate_secs);
     // Durable consumers created by earlier versions keep their old ack_wait
     // and max_ack_pending. Both are editable in place, and the delivery
     // position is untouched, so no data is replayed or skipped.
@@ -1430,7 +1714,7 @@ async fn spawn_channel_logger(
         consumer = stream.update_consumer(desired.clone()).await?;
         println!(
             "[logger] Updated consumer '{}': ack_wait {:?} -> {:?}, max_ack_pending {} -> {}",
-            consumer_name,
+            durable_name,
             existing.ack_wait,
             desired.ack_wait,
             existing.max_ack_pending,
@@ -1438,12 +1722,21 @@ async fn spawn_channel_logger(
         );
     }
 
+    let mut replay = ReplayState::attach(
+        state_dir.as_deref(),
+        stream.cached_info(),
+        &subject,
+        &durable_name,
+        consumer.cached_info().ack_floor.stream_sequence,
+    );
+
     let logger_subject = subject.clone();
-    let logger_consumer_name = consumer_name.clone();
+    let logger_consumer_name = durable_name.clone();
     let (calibration_tx, mut calibration_rx) = watch::channel(calibration.clone());
     let (stop_tx, mut stop_rx) = oneshot::channel();
     let calibration_for_task = calibration.clone();
     let handle = tokio::spawn(async move {
+        let mut consumer = consumer;
         let mut messages = match consumer.messages().await {
             Ok(messages) => messages,
             Err(err) => {
@@ -1477,6 +1770,15 @@ async fn spawn_channel_logger(
                 maybe = messages.next() => {
                     match maybe {
                         Some(Ok(msg)) => {
+                            let stream_seq = msg.info().map(|info| info.stream_sequence).unwrap_or(0);
+                            if replay.guard.is_archived(stream_seq) {
+                                replay.note_skip(channel, stream_seq);
+                                // A failed ack only means the message comes back and
+                                // is skipped again.
+                                let _ = msg.ack().await;
+                                continue;
+                            }
+                            replay.end_skip_run(channel);
                             last_data = Instant::now();
                             let outcome = process_scan_payload(
                                 &msg.payload,
@@ -1527,6 +1829,7 @@ async fn spawn_channel_logger(
                     }
                 }
                 _ = idle_check.tick() => {
+                    replay.checkpoint(&mut consumer, channel, false).await;
                     if logger.is_some() && last_data.elapsed() >= IDLE_CLOSE_AFTER {
                         println!(
                             "[logger] No data on channel {channel:02} for {}s; closing the open file.",
@@ -1558,6 +1861,8 @@ async fn spawn_channel_logger(
         }
 
         close_and_settle(&mut logger, &mut pending, channel, file_index).await;
+        replay.end_skip_run(channel);
+        replay.checkpoint(&mut consumer, channel, true).await;
     });
 
     Ok(ChannelLogger {
@@ -1664,6 +1969,11 @@ async fn main() -> Result<(), DynError> {
             path.display()
         );
     }
+    let state_dir = replay_state_dir_from_env(&parquet_root);
+    match &state_dir {
+        Some(dir) => println!("[logger] Replay guard checkpoints in {}", dir.display()),
+        None => println!("[logger] Replay guard is off (ARCHIVER_REPLAY_GUARD)"),
+    }
 
     let creds_path = std::env::var("NATS_CREDS_FILE").unwrap_or_else(|_| "apt.creds".into());
     let sample_opts = ConnectOptions::with_credentials_file(creds_path.clone())
@@ -1727,6 +2037,7 @@ async fn main() -> Result<(), DynError> {
             cfg.rotate_secs,
             calibration,
             parquet_root.clone(),
+            state_dir.clone(),
         )
         .await?;
         active.insert(*ch, h);
@@ -1810,6 +2121,7 @@ async fn main() -> Result<(), DynError> {
                         cfg.rotate_secs,
                         calibration,
                         parquet_root.clone(),
+                        state_dir.clone(),
                     )
                     .await
                     {
@@ -1907,6 +2219,7 @@ async fn main() -> Result<(), DynError> {
                 new_cfg.rotate_secs,
                 calibration,
                 parquet_root.clone(),
+                state_dir.clone(),
             )
             .await
             {
@@ -1932,6 +2245,7 @@ async fn main() -> Result<(), DynError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_nats::TestNats;
     use parquet::file::reader::{FileReader, SerializedFileReader};
     use uuid::Uuid;
 
@@ -2199,6 +2513,7 @@ mod tests {
             300,
             CalibrationSpec::default(),
             root.clone(),
+            None,
         )
         .await
         .expect("spawn channel logger");
@@ -2299,6 +2614,260 @@ mod tests {
 
         js.delete_stream(&stream_name).await.expect("delete stream");
         fs::remove_dir_all(root).expect("temporary directory should be removable");
+    }
+
+    /// Every archived Parquet file under `root`, sorted.
+    fn archived_files(root: &Path) -> Vec<PathBuf> {
+        let mut files = Vec::new();
+        let Ok(assets) = fs::read_dir(root) else {
+            return files;
+        };
+        for asset in assets.flatten() {
+            if !asset.file_name().to_string_lossy().starts_with("asset") {
+                continue;
+            }
+            for day in fs::read_dir(asset.path()).expect("asset dir").flatten() {
+                for ch in fs::read_dir(day.path()).expect("day dir").flatten() {
+                    for f in fs::read_dir(ch.path()).expect("channel dir").flatten() {
+                        if f.path().extension().is_some_and(|e| e == "parquet") {
+                            files.push(f.path());
+                        }
+                    }
+                }
+            }
+        }
+        files.sort();
+        files
+    }
+
+    /// Polls a consumer until `done` accepts its info, for up to five seconds.
+    async fn wait_for_consumer(
+        js: &jetstream::Context,
+        stream: &str,
+        consumer: &str,
+        done: impl Fn(&jetstream::consumer::Info) -> bool,
+    ) -> jetstream::consumer::Info {
+        let s = js.get_stream(stream).await.expect("stream");
+        for _ in 0..100 {
+            if let Ok(info) = s.consumer_info(consumer).await
+                && done(&info)
+            {
+                return info;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        s.consumer_info(consumer).await.expect("consumer info")
+    }
+
+    /// Publishes one 1 s scan of 100 samples starting `offset_s` into an aligned window.
+    async fn publish_scan(js: &jetstream::Context, subject: &str, offset_s: u64, seq: u64) {
+        let window = 1_790_000_100_u64 / 300 * 300;
+        js.publish(
+            subject.to_string(),
+            scan_payload(
+                (window + offset_s) * 1_000_000_000,
+                10_000_000,
+                seq,
+                &[1.5; 100],
+            )
+            .into(),
+        )
+        .await
+        .expect("publish")
+        .await
+        .expect("stored");
+    }
+
+    /// Reproduces the field replay: after JetStream loses a durable consumer's
+    /// progress (here the consumer is deleted and recreated with deliver policy all,
+    /// which is what an empty `o.dat` after a power cut amounts to), the whole
+    /// stream is delivered again. With the replay guard the old messages are acked
+    /// without writing; without it they are archived a second time.
+    #[tokio::test]
+    async fn replay_guard_skips_already_archived_messages_after_consumer_state_loss() {
+        let Some(server) = TestNats::start("replay_guard") else {
+            return;
+        };
+        let js = server.jetstream().await;
+        let stream_name = "replay";
+        let subject = "avenars.s.b.src.live.ch08";
+        js.create_stream(jetstream::stream::Config {
+            name: stream_name.into(),
+            subjects: vec!["avenars.s.b.src.live.*".into()],
+            ..Default::default()
+        })
+        .await
+        .expect("create stream");
+        let root = temporary_parquet_root("replay-guard");
+        let state_dir = root.join(".archiver-state");
+        let consumer = "archiver-test-8-current";
+        let spawn = |state: Option<PathBuf>| {
+            spawn_channel_logger(
+                js.clone(),
+                stream_name.into(),
+                consumer.into(),
+                subject.into(),
+                1001,
+                8,
+                300,
+                CalibrationSpec::default(),
+                root.clone(),
+                state,
+            )
+        };
+
+        // First run archives three messages into one file.
+        for k in 0..3 {
+            publish_scan(&js, subject, 10 + k, k).await;
+        }
+        let logger = spawn(Some(state_dir.clone())).await.expect("spawn");
+        wait_for_consumer(&js, stream_name, consumer, |i| i.num_ack_pending == 3).await;
+        logger.stop().await;
+        let info = wait_for_consumer(&js, stream_name, consumer, |i| {
+            i.ack_floor.stream_sequence == 3
+        })
+        .await;
+        assert_eq!(info.ack_floor.stream_sequence, 3);
+        assert_eq!(archived_files(&root).len(), 1);
+        // A quick restart saves the checkpoint at the consumer's ack floor.
+        spawn(Some(state_dir.clone()))
+            .await
+            .expect("spawn")
+            .stop()
+            .await;
+        let path = replay_guard::checkpoint_path(&state_dir, stream_name, subject);
+        let saved = replay_guard::load(&path).expect("readable").expect("saved");
+        assert_eq!(saved.archived_through_seq, 3);
+
+        // JetStream loses the consumer's progress; new data arrives meanwhile.
+        js.get_stream(stream_name)
+            .await
+            .expect("stream")
+            .delete_consumer(consumer)
+            .await
+            .expect("delete consumer");
+        publish_scan(&js, subject, 310, 3).await;
+
+        let logger = spawn(Some(state_dir.clone())).await.expect("spawn");
+        wait_for_consumer(&js, stream_name, consumer, |i| {
+            i.ack_floor.stream_sequence == 3 && i.num_ack_pending == 1
+        })
+        .await;
+        logger.stop().await;
+        let info = wait_for_consumer(&js, stream_name, consumer, |i| {
+            i.ack_floor.stream_sequence == 4
+        })
+        .await;
+        assert_eq!(
+            (info.ack_floor.stream_sequence, info.num_ack_pending),
+            (4, 0)
+        );
+        let files = archived_files(&root);
+        assert_eq!(files.len(), 2, "only the new message is written: {files:?}");
+
+        // The same loss without the guard archives every old message again.
+        js.get_stream(stream_name)
+            .await
+            .expect("stream")
+            .delete_consumer(consumer)
+            .await
+            .expect("delete consumer");
+        let logger = spawn(None).await.expect("spawn");
+        wait_for_consumer(&js, stream_name, consumer, |i| i.num_ack_pending == 1).await;
+        logger.stop().await;
+        assert_eq!(
+            archived_files(&root).len(),
+            4,
+            "without the guard the backlog is written again"
+        );
+        fs::remove_dir_all(root).expect("temporary directory should be removable");
+    }
+
+    /// A subject change never edits an existing consumer's filter; the channel moves
+    /// to a consumer named after the new subject and archives its messages.
+    #[tokio::test]
+    async fn subject_change_uses_a_new_consumer_instead_of_editing_the_filter() {
+        let Some(server) = TestNats::start("subject_change") else {
+            return;
+        };
+        let js = server.jetstream().await;
+        let old_subject = "avenars.v1.b.src.ch08";
+        let new_subject = "avenars.s.b.src.live.ch08";
+        let stream = js
+            .create_stream(jetstream::stream::Config {
+                name: "rename".into(),
+                subjects: vec!["avenars.v1.b.src.*".into(), "avenars.s.b.src.live.*".into()],
+                ..Default::default()
+            })
+            .await
+            .expect("create stream");
+        let base = "archiver-test-8-current";
+        stream
+            .create_consumer(archiver_consumer_config(base, old_subject, 300))
+            .await
+            .expect("old consumer");
+        publish_scan(&js, new_subject, 10, 0).await;
+
+        let root = temporary_parquet_root("subject-change");
+        let logger = spawn_channel_logger(
+            js.clone(),
+            "rename".into(),
+            base.into(),
+            new_subject.into(),
+            1001,
+            8,
+            300,
+            CalibrationSpec::default(),
+            root.clone(),
+            None,
+        )
+        .await
+        .expect("spawn");
+        let alt = filtered_consumer_name(base, new_subject);
+        wait_for_consumer(&js, "rename", &alt, |i| i.num_ack_pending == 1).await;
+        logger.stop().await;
+        let info = wait_for_consumer(&js, "rename", &alt, |i| i.num_ack_pending == 0).await;
+        assert_eq!(info.config.filter_subject, new_subject);
+        assert_eq!(info.ack_floor.stream_sequence, 1);
+        let s = js.get_stream("rename").await.expect("stream");
+        let old = s.consumer_info(base).await.expect("old consumer");
+        assert_eq!(
+            old.config.filter_subject, old_subject,
+            "old filter untouched"
+        );
+        assert_eq!(archived_files(&root).len(), 1);
+        fs::remove_dir_all(root).expect("temporary directory should be removable");
+    }
+
+    #[test]
+    fn filtered_consumer_names_are_stable_and_distinct() {
+        let a = filtered_consumer_name("archiver-x-8-current", "avenars.a.ch08");
+        assert_eq!(
+            a,
+            filtered_consumer_name("archiver-x-8-current", "avenars.a.ch08")
+        );
+        assert_ne!(
+            a,
+            filtered_consumer_name("archiver-x-8-current", "avenars.b.ch08")
+        );
+        assert!(a.starts_with("archiver-x-8-current-f"));
+        assert_eq!(a.len(), "archiver-x-8-current-f".len() + 8);
+    }
+
+    #[test]
+    fn replay_guard_directory_defaults_and_can_be_turned_off() {
+        let root = Path::new("/data/parquet");
+        assert_eq!(
+            replay_state_dir(None, None, root),
+            Some(PathBuf::from("/data/parquet/.archiver-state"))
+        );
+        assert_eq!(
+            replay_state_dir(Some("on"), Some("/var/lib/avena"), root),
+            Some(PathBuf::from("/var/lib/avena"))
+        );
+        for off in ["off", "0", "false", "No"] {
+            assert_eq!(replay_state_dir(Some(off), None, root), None);
+        }
     }
 
     /// The consumer's `ack_wait` and `max_ack_pending` leave room for an open file.
