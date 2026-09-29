@@ -49,7 +49,7 @@ Under the canvas the plot shows:
 | Prop | Type | Default | Meaning |
 |---|---|---|---|
 | `data` | `DataPoint[]` | | Live samples. `timestamp` is Unix epoch milliseconds; the optional `sourceTimestamp` and `receivedAt` (also epoch ms) feed the clock and lag badges. |
-| `unit` | `string` | | Unit label for the axis, threshold and badges. The plot page passes `V` for an uncalibrated channel and the configured unit for a calibrated one. |
+| `unit` | `string` | | Unit label for the axis, threshold and badges. The plot page passes `V` for an uncalibrated channel and the calibration's unit for a calibrated one. |
 | `calibrated` | `boolean` | `false` | The values are calibrated; shows the Raw badge. `data` points then carry the reading before calibration in `raw`. |
 | `timeWindow` | `number` | | Width of the continuous window, seconds |
 | `mode` | `'continuous' \| 'frozen'` | | Which mode to draw |
@@ -79,28 +79,69 @@ writes it to the `avenabox` bucket. When adding, the page builds the key from
 The form covers every field of the document: the identity fields, the subject
 root and stream, `rotate_secs`, and under `sensor_settings` the scan rate,
 scans per read, gain, on/off switch, enabled channels, and for each enabled
-channel its format, unit and calibration. A calibration can be chosen from
-saved presets or saved as a new one. The configuration has no separate unit
-for a calibration, so when a channel has a calibration but its unit is still
-V, the unit box turns yellow and asks you to pick the unit the calibration
-converts to. Saving validates the whole form first;
+channel its sensor type, calibration and unit. Saving validates the whole form first;
 while adding, a name or asset number already used by another configuration
 is flagged as you type. Escape, the close button, Cancel or a click outside
 the form closes it without saving; if anything was changed, it asks first.
-
-"Save Preset to KV Now" writes the channel's calibration as a preset straight
-away, after a confirmation. It does not save the rest of the form, and the
-form's own Save does not save presets.
 
 | Prop | Type | Meaning |
 |---|---|---|
 | `config` | `LabJackConfig` | The document to edit, or defaults for a new one. Copied once when the form opens. |
 | `isAddingNew` | `boolean` | Adding a new LabJack: turns on the duplicate checks and changes the titles |
 | `existingLabJacks` | `Map<string, LabJackConfig>` | All loaded configurations by key, for the duplicate checks |
-| `availableCalibrations` | `Map<string, CalibrationSpec>` | Saved calibration presets by id |
-| `onSaveCalibration` | `(spec) => Promise<boolean>` | Saves a calibration preset; resolves `true` on success |
 | `onSave` | `(config) => void` | Called with the edited document once it validates |
 | `onClose` | `() => void` | Called to close the form |
 
-Calibration presets are stored in the same `avenabox` bucket under
-`calibration.<id>`, separate from the per-box configuration keys.
+### Channel calibration
+
+Each channel has exactly one calibration, edited in place and saved with the
+rest of the form. There are no named presets and nothing to name.
+
+- **Sensor type** (stored in `data_formats`): Voltage, Strain gauge, Pressure,
+  Temperature, Current or Resistance. It decides which units are offered.
+- **Calibration**: None (raw volts), Linear (`a·x + b`) or Polynomial
+  (`c0 + c1·x + c2·x² …`), where `x` is the raw reading in volts.
+- **Unit**: V for None. A linear or polynomial calibration must have a unit;
+  switching to one picks the sensor type's first unit (µε for a strain gauge,
+  kPa for pressure). Strain gauges offer µε, mV/V and V; pressure kPa, Pa, bar
+  and PSI.
+
+The card header sums the channel up: sensor type, unit, the formula and what a
+raw reading of 1.000 V becomes, for example
+`y = 481.26·x + 1058.722 · raw 1.000 V → 1539.98 µε`.
+
+For a strain gauge with a linear calibration you can type `a` and `b` or use
+the **bridge helper**. It takes the gauge's calibration factor from its
+certificate (µε per mV/V, for example 481.26 for SG194 or 705.47 for SG159),
+the bridge excitation in volts, the amplifier gain (may be negative) and,
+optionally, the raw reading at rest, and computes
+
+```text
+µε = factor × 1000 × (raw − zero) / (excitation × gain)
+a  = factor × 1000 / (excitation × gain)
+b  = −a × zero
+```
+
+It shows `a`, `b` and the 1 V preview before you apply them. What is stored is
+a plain linear calibration with unit µε; the helper's inputs are not saved.
+
+What the form saves for a channel, by sensor type:
+
+```json
+{"type": "identity", "unit": "V"}
+{"type": "linear", "a": 481.26, "b": 1058.722, "unit": "µε"}
+{"type": "linear", "a": 250.0, "b": -125.0, "unit": "kPa"}
+{"type": "polynomial", "coeffs": [0.5, 100.0, 0.2], "unit": "°C"}
+```
+
+On save the calibration's unit is also written to the channel's
+`measurement_units` entry, and a calibrated channel's `data_formats` entry is
+set to a sensor type that offers the unit, so older readers see the same
+labels. An `id` from an older configuration is kept until the formula is
+changed; the form never asks for one.
+
+Configurations saved before calibrations had units still open: a calibration
+without `unit` takes the channel's `measurement_units` entry unless it is V.
+If it is V the unit box is empty and yellow, and the form will not save until a
+unit is chosen. The `calibration.*` preset keys that earlier versions wrote are
+no longer read.
