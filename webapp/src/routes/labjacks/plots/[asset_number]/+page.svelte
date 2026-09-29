@@ -219,6 +219,11 @@
     let loading = $state<boolean>(true);
     let error = $state<string>("");
     /**
+     * What the error banner offers: `retry` (loading again can succeed), `login` (no
+     * login data in this tab), or `none` (an invalid asset number, which cannot load).
+     */
+    let errorAction = $state<"retry" | "login" | "none">("retry");
+    /**
      * Connection used for live subscriptions and export requests. Closed before each
      * reload and in `onDestroy`.
      */
@@ -674,12 +679,14 @@
         const superseded = () => generation !== loadGeneration || destroyed;
         loading = true;
         error = "";
+        errorAction = "retry";
 
         closeLiveConnection();
 
         if (!Number.isSafeInteger(assetNumber) || assetNumber < 0) {
             labjackConfig = null;
             error = `"${$page.params.asset_number ?? ""}" is not a valid asset number. Open a LabJack's plots from the LabJacks page.`;
+            errorAction = "none";
             loading = false;
             return;
         }
@@ -690,6 +697,7 @@
             
             if (!serverName || !credentialsContent) {
                 error = "No NATS connection found. Please login first.";
+                errorAction = "login";
                 loading = false;
                 return;
             }
@@ -1683,14 +1691,24 @@ subscription is released and nothing is saved.
                     <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
                 </svg>
                 <span>{error}</span>
-                <div>
-                    <button
-                        onclick={loadLabJackConfig}
-                        class="btn btn-sm btn-error"
-                    >
-                        Retry
-                    </button>
-                </div>
+                {#if errorAction === "retry"}
+                    <div>
+                        <button
+                            onclick={loadLabJackConfig}
+                            class="btn btn-sm btn-error"
+                        >
+                            Retry
+                        </button>
+                    </div>
+                {:else if errorAction === "login"}
+                    <div>
+                        <a href="/" class="btn btn-sm btn-error">Log in</a>
+                    </div>
+                {:else}
+                    <div>
+                        <a href="/labjacks" class="btn btn-sm btn-error">LabJacks</a>
+                    </div>
+                {/if}
             </div>
         {/if}
 
