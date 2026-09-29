@@ -7,6 +7,7 @@
         formatTimeTick,
         latestFinitePoint,
         selectTimeWindow,
+        thresholdLabelBox,
         timeAxisTicks
     } from "$lib/plot/render";
     
@@ -521,7 +522,8 @@
     }
 
     /**
-     * Draws a dashed amber horizontal line at `triggerThreshold` with a `Trig` label.
+     * Draws a dashed amber horizontal line at `triggerThreshold`, with a `Trig` label in
+     * the top margin (see {@link drawThresholdLabel}).
      *
      * Skipped unless `showTriggerThreshold` is set and the threshold is a number inside
      * the current y range.
@@ -546,11 +548,37 @@
         ctx.stroke();
         ctx.setLineDash([]);
 
-        ctx.fillStyle = 'rgba(255, 193, 7, 0.9)';
+        drawThresholdLabel(`Trig ${triggerThreshold.toFixed(3)} ${unit}`);
+    }
+
+    /**
+     * Draws the threshold label in a small box in the top margin, above the plot area,
+     * so it never covers the trace. Text wider than the plot area is clipped to the box.
+     *
+     * @param text - Label text.
+     */
+    function drawThresholdLabel(text: string) {
+        if (!ctx) return;
+        ctx.save();
         ctx.font = '11px Inter, system-ui, sans-serif';
+        const box = thresholdLabelBox(margin.left, plotWidth - margin.right, margin.top, ctx.measureText(text).width);
+        if (box.width <= 0 || box.height <= 0) {
+            ctx.restore();
+            return;
+        }
+        ctx.fillStyle = 'rgba(234, 179, 8, 0.18)';
+        ctx.strokeStyle = 'rgba(255, 193, 7, 0.9)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(box.x, box.y, box.width, box.height, 4);
+        ctx.fill();
+        ctx.stroke();
+        ctx.clip();
+        ctx.fillStyle = 'rgba(255, 193, 7, 0.95)';
         ctx.textAlign = 'left';
-        ctx.textBaseline = 'bottom';
-        ctx.fillText(`Trig ${triggerThreshold.toFixed(3)} ${unit}`, margin.left + 6, y - 4);
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, box.x + 6, box.y + box.height / 2);
+        ctx.restore();
     }
 
     /**

@@ -214,3 +214,45 @@ export function formatTimeTick(value: number, step: number, unit: 'ms' | 's'): s
     const text = scaled.toFixed(decimals);
     return Number(text) === 0 ? (0).toFixed(decimals) : text;
 }
+
+/** Box of a label drawn on the canvas, CSS pixels. */
+export interface LabelBox {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+/**
+ * Places the trigger level label in the top margin, above the plot area, so it never
+ * covers the trace.
+ *
+ * The box starts at the left edge of the plot area and is centred vertically in the
+ * top margin. It is never wider than the plot area and never taller than the margin;
+ * text that does not fit is clipped by the caller.
+ *
+ * @param plotLeft - Left edge of the plot area.
+ * @param plotRight - Right edge of the plot area.
+ * @param marginTop - Height of the top margin (the plot area starts here).
+ * @param textWidth - Measured width of the label text.
+ * @param padding - Horizontal space between the text and the box edges.
+ * @param height - Preferred box height.
+ * @returns The box, with `width` and `height` of at least 0.
+ */
+export function thresholdLabelBox(
+    plotLeft: number,
+    plotRight: number,
+    marginTop: number,
+    textWidth: number,
+    padding: number = 6,
+    height: number = 18
+): LabelBox {
+    const available = Math.max(0, plotRight - plotLeft);
+    const boxHeight = Math.max(0, Math.min(height, marginTop - 2));
+    return {
+        x: plotLeft,
+        y: Math.max(0, (marginTop - boxHeight) / 2),
+        width: Math.min(available, Math.max(0, textWidth) + 2 * padding),
+        height: boxHeight
+    };
+}
