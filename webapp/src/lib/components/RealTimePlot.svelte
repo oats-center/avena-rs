@@ -4,8 +4,10 @@
     import {
         computeValueRange,
         downsampleMinMax,
+        formatTimeTick,
         latestFinitePoint,
-        selectTimeWindow
+        selectTimeWindow,
+        timeAxisTicks
     } from "$lib/plot/render";
     
     /** Component props. See the `@component` block below for each one. */
@@ -79,8 +81,24 @@
     /** Canvas size in CSS pixels, set by {@link resizeCanvas}. */
     let plotWidth = 0;
     let plotHeight = 0;
-    /** Space around the plot area for tick labels and axis titles, in CSS pixels. */
+    /**
+     * Space around the plot area for tick labels and axis titles, in CSS pixels.
+     * `left` is recomputed every frame by {@link layoutLeftMargin} from the widest
+     * value label, so the labels and the y-axis title never overlap.
+     */
     let margin = { top: 30, right: 40, bottom: 50, left: 80 };
+    /** Font of the tick labels. */
+    const TICK_FONT = '13px Inter, system-ui, sans-serif';
+    /** Font of the axis titles. */
+    const TITLE_FONT = '15px Inter, system-ui, sans-serif';
+    /** Gap between the canvas edge and the rotated y-axis title, CSS pixels. */
+    const EDGE_PAD = 6;
+    /** Height of a line of {@link TITLE_FONT}; the width the rotated title takes up. */
+    const TITLE_BAND = 18;
+    /** Gap between the y-axis title and the value labels, and between labels and axis. */
+    const LABEL_GAP = 8;
+    /** Smallest space kept between two time labels, CSS pixels. */
+    const MIN_TIME_TICK_SPACING = 70;
     /** Running min/max of every value seen in continuous autoscale. Only grows until reset. */
     let stickyAutoExtrema: { min: number; max: number } | null = null;
     /** Number of horizontal grid intervals on the y axis. */
@@ -119,18 +137,19 @@
     }
     
     /**
-     * Draws the background grid: 11 vertical lines (10 time intervals) and 9 horizontal
+     * Draws the background grid: a vertical line at each time tick and 9 horizontal
      * lines (8 value intervals) across the plot area.
+     *
+     * @param timeTicks - Time ticks of this frame, from {@link getTimeTicks}.
      */
-    function drawGrid() {
+    function drawGrid(timeTicks: { x: number; label: string }[]) {
         if (!ctx) return;
         
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
         ctx.lineWidth = 1;
         
         // Vertical grid lines (time)
-        for (let i = 0; i <= 10; i++) {
-            const x = margin.left + (i / 10) * (plotWidth - margin.left - margin.right);
+        for (const { x } of timeTicks) {
             ctx.beginPath();
             ctx.moveTo(x, margin.top);
             ctx.lineTo(x, plotHeight - margin.bottom);
@@ -343,80 +362,122 @@
     }
 
     /**
-     * Draws the time tick labels, value tick labels and both axis titles.
-     *
-     * Time labels match {@link mapTimeToX}: in continuous mode they run from
-     * `-timeWindow` to 0 s, in frozen mode from `-pre` to `+post` around the trigger.
-     * Offsets under 0.1 s are shown in milliseconds. Value labels use the same range as
-     * the trace; with no data they show a fixed -10 to 10 scale.
+     * Returns the value tick labels for a y range, top to bottom: 9 labels for 8 grid
+     * intervals. With no data (`range` null) they show a fixed -10 to 10 scale.
      *
      * @param range - Y range of this frame, from {@link getDisplayRange}.
+     * @returns The labels, top grid line first.
      */
-    function drawLabels(range: { low: number; high: number } | null) {
+    function getValueTickLabels(range: { low: number; high: number } | null): string[] {
+        const labels: string[] = [];
+        for (let i = 0; i <= Y_GRID_DIVISIONS; i++) {
+            const ratio = i / Y_GRID_DIVISIONS;
+            if (range) {
+                const span = range.high - range.low;
+                const value = invertY ? range.low + ratio * span : range.high - ratio * span;
+                labels.push(formatAxisValue(value, span / Y_GRID_DIVISIONS));
+            } else {
+                labels.push((10 - ratio * 20).toFixed(1));
+            }
+        }
+        return labels;
+    }
+
+    /**
+     * Sets `margin.left` so that, from the left edge, there is room for the rotated
+     * y-axis title, a gap, the widest value label and another gap before the axis.
+     *
+     * @param valueLabels - Labels from {@link getValueTickLabels}.
+     */
+    function layoutLeftMargin(valueLabels: string[]) {
+        if (!ctx) return;
+        ctx.font = TICK_FONT;
+        let widest = 0;
+        for (const label of valueLabels) {
+            widest = Math.max(widest, ctx.measureText(label).width);
+        }
+        margin.left = Math.ceil(EDGE_PAD + TITLE_BAND + LABEL_GAP + widest + LABEL_GAP);
+    }
+
+    /**
+     * Returns the time range the x axis shows, in seconds on the axis: `[-timeWindow, 0]`
+     * in continuous mode (0 is the newest sample), `[-pre, +post]` in frozen mode (0 is
+     * the trigger).
+     */
+    function getTimeAxisRange(): { start: number; end: number } {
+        if (mode === 'frozen' && isTriggered) {
+            const { pre, post } = getFrozenWindow();
+            return { start: -pre, end: post };
+        }
+        return { start: -timeWindow, end: 0 };
+    }
+
+    /**
+     * Returns the time ticks of this frame: round steps (1, 2 or 5 times a power of
+     * ten) anchored at 0, spaced at least {@link MIN_TIME_TICK_SPACING} px apart. All
+     * labels use one unit, given in the axis title.
+     *
+     * @returns Each tick's x in CSS pixels and its label, plus the label unit.
+     */
+    function getTimeTicks(): { ticks: { x: number; label: string }[]; unit: 'ms' | 's' } {
+        const { start, end } = getTimeAxisRange();
+        const width = Math.max(0, plotWidth - margin.left - margin.right);
+        const maxTicks = Math.max(2, Math.floor(width / MIN_TIME_TICK_SPACING) + 1);
+        const axis = timeAxisTicks(start, end, maxTicks);
+        const frozen = mode === 'frozen' && isTriggered;
+        const ticks = axis.values.map((value) => ({
+            // Continuous mode maps a sample's age; an axis value of -2 s is age 2 s.
+            x: mapTimeToX(frozen ? value : -value),
+            label: formatTimeTick(value, axis.step, axis.unit)
+        }));
+        return { ticks, unit: axis.unit };
+    }
+
+    /**
+     * Draws the time tick labels, value tick labels and both axis titles.
+     *
+     * Time labels sit under the grid lines from {@link getTimeTicks}. Value labels are
+     * right-aligned {@link LABEL_GAP} px left of the axis, and the rotated y-axis title
+     * sits in its own band at the left edge (see {@link layoutLeftMargin}).
+     *
+     * @param timeTicks - Time ticks of this frame.
+     * @param timeUnit - Unit of the time labels.
+     * @param valueLabels - Value labels of this frame, top to bottom.
+     */
+    function drawLabels(
+        timeTicks: { x: number; label: string }[],
+        timeUnit: 'ms' | 's',
+        valueLabels: string[]
+    ) {
         if (!ctx) return;
         
         ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-        ctx.font = '13px Inter, system-ui, sans-serif';
+        ctx.font = TICK_FONT;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         
-        // X-axis labels (time)
-        const timeStep = timeWindow / 10;
-        for (let i = 0; i <= 10; i++) {
-            const x = margin.left + (i / 10) * (plotWidth - margin.left - margin.right);
-            let timeValue: number;
-            
-            if (mode === 'frozen' && isTriggered) {
-                const { pre, post } = getFrozenWindow();
-                const start = invertX ? post : -pre;
-                const step = ((pre + post) / 10) * (invertX ? -1 : 1);
-                timeValue = start + (i * step);
-            } else {
-                const start = invertX ? 0 : -timeWindow;
-                const step = invertX ? -timeStep : timeStep;
-                timeValue = start + (i * step);
-            }
-            
-            // Format time labels with better precision for high-frequency data
-            const timeLabel = Math.abs(timeValue) < 0.1 ? 
-                (timeValue * 1000).toFixed(0) + 'ms' : 
-                timeValue.toFixed(1) + 's';
-            ctx.fillText(timeLabel, x, plotHeight - margin.bottom + 5);
+        for (const { x, label } of timeTicks) {
+            ctx.fillText(label, x, plotHeight - margin.bottom + 5);
         }
         
-        // Y-axis labels (value)
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
-        
-        if (range) {
-            const span = range.high - range.low;
-            const step = span / Y_GRID_DIVISIONS;
-            for (let i = 0; i <= 8; i++) {
-                const y = margin.top + (i / 8) * (plotHeight - margin.top - margin.bottom);
-                const ratio = i / 8;
-                const value = invertY
-                    ? range.low + ratio * span
-                    : range.high - ratio * span;
-                ctx.fillText(formatAxisValue(value, step), margin.left - 20, y);
-            }
-        } else {
-            // Show default scale when no data
-            for (let i = 0; i <= 8; i++) {
-                const y = margin.top + (i / 8) * (plotHeight - margin.top - margin.bottom);
-                const value = 10 - (i / 8) * 20; // Default scale from -10 to 10
-                ctx.fillText(value.toFixed(1), margin.left - 20, y);
-            }
-        }
+        valueLabels.forEach((label, i) => {
+            const y = margin.top + (i / Y_GRID_DIVISIONS) * (plotHeight - margin.top - margin.bottom);
+            ctx.fillText(label, margin.left - LABEL_GAP, y);
+        });
         
         // Axis titles
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
-        ctx.font = '15px Inter, system-ui, sans-serif';
-        ctx.fillText('Time (s)', plotWidth / 2, plotHeight - 5);
+        ctx.font = TITLE_FONT;
+        const timeTitle = mode === 'frozen' && isTriggered ? 'Time from trigger' : 'Time';
+        ctx.fillText(`${timeTitle} (${timeUnit})`, margin.left + (plotWidth - margin.left - margin.right) / 2, plotHeight - 5);
         
         ctx.save();
-        ctx.translate(25, plotHeight / 2);
+        ctx.translate(EDGE_PAD + TITLE_BAND / 2, margin.top + (plotHeight - margin.top - margin.bottom) / 2);
         ctx.rotate(-Math.PI / 2);
+        ctx.textBaseline = 'middle';
         ctx.fillText(`Value (${unit})`, 0, 0);
         ctx.restore();
     }
@@ -745,12 +806,6 @@
         ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
         ctx.fillRect(0, 0, plotWidth, plotHeight);
         
-        // Draw grid
-        drawGrid();
-        
-        // Draw axes
-        drawAxes();
-        
         const dataToPlot = getDisplayData();
 
         // One y range per frame, from the samples actually drawn, shared by the trace,
@@ -758,6 +813,14 @@
         const referenceTime = getContinuousReferenceTime(dataToPlot);
         const visibleData = getVisiblePoints(dataToPlot, referenceTime);
         const range = getDisplayRange(visibleData);
+
+        // The left margin depends on the value labels, and everything else on the margin.
+        const valueLabels = getValueTickLabels(range);
+        layoutLeftMargin(valueLabels);
+        const { ticks: timeTicks, unit: timeUnit } = getTimeTicks();
+
+        drawGrid(timeTicks);
+        drawAxes();
 
         // Draw data
         if (range && visibleData.length > 0) {
@@ -770,7 +833,7 @@
         drawTriggerLine();
         
         // Draw labels
-        drawLabels(range);
+        drawLabels(timeTicks, timeUnit, valueLabels);
 
         drawCanvasBadges();
         
