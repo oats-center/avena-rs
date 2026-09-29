@@ -51,3 +51,28 @@ describe('planConfigSave', () => {
         expect(plan).toEqual({ key: 'i69.i69-mu1.i69-lj2.config', previousKey: null, conflict: false });
     });
 });
+
+describe('planConfigSave with an empty source', () => {
+    it('keys a new configuration without source or name by its asset number', () => {
+        const plan = planConfigSave({
+            isAddingNew: true,
+            editingKey: '',
+            original: null,
+            updated: { site_id: 'i69', box_id: 'i69-mu1', source_id: '', labjack_name: '', asset_number: 7 },
+            existingKeys: []
+        });
+        expect(plan.key).toBe('i69.i69-mu1.asset007.config');
+    });
+
+    it('does not move an existing configuration saved under the old unknown-source key', () => {
+        const identity = { site_id: 'i69', box_id: 'i69-mu1', source_id: '', labjack_name: '', asset_number: 7 };
+        const plan = planConfigSave({
+            isAddingNew: false,
+            editingKey: 'i69.i69-mu1.unknown-source.config',
+            original: identity,
+            updated: { ...identity },
+            existingKeys: ['i69.i69-mu1.unknown-source.config']
+        });
+        expect(plan).toEqual({ key: 'i69.i69-mu1.unknown-source.config', previousKey: null, conflict: false });
+    });
+});

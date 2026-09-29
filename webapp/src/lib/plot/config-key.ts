@@ -15,6 +15,8 @@ export interface ConfigIdentity {
     box_id?: string | null;
     source_id?: string | null;
     labjack_name?: string | null;
+    /** Source fallback `asset<NNN>` when `source_id` and `labjack_name` are empty. */
+    asset_number?: number | null;
 }
 
 /** Result of {@link planConfigSave}. */

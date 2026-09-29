@@ -180,22 +180,36 @@ export function liveLabJackChannelPattern(config: LabJackSubjectConfig): string 
 /**
  * Builds the key of a LabJack config in the KV bucket `avenabox`.
  *
- * Every token is sanitized. Missing values fall back to `unknown-site`,
- * `unknown-box`, and for the source from `source_id` to `labjack_name` to
- * `unknown-source`. Unlike the subject builders there is no `asset<NNN>` fallback.
+ * Every token is sanitized. Missing or empty values fall back to `unknown-site` and
+ * `unknown-box`, and the source falls back from `source_id` to `labjack_name` to
+ * `asset<NNN>`, the same order as the subject builders and Rust's `source_token`.
+ * Only without an asset number does the source become `unknown-source`.
  *
  * @param config - Identity fields of the config.
  * @returns `<site>.<box>.<source>.config`, e.g. `i69.i69-mu1.i69-lj2.config`.
+ *
+ * @example
+ * ```ts
+ * labjackConfigKey({ site_id: "i69", box_id: "i69-mu1", source_id: "i69-lj2" });
+ * // "i69.i69-mu1.i69-lj2.config"
+ * labjackConfigKey({ site_id: "i69", box_id: "i69-mu1", source_id: "", labjack_name: "", asset_number: 7 });
+ * // "i69.i69-mu1.asset007.config"
+ * ```
  */
 export function labjackConfigKey(config: {
   site_id?: string | null;
   box_id?: string | null;
   source_id?: string | null;
   labjack_name?: string | null;
+  asset_number?: number | null;
 }): string {
   const siteId = sanitizeToken(config.site_id || "unknown-site");
   const boxId = sanitizeToken(config.box_id || "unknown-box");
-  const sourceId = sanitizeToken(config.source_id || config.labjack_name || "unknown-source");
+  const asset = config.asset_number;
+  const hasAsset = typeof asset === "number" && Number.isSafeInteger(asset) && asset >= 0;
+  const sourceId = sanitizeToken(
+    config.source_id || config.labjack_name || (hasAsset ? `asset${padAsset(asset)}` : "unknown-source")
+  );
   return `${siteId}.${boxId}.${sourceId}.config`;
 }
 
