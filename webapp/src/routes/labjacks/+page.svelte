@@ -41,6 +41,11 @@
     let connected = $state<boolean>(false);
     /** True when sessionStorage holds no login data; the page then only links to `/`. */
     let notLoggedIn = $state<boolean>(false);
+    /**
+     * True when sessionStorage holds login data, checked by {@link loadLabJacks}. The
+     * Logout button is shown only then; before the check neither Logout nor Log in shows.
+     */
+    let loggedIn = $state<boolean>(false);
     /** Incremented by each {@link loadLabJacks} call; older calls see they are stale. */
     let loadGeneration = 0;
     /** Set in `onDestroy`, so a load that finishes afterwards closes its connection. */
@@ -99,6 +104,7 @@
         try {
             const serverName = sessionStorage.getItem("serverName");
             const credentialsContent = sessionStorage.getItem("credentialsContent");
+            loggedIn = Boolean(serverName && credentialsContent);
             
             if (!serverName || !credentialsContent) {
                 error = "Not logged in. Log in to view and edit LabJack configurations.";
@@ -435,7 +441,8 @@ LabJack config list at `/labjacks`. It takes no URL parameters.
 Reads `serverName` and `credentialsContent` from sessionStorage (written by the login
 page) and opens a connection to central NATS, closed on retry and when leaving the page. If either item is missing it shows
 only an error with a link back to `/`. Adding a config is disabled until the connection is
-open.
+open. The header shows Logout only when the login data is present, and a Log in link
+otherwise.
 
 KV bucket `avenabox`:
 - Reads every key matching `*.*.*.config` (one LabJack config each, shown as a card)
@@ -478,15 +485,19 @@ running.
             </div>
         </div>
         <div class="flex-none">
-            <button
-                onclick={logout}
-                class="btn btn-error btn-sm"
-            >
-                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-                </svg>
-                Logout
-            </button>
+            {#if loggedIn}
+                <button
+                    onclick={logout}
+                    class="btn btn-error btn-sm"
+                >
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                    </svg>
+                    Logout
+                </button>
+            {:else if notLoggedIn}
+                <a href="/" class="btn btn-warning btn-sm">Log in</a>
+            {/if}
         </div>
     </div>
 
