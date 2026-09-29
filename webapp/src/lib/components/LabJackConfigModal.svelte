@@ -1006,13 +1006,13 @@ No props have defaults.
                                                 <div class="join mt-4" role="group" aria-label="How to enter the strain calibration">
                                                     <button
                                                         type="button"
-                                                        class="btn btn-sm join-item {linearModes[key] !== 'bridge' ? 'btn-active' : ''}"
+                                                        class="btn btn-sm join-item {linearModes[key] !== 'bridge' ? 'btn-primary' : ''}"
                                                         aria-pressed={linearModes[key] !== "bridge"}
                                                         onclick={() => setLinearMode(channel, "direct")}
                                                     >Enter a and b</button>
                                                     <button
                                                         type="button"
-                                                        class="btn btn-sm join-item {linearModes[key] === 'bridge' ? 'btn-active' : ''}"
+                                                        class="btn btn-sm join-item {linearModes[key] === 'bridge' ? 'btn-primary' : ''}"
                                                         aria-pressed={linearModes[key] === "bridge"}
                                                         onclick={() => setLinearMode(channel, "bridge")}
                                                     >Bridge helper</button>
@@ -1026,7 +1026,7 @@ No props have defaults.
                                                         µε = factor × 1000 × (raw − zero) / (excitation × gain). The result is
                                                         stored as a plain linear calibration in µε.
                                                     </p>
-                                                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                         <div class="form-control">
                                                             <label class="label" for="bridge-factor-{channel}">
                                                                 <span class="label-text font-medium">Calibration factor (µε per mV/V)</span>
