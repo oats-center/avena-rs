@@ -1,7 +1,7 @@
 # Components
 
-The webapp has two reusable components. Neither talks to NATS: the pages load
-and save data, and the components display and edit it. That keeps the NATS
+The webapp's components live in `src/lib/components/`. None talks to NATS: the
+pages load and save data, and the components display and edit it. That keeps the NATS
 code in one place per page and makes the components easy to reason about.
 
 ## RealTimePlot
@@ -13,7 +13,9 @@ and passes the samples in.
 The time axis puts 0 at the newest sample in continuous mode and at the trigger
 in frozen mode. Its ticks fall on round steps (1, 2 or 5 times a power of ten)
 counted from 0, in seconds or milliseconds, and the title says which: "Time
-(s)", or "Time from trigger (s)" for a capture. The value axis is titled
+(s)", or "Time from trigger (s)" for a capture. Ticks are about 70 pixels apart;
+on a narrow plot they move closer, down to what the labels need, so at least a
+few show without overlapping. The value axis is titled
 "Value (unit)", and the tick labels are kept clear of the title.
 
 **Continuous mode** shows the last `timeWindow` seconds with the newest sample
@@ -59,14 +61,35 @@ Under the canvas the plot shows:
 | `frozenPreWindowSec` | `number` | `timeWindow` | Seconds shown before the trigger |
 | `frozenPostWindowSec` | `number` | `timeWindow` | Seconds shown after the trigger |
 | `frozenCollecting` | `boolean` | `false` | Show COLLECTING instead of FROZEN |
-| `showTriggerThreshold` | `boolean` | `false` | Draw the trigger level line |
+| `showTriggerThreshold` | `boolean` | `false` | Draw the trigger level line, and a "Trig level" label above the plot |
 | `triggerThreshold` | `number` | | Trigger level, in `unit` |
 | `prebuffering` | `boolean` | `false` | Show the PREBUFFERING badge |
 | `yAutoScale` | `boolean` | `true` | Fit the y axis to the data |
 | `yMin`, `yMax` | `number` | `-1`, `1` | Fixed y limits when autoscale is off |
 | `invertX`, `invertY` | `boolean` | `false` | Mirror an axis |
 
-The component emits no events.
+The component emits no events. It exports one function,
+`getDisplayedYRange()`, which returns the y range of the last drawn frame; the
+channel card uses it to start Y Min and Y Max from what is on screen when Auto
+Y-Scale is turned off.
+
+## Plot page components
+
+The plot page is split into four components. All of them only display and edit
+state the page owns.
+
+- **`ChannelCard`** shows one plotted channel: the header with the data format,
+  the unit tag and the trigger state, the Mode & Axis panel, the Trigger
+  Settings panel in the trigger modes, and its `RealTimePlot`. Props: `view`
+  (the channel's `ChannelView`), `dataFormat`, `unitInfo` and `onchange`,
+  called after a change that alters what the plot shows.
+- **`StatsPanel`** is the Data Statistics card. Props: `config`, `assetNumber`,
+  `channels` (the plotted ones), `views` and `connectionState`.
+- **`ExportDialog`** is the Export Historical Data form. Props: `channels`,
+  `selected`, bindable `start` and `end`, `error`, `warning`, `exporting`,
+  `progress`, `total`, and the callbacks `ontoggle`, `onsubmit` and `onclose`.
+- **`ConnectionBanner`** is the yellow Reconnecting or red Disconnected banner.
+  Props: `state`, `reason` and `onreconnect`.
 
 ## LabJackConfigModal
 
@@ -75,6 +98,8 @@ editing one [LabJack configuration](../reference/kv-config.md). It edits a
 copy of the document and hands the result to `onSave`; the LabJack list page
 writes it to the `avenabox` bucket. When adding, the page builds the key from
 `site_id`, `box_id` and `source_id`; when editing, it keeps the existing key.
+An empty source falls back to the LabJack name and then to `asset<NNN>`, the
+same order the live and export subjects use.
 
 The form covers every field of the document: the identity fields, the subject
 root and stream, `rotate_secs`, and under `sensor_settings` the scan rate,

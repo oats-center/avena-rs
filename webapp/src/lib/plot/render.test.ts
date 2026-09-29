@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DataPoint } from './stream';
-import { computeValueRange, downsampleMinMax, formatTimeTick, latestFinitePoint, selectTimeWindow, splitAtGaps, thresholdLabelBox, timeAxisTicks } from './render';
+import { computeValueRange, downsampleMinMax, fitTimeTicks, formatTimeTick, latestFinitePoint, selectTimeWindow, splitAtGaps, thresholdLabelBox, timeAxisTicks } from './render';
 
 const series = (values: number[], step = 1): DataPoint[] => values.map((value, i) => ({ timestamp: i * step, value }));
 
@@ -94,5 +94,40 @@ describe('thresholdLabelBox', () => {
         expect(flat.y).toBeGreaterThanOrEqual(0);
         expect(flat.y + flat.height).toBeLessThanOrEqual(12);
         expect(thresholdLabelBox(80, 60, 0, 90)).toEqual({ x: 80, y: 0, width: 0, height: 0 });
+    });
+});
+
+describe('fitTimeTicks', () => {
+    // About 7.5 px per character, like 13 px Inter.
+    const measure = (label: string) => label.length * 7.5;
+
+    it('keeps the preferred spacing on a wide axis', () => {
+        const wide = fitTimeTicks(-0.5, 0, 1000, measure);
+        expect(wide).toEqual(timeAxisTicks(-0.5, 0, Math.floor(1000 / 70) + 1));
+    });
+
+    it('adds ticks on a narrow axis where only the two ends would show', () => {
+        expect(timeAxisTicks(-0.5, 0, Math.floor(180 / 70) + 1).values).toEqual([-0.5, 0]);
+        const narrow = fitTimeTicks(-0.5, 0, 180, measure);
+        expect(narrow.values.length).toBeGreaterThanOrEqual(3);
+        expect(narrow.values).toContain(0);
+    });
+
+    it('never lets labels overlap', () => {
+        for (const width of [60, 120, 180, 240, 300]) {
+            for (const [start, end] of [[-0.5, 0], [-1, 0], [-0.05, 0], [-0.3, 0.5], [-10, 0]]) {
+                const axis = fitTimeTicks(start, end, width, measure);
+                const base = timeAxisTicks(start, end, Math.max(2, Math.floor(width / 70) + 1));
+                if (axis.values.length === base.values.length) continue;
+                const spacing = (width * axis.step) / (end - start);
+                const widest = Math.max(...axis.values.map((v) => measure(formatTimeTick(v, axis.step, axis.unit))));
+                expect(widest + 12).toBeLessThanOrEqual(spacing);
+            }
+        }
+    });
+
+    it('returns the plain ticks for an empty range or width', () => {
+        expect(fitTimeTicks(0, 0, 300, measure).values).toEqual([]);
+        expect(fitTimeTicks(-1, 0, 0, measure)).toEqual(timeAxisTicks(-1, 0, 2));
     });
 });

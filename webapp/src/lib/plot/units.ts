@@ -9,7 +9,7 @@
  *
  * @module
  */
-import { RAW_UNIT, resolveCalibrationUnit, type CalibrationSpec } from '../calibration';
+import { normalizeCalibration, RAW_UNIT, resolveCalibrationUnit, type CalibrationSpec } from '../calibration';
 
 /** Unit description of one channel, from {@link describeChannelUnit}. */
 export interface ChannelUnitInfo {
@@ -60,4 +60,26 @@ export function describeChannelUnit(
         };
     }
     return { unit, calibrated: true, tag: `calibrated → ${unit}` };
+}
+
+/** Fields of `sensor_settings` that describe a channel's unit. */
+export interface ChannelUnitSource {
+    channels_enabled: number[];
+    measurement_units: string[];
+    calibrations?: Record<string, Partial<CalibrationSpec>>;
+}
+
+/**
+ * Describes the unit of one channel of a config, from its calibration and its
+ * `measurement_units` entry (see {@link describeChannelUnit}).
+ *
+ * @param settings - `sensor_settings` of the config, or `null` before it loads.
+ * @param channel - LabJack channel number.
+ * @returns The unit description. Raw volts before the config loads.
+ */
+export function channelUnitInfo(settings: ChannelUnitSource | null | undefined, channel: number): ChannelUnitInfo {
+    const calibration = normalizeCalibration(settings?.calibrations?.[String(channel)]);
+    const index = settings?.channels_enabled.indexOf(channel) ?? -1;
+    const measurementUnit = index >= 0 ? settings?.measurement_units[index] : undefined;
+    return describeChannelUnit(calibration, measurementUnit);
 }

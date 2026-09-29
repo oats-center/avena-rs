@@ -215,6 +215,54 @@ export function formatTimeTick(value: number, step: number, unit: 'ms' | 's'): s
     return Number(text) === 0 ? (0).toFixed(decimals) : text;
 }
 
+/**
+ * Picks time ticks for an axis `widthPx` wide.
+ *
+ * Starts from about one tick per `preferredSpacingPx`. When that gives fewer than
+ * `minTicks` ticks (a narrow plot, where the 1-2-5 rounding can leave only the two
+ * ends), it tries denser steps and keeps the densest one whose labels still fit
+ * between neighbouring ticks with `gapPx` to spare, stopping once `minTicks` is
+ * reached. Labels never overlap: a denser step is used only if its widest label fits.
+ *
+ * @param start - Range start, seconds.
+ * @param end - Range end, seconds.
+ * @param widthPx - Width of the axis, CSS pixels.
+ * @param measure - Width of a label in CSS pixels, in the tick font.
+ * @param options - `preferredSpacingPx` (default 70), `minTicks` (default 4) and
+ *   `gapPx`, the least space between two labels (default 12).
+ * @returns The ticks, as from {@link timeAxisTicks}.
+ */
+export function fitTimeTicks(
+    start: number,
+    end: number,
+    widthPx: number,
+    measure: (label: string) => number,
+    options: { preferredSpacingPx?: number; minTicks?: number; gapPx?: number } = {}
+): TimeAxisTicks {
+    const preferred = options.preferredSpacingPx ?? 70;
+    const minTicks = options.minTicks ?? 4;
+    const gap = options.gapPx ?? 12;
+    const width = Math.max(0, widthPx);
+    const baseMax = Math.max(2, Math.floor(width / preferred) + 1);
+    let best = timeAxisTicks(start, end, baseMax);
+    const span = Math.abs(end - start);
+    if (best.values.length >= minTicks || !(span > 0) || width <= 0) return best;
+
+    const fits = (axis: TimeAxisTicks) => {
+        const spacing = (width * axis.step) / span;
+        const widest = Math.max(0, ...axis.values.map((v) => measure(formatTimeTick(v, axis.step, axis.unit))));
+        return widest + gap <= spacing;
+    };
+    for (let maxTicks = baseMax + 1; maxTicks <= baseMax + 10; maxTicks++) {
+        const candidate = timeAxisTicks(start, end, maxTicks);
+        if (candidate.values.length <= best.values.length) continue;
+        if (!fits(candidate)) break;
+        best = candidate;
+        if (best.values.length >= minTicks) break;
+    }
+    return best;
+}
+
 /** Box of a label drawn on the canvas, CSS pixels. */
 export interface LabelBox {
     x: number;

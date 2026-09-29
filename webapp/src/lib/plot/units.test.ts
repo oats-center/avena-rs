@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeCalibration } from '../calibration';
-import { describeChannelUnit } from './units';
+import { channelUnitInfo, describeChannelUnit } from './units';
 
 describe('describeChannelUnit', () => {
     it('labels an uncalibrated channel as raw volts whatever unit is configured', () => {
@@ -50,5 +50,21 @@ describe('describeChannelUnit', () => {
             expect(info.tag).toBe('calibrated: polynomial → unit not set');
             expect(info.warning).toContain('no unit');
         }
+    });
+});
+
+describe('channelUnitInfo', () => {
+    const settings = {
+        channels_enabled: [4, 7],
+        measurement_units: ['V', 'kPa'],
+        calibrations: { '7': { type: 'linear' as const, a: 2, b: 0, unit: 'kPa' } }
+    };
+    it('reads the calibration and the unit entry of the channel', () => {
+        expect(channelUnitInfo(settings, 7)).toEqual({ unit: 'kPa', calibrated: true, tag: 'calibrated → kPa' });
+        expect(channelUnitInfo(settings, 4).tag).toBe('raw volts');
+    });
+    it('reports raw volts before the config loads or for a channel that is not enabled', () => {
+        expect(channelUnitInfo(null, 1).unit).toBe('V');
+        expect(channelUnitInfo(settings, 1).calibrated).toBe(false);
     });
 });
