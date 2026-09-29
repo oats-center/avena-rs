@@ -427,7 +427,7 @@ running.
     <!-- Main Content -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <!-- Page Header -->
-        <div class="flex justify-between items-center mb-8">
+        <div class="flex flex-wrap justify-between items-center gap-4 mb-8">
             <div>
                 <h2 class="text-3xl font-bold mb-2">LabJack Configurations</h2>
                 <p class="text-base-content/70">Manage your LabJack devices and sensor settings</p>
