@@ -2,7 +2,7 @@
     import { onMount, onDestroy, untrack } from "svelte";
     import { page } from "$app/stores";
     import { connect, getKeyValue, getKeys, type NatsService } from "$lib/nats.svelte";
-    import { downloadExportViaNats, type ExportRequestPayload } from "$lib/exporter";
+    import { downloadExportViaNats, isExportCancelled, type ExportRequestPayload } from "$lib/exporter";
     import { normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
     import { archiveExportRequestSubject, liveLabJackChannelPattern, liveLabJackChannelSubject } from "$lib/subjects";
     import type { Subscription } from "@nats-io/nats-core";
@@ -286,10 +286,12 @@
     /** Maximum points kept in each live buffer. Set by {@link updateMaxDataPoints}. */
     let maxDataPoints = $state<number>(10000);
     let showExportModal = $state<boolean>(false);
-    /** Export start as a `datetime-local` value (`YYYY-MM-DDTHH:mm`, local time). */
+    /** Export start as a `datetime-local` value (`YYYY-MM-DDTHH:mm:ss`, local time). */
     let exportStart = $state<string>("");
-    /** Export end as a `datetime-local` value (`YYYY-MM-DDTHH:mm`, local time). */
+    /** Export end as a `datetime-local` value (`YYYY-MM-DDTHH:mm:ss`, local time). */
     let exportEnd = $state<string>("");
+    /** Aborts the running export; `null` when none runs. */
+    let exportAbort: AbortController | null = null;
     let exportChannels = $state<Set<number>>(new Set());
     let exportError = $state<string>("");
     /** Exporter's missing-channel notice. Cleared when the download finishes. */
@@ -1299,21 +1301,50 @@
         window.location.href = "/labjacks";
     }
 
+    /** Default length of the export range, ending now, in ms. */
+    const DEFAULT_EXPORT_RANGE_MS = 2 * 60 * 1000;
+
     /**
-     * Formats a date for a `datetime-local` input, in local time.
+     * Formats a date for a `datetime-local` input, in local time, to the second.
      *
      * @param date - Date to format.
-     * @returns `YYYY-MM-DDTHH:mm`.
+     * @returns `YYYY-MM-DDTHH:mm:ss`.
      */
     function toLocalInputValue(date: Date): string {
         const pad = (value: number) => value.toString().padStart(2, "0");
-        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+    }
+
+    /**
+     * Describes the browser's time zone, in which the export times are entered.
+     *
+     * @returns E.g. `Europe/Berlin (UTC+02:00)`.
+     */
+    function describeLocalTimeZone(): string {
+        const name = Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
+        const offsetMin = -new Date().getTimezoneOffset();
+        const sign = offsetMin >= 0 ? "+" : "-";
+        const abs = Math.abs(offsetMin);
+        const pad = (value: number) => value.toString().padStart(2, "0");
+        return `${name} (UTC${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)})`;
+    }
+
+    /**
+     * Shows an export input value as UTC, the time the request is sent in.
+     *
+     * @param value - `datetime-local` value.
+     * @returns E.g. `2026-09-28 12:00:05 UTC`, or `""` when the value is not a date.
+     */
+    function formatUtcPreview(value: string): string {
+        const date = new Date(value);
+        if (!value || isNaN(date.getTime())) return "";
+        return `${date.toISOString().slice(0, 19).replace("T", " ")} UTC`;
     }
 
     /**
      * Converts a `datetime-local` value, read as local time, to an RFC 3339 UTC string.
      *
-     * @param value - Value such as `2025-01-31T14:05`.
+     * @param value - Value such as `2025-01-31T14:05` or `2025-01-31T14:05:30`.
      * @returns The time from `Date.toISOString()`, e.g. `2025-01-31T19:05:00.000Z` in UTC-5.
      * @throws Error if the value is not a valid date.
      */
@@ -1326,15 +1357,16 @@
     }
 
     /**
-     * Opens the export form with all enabled channels and the last five minutes selected.
+     * Opens the export form with the plotted channels (all enabled channels if none is
+     * plotted) and the last {@link DEFAULT_EXPORT_RANGE_MS} selected.
      */
     function openExportModal() {
         if (!labjackConfig) return;
-        const defaults = new Set(labjackConfig.sensor_settings.channels_enabled);
-        exportChannels = defaults;
+        const plotted = getRenderablePlotChannels();
+        exportChannels = new Set(plotted.length > 0 ? plotted : labjackConfig.sensor_settings.channels_enabled);
         const now = new Date();
         exportEnd = toLocalInputValue(now);
-        const start = new Date(now.getTime() - 5 * 60 * 1000);
+        const start = new Date(now.getTime() - DEFAULT_EXPORT_RANGE_MS);
         exportStart = toLocalInputValue(start);
         exportError = "";
         exportWarning = "";
@@ -1345,13 +1377,12 @@
     }
 
     /**
-     * Hides the export form.
-     *
-     * It does not cancel a running download. The Cancel button is disabled during a
-     * download, but the backdrop still calls this, and the file is still saved when the
-     * download finishes.
+     * Closes the export form, cancelling a running download first: the download stops
+     * reading frames, releases its subscription, and nothing is saved.
      */
     function closeExportModal() {
+        exportAbort?.abort();
+        exportAbort = null;
         showExportModal = false;
         exporting = false;
         exportWarning = "";
@@ -1439,6 +1470,8 @@
         exportWarning = "";
         exportProgress = 0;
         exportTotal = null;
+        const abort = new AbortController();
+        exportAbort = abort;
 
         try {
             const payload: ExportRequestPayload = {
@@ -1453,6 +1486,7 @@
             };
 
             const result = await downloadExportViaNats(natsService, archiveExportRequestSubject(labjackConfig), payload, {
+                signal: abort.signal,
                 onProgress: (received) => {
                     exportProgress = received;
                 },
@@ -1484,10 +1518,15 @@
             showExportModal = false;
             exportWarning = "";
         } catch (err) {
+            // A cancelled export was closed by the user; there is nothing to report.
+            if (isExportCancelled(err) || abort.signal.aborted) return;
             console.error("Export failed", err);
             exportError = err instanceof Error ? err.message : "Export failed";
         } finally {
-            exporting = false;
+            if (exportAbort === abort) {
+                exportAbort = null;
+                exporting = false;
+            }
         }
     }
 
@@ -1537,6 +1576,7 @@
             clearInterval(backgroundTimer);
             backgroundTimer = null;
         }
+        exportAbort?.abort();
         closeLiveConnection();
         scanQueue.clear();
     });
@@ -1577,7 +1617,11 @@ frozen trigger capture, axis settings and trigger state.
 Export: builds an `ExportRequestPayload` and calls `downloadExportViaNats` with subject
 `<root>.<site>.<box>.<source>.export.request` (from `archiveExportRequestSubject`).
 That helper streams the CSV in chunks and acknowledges each one; this page shows the
-progress and saves the result through a temporary download link.
+progress and saves the result through a temporary download link. The form defaults to
+the plotted channels and the last two minutes, takes times to the second in the
+browser's time zone (shown in the form, with the UTC range sent), and Cancel Download
+aborts a running export: no more chunks are read or acknowledged, the reply
+subscription is released and nothing is saved.
 -->
 <svelte:head>
     <title>Real-time Plots - LabJack {assetNumber} - Avena-OTR</title>
@@ -2111,6 +2155,7 @@ progress and saves the result through a temporary download link.
                                         id="export-start"
                                         type="datetime-local"
                                         class="input input-bordered"
+                                        step="1"
                                         bind:value={exportStart}
                                         max={exportEnd || undefined}
                                         required
@@ -2125,6 +2170,7 @@ progress and saves the result through a temporary download link.
                                         id="export-end"
                                         type="datetime-local"
                                         class="input input-bordered"
+                                        step="1"
                                         bind:value={exportEnd}
                                         min={exportStart || undefined}
                                         required
@@ -2132,6 +2178,13 @@ progress and saves the result through a temporary download link.
                                     />
                                 </div>
                             </div>
+
+                            <p class="text-sm text-base-content/70">
+                                Times are in your browser's time zone, {describeLocalTimeZone()}.
+                                {#if formatUtcPreview(exportStart) && formatUtcPreview(exportEnd)}
+                                    Requested range: {formatUtcPreview(exportStart)} to {formatUtcPreview(exportEnd)}.
+                                {/if}
+                            </p>
 
                             <div>
                                 <h4 class="font-semibold text-base-content mb-2">Channels</h4>
@@ -2184,16 +2237,15 @@ progress and saves the result through a temporary download link.
                                     type="button"
                                     class="btn btn-ghost"
                                     onclick={closeExportModal}
-                                    disabled={exporting}
                                 >
-                                    Cancel
+                                    {exporting ? "Cancel Download" : "Cancel"}
                                 </button>
                                 <button
                                     type="submit"
                                     class="btn btn-warning"
                                     disabled={exporting}
                                 >
-                                    {exporting ? "Preparing..." : "Start Download"}
+                                    {exporting ? "Downloading..." : "Start Download"}
                                 </button>
                             </div>
                         </form>
@@ -2202,9 +2254,12 @@ progress and saves the result through a temporary download link.
                         class="modal-backdrop bg-black/40"
                         role="button"
                         tabindex="0"
-                        onclick={closeExportModal}
+                        onclick={() => {
+                            // While downloading, only the Cancel Download button stops it.
+                            if (!exporting) closeExportModal();
+                        }}
                         onkeydown={(event) => {
-                            if (event.key === "Escape" || event.key === "Enter" || event.key === " ") {
+                            if (!exporting && (event.key === "Escape" || event.key === "Enter" || event.key === " ")) {
                                 event.preventDefault();
                                 closeExportModal();
                             }

@@ -76,6 +76,31 @@ export interface ExportStreamOptions {
    * every message. Default: 600000 (10 minutes).
    */
   idleTimeoutMs?: number;
+  /**
+   * Cancels the download when aborted: no further frames are read or acknowledged,
+   * the reply subscription is released, and the call rejects with an error named
+   * `AbortError` (see {@link isExportCancelled}). The exporter then stops on its own
+   * when its acks time out; the protocol has no cancel message.
+   */
+  signal?: AbortSignal;
+}
+
+/**
+ * Tells whether an error from {@link downloadExportViaNats} means the caller
+ * cancelled the download through `signal`.
+ *
+ * @param err - Rejection value.
+ * @returns `true` for the cancellation error.
+ */
+export function isExportCancelled(err: unknown): boolean {
+  return err instanceof Error && err.name === "AbortError";
+}
+
+/** Builds the error {@link downloadExportViaNats} rejects with when cancelled. */
+function cancelledError(): Error {
+  const err = new Error("Export cancelled");
+  err.name = "AbortError";
+  return err;
 }
 
 /** Body of a `summary` frame: bytes sent and channels with no rows. */
@@ -177,8 +202,9 @@ function isErrorFrame(frame: Frame): frame is ErrorFrame {
  * @returns Resolves to the assembled CSV, its file name, size and missing channels.
  * @throws If publishing fails, no exporter is listening on `requestSubject`, the
  *   server returns another error status, a non-chunk frame is not valid JSON, the
- *   exporter sends an `error` frame, no message arrives within the idle timeout, or the reply
- *   subscription ends before a `complete` frame.
+ *   exporter sends an `error` frame, no message arrives within the idle timeout, the reply
+ *   subscription ends before a `complete` frame, or `options.signal` is aborted (an
+ *   error named `AbortError`).
  *
  * @example
  * ```ts
@@ -197,6 +223,8 @@ export async function downloadExportViaNats(
   payload: ExportRequestPayload,
   options: ExportStreamOptions = {}
 ): Promise<ExportStreamResult> {
+  const signal = options.signal;
+  if (signal?.aborted) throw cancelledError();
   const inbox = createInbox();
   const ackSubject = createInbox();
   const sub = nats.connection.subscribe(inbox);
@@ -234,6 +262,16 @@ export async function downloadExportViaNats(
     }
   }, idleTimeoutMs);
 
+  // Cancelling unsubscribes, which ends the `for await` loop below.
+  const onAbort = () => {
+    try {
+      sub.unsubscribe();
+    } catch {
+      // Subscription may already be closed.
+    }
+  };
+  signal?.addEventListener("abort", onAbort, { once: true });
+
   try {
     nats.connection.publish(
       requestSubject,
@@ -247,6 +285,7 @@ export async function downloadExportViaNats(
     }
 
     for await (const msg of sub) {
+      if (signal?.aborted) throw cancelledError();
       resetIdleTimeout();
 
       // The server answers a publish with a reply subject by a status-only message
@@ -276,6 +315,8 @@ export async function downloadExportViaNats(
           pendingBytes = 0;
         }
         // One ack per stored chunk; the exporter waits for these every eight chunks.
+        // A cancelled download sends no more acks.
+        if (signal?.aborted) throw cancelledError();
         nats.connection.publish(ackSubject);
         if (typeof nats.connection.flush === "function") {
           await nats.connection.flush();
@@ -323,11 +364,13 @@ export async function downloadExportViaNats(
       }
     }
 
+    if (signal?.aborted) throw cancelledError();
     if (timedOut) {
       throw new Error(`Timed out after ${Math.round(idleTimeoutMs / 1000)} seconds without NATS export data`);
     }
     throw new Error("NATS export response ended before completion");
   } finally {
+    signal?.removeEventListener("abort", onAbort);
     clearTimeout(timeout);
     try {
       sub.unsubscribe();
