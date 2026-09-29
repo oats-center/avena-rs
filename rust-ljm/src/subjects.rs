@@ -96,6 +96,56 @@ pub fn pad_asset(n: u32) -> String {
     format!("{n:03}")
 }
 
+/// Treats an empty identity field the same as a missing one.
+///
+/// The webapp builds the same subjects with JavaScript `||` fallbacks, where an empty
+/// string counts as missing. Doing the same here keeps both sides on one subject when
+/// a config has `""` in an identity field.
+///
+/// # Arguments
+///
+/// * `value` - Identity field from the config or environment.
+///
+/// # Returns
+///
+/// `None` if `value` is `None` or an empty string, otherwise `value`.
+fn present(value: Option<&str>) -> Option<&str> {
+    value.filter(|v| !v.is_empty())
+}
+
+/// Picks the source token shared by every structured subject.
+///
+/// The first of `source_id`, `labjack_name` and `asset<NNN>` that is present is used,
+/// passed through [`sanitize_token`]. Live channel subjects, the stream wildcard and
+/// the export request subject all go through this function, so a config without
+/// identity fields still produces a stream that matches its own channels and an
+/// export subject that the webapp can find. The webapp (`webapp/src/lib/subjects.ts`)
+/// uses the same order. `unknown-source` is only used when there is no asset number
+/// either, which can happen for the exporter when neither `SOURCE_ID`, `LABJACK_NAME`
+/// nor `ASSET_NUMBER` is set.
+///
+/// # Arguments
+///
+/// * `source_id` - Configured source ID, if any.
+/// * `labjack_name` - LabJack name, if any.
+/// * `asset` - Asset number, if known.
+///
+/// # Examples
+///
+/// ```text
+/// (Some("i69-lj2"), Some("Unit A"), Some(42)) -> "i69-lj2"
+/// (None, Some("Unit A"), Some(42))            -> "unit-a"
+/// (None, None, Some(42))                      -> "asset042"
+/// (None, None, None)                          -> "unknown-source"
+/// ```
+fn source_token(source_id: Option<&str>, labjack_name: Option<&str>, asset: Option<u32>) -> String {
+    match (present(source_id).or(present(labjack_name)), asset) {
+        (Some(source), _) => sanitize_token(source),
+        (None, Some(asset)) => format!("asset{}", pad_asset(asset)),
+        (None, None) => "unknown-source".to_string(),
+    }
+}
+
 /// Decides whether a config should use the structured subject namespace.
 ///
 /// # Arguments
@@ -107,25 +157,28 @@ pub fn pad_asset(n: u32) -> String {
 ///
 /// # Returns
 ///
-/// `true` if the trimmed root is exactly `avenars` or any of the three IDs is `Some`
-/// (even an empty string). A LabJack name alone does not switch to the structured
-/// layout.
+/// `true` if the trimmed root is exactly `avenars` or any of the three IDs is set and
+/// not empty. A LabJack name alone does not switch to the structured layout.
 fn uses_structured_namespace(
     nats_subject: &str,
     site_id: Option<&str>,
     box_id: Option<&str>,
     source_id: Option<&str>,
 ) -> bool {
-    nats_subject.trim() == "avenars" || site_id.is_some() || box_id.is_some() || source_id.is_some()
+    nats_subject.trim() == "avenars"
+        || present(site_id).is_some()
+        || present(box_id).is_some()
+        || present(source_id).is_some()
 }
 
 /// Builds the live-data subject for one LabJack channel.
 ///
 /// Legacy configs use `<root>.<asset>.data.<channel>`, with the root used as given.
 /// Structured configs use `<root>.<site>.<box>.<source>.live.<channel>`, with every
-/// token passed through [`sanitize_token`]. In the structured layout a missing site or
-/// box becomes `unknown-site` or `unknown-box`, and the source is the first of
-/// `source_id`, `labjack_name` or `asset<NNN>` that is set.
+/// token passed through [`sanitize_token`]. In the structured layout a missing or empty
+/// site or box becomes `unknown-site` or `unknown-box`, and the source is chosen by
+/// [`source_token`]: the first of `source_id`, `labjack_name` or `asset<NNN>` that is
+/// set.
 ///
 /// # Arguments
 ///
@@ -169,13 +222,9 @@ pub fn live_labjack_channel_subject(
     }
 
     let root = sanitize_token(nats_subject);
-    let site_id = sanitize_token(site_id.unwrap_or("unknown-site"));
-    let box_id = sanitize_token(box_id.unwrap_or("unknown-box"));
-    let source = source_id
-        .or(labjack_name)
-        .map(str::to_string)
-        .unwrap_or_else(|| format!("asset{}", pad_asset(asset)));
-    let source_id = sanitize_token(&source);
+    let site_id = sanitize_token(present(site_id).unwrap_or("unknown-site"));
+    let box_id = sanitize_token(present(box_id).unwrap_or("unknown-box"));
+    let source_id = source_token(source_id, labjack_name, Some(asset));
 
     let _ = source_type;
 
@@ -188,17 +237,15 @@ pub fn live_labjack_channel_subject(
 /// Builds the JetStream subject wildcard for all live channels from one source.
 ///
 /// Legacy configs get `<root>.*.data.*`, which matches every asset under the root.
-/// Structured configs get `<root>.<site>.<box>.<source>.live.*`, sanitized the same way
-/// as [`live_labjack_channel_subject`].
-///
-/// The structured source fallback differs from [`live_labjack_channel_subject`]: when
-/// neither `source_id` nor `labjack_name` is set this returns `unknown-source`, while
-/// the channel subject falls back to `asset<NNN>`. Such a wildcard does not match the
-/// channel subjects built from the same config.
+/// Structured configs get `<root>.<site>.<box>.<source>.live.*`, with the same tokens
+/// and fallbacks as [`live_labjack_channel_subject`], so the wildcard always matches
+/// the channel subjects built from the same config.
 ///
 /// # Arguments
 ///
 /// * `nats_subject` - Subject root, for example `avenabox` or `avenars`.
+/// * `asset` - Asset number, the last-resort source token in the structured layout.
+///   Not used in the legacy layout, whose wildcard covers every asset.
 /// * `site_id` - Site ID for the structured layout.
 /// * `box_id` - Box ID for the structured layout.
 /// * `labjack_name` - LabJack name, used as the source when `source_id` is `None`.
@@ -208,13 +255,16 @@ pub fn live_labjack_channel_subject(
 /// # Examples
 ///
 /// ```text
-/// ("avenabox", None, None, None, None, None)
+/// ("avenabox", 1456, None, None, None, None, None)
 ///     -> "avenabox.*.data.*"
-/// ("avenars", Some("i69"), Some("i69-mu1"), Some("i69-lj2"), None, None)
+/// ("avenars", 1456, Some("i69"), Some("i69-mu1"), Some("i69-lj2"), None, None)
 ///     -> "avenars.i69.i69-mu1.i69-lj2.live.*"
+/// ("avenars", 42, None, None, None, None, None)
+///     -> "avenars.unknown-site.unknown-box.asset042.live.*"
 /// ```
 pub fn live_labjack_stream_subject(
     nats_subject: &str,
+    asset: u32,
     site_id: Option<&str>,
     box_id: Option<&str>,
     labjack_name: Option<&str>,
@@ -226,9 +276,9 @@ pub fn live_labjack_stream_subject(
     }
 
     let root = sanitize_token(nats_subject);
-    let site_id = sanitize_token(site_id.unwrap_or("unknown-site"));
-    let box_id = sanitize_token(box_id.unwrap_or("unknown-box"));
-    let source_id = sanitize_token(source_id.or(labjack_name).unwrap_or("unknown-source"));
+    let site_id = sanitize_token(present(site_id).unwrap_or("unknown-site"));
+    let box_id = sanitize_token(present(box_id).unwrap_or("unknown-box"));
+    let source_id = source_token(source_id, labjack_name, Some(asset));
 
     let _ = source_type;
 
@@ -238,35 +288,42 @@ pub fn live_labjack_stream_subject(
 /// Builds the NATS request subject that the exporter serves archive exports on.
 ///
 /// Always uses the structured layout `<root>.<site>.<box>.<source>.export.request`,
-/// whatever the root, with every token passed through [`sanitize_token`]. Missing IDs
-/// become `unknown-site`, `unknown-box` and `unknown-source`. Unlike the live subjects,
-/// there is no fallback to a LabJack name or asset number.
+/// whatever the root, with every token passed through [`sanitize_token`]. Missing or
+/// empty IDs become `unknown-site` and `unknown-box`, and the source is chosen by
+/// [`source_token`] exactly as for the live subjects, so the webapp reaches the
+/// exporter with the subject it derives from the source's config.
 ///
 /// # Arguments
 ///
 /// * `nats_subject` - Subject root, for example `avenars`.
+/// * `asset` - Asset number, the last-resort source token, if known.
 /// * `site_id` - Site ID.
 /// * `box_id` - Box ID.
+/// * `labjack_name` - LabJack name, used as the source when `source_id` is not set.
 /// * `source_type` - Accepted for config compatibility; not used in the subject.
 /// * `source_id` - Source ID.
 ///
 /// # Examples
 ///
 /// ```text
-/// ("avenars", Some("i69"), Some("i69-mu1"), Some("labjack"), Some("i69-lj2"))
+/// ("avenars", None, Some("i69"), Some("i69-mu1"), None, Some("labjack"), Some("i69-lj2"))
 ///     -> "avenars.i69.i69-mu1.i69-lj2.export.request"
+/// ("avenars", Some(42), None, None, None, None, None)
+///     -> "avenars.unknown-site.unknown-box.asset042.export.request"
 /// ```
 pub fn archive_export_request_subject(
     nats_subject: &str,
+    asset: Option<u32>,
     site_id: Option<&str>,
     box_id: Option<&str>,
+    labjack_name: Option<&str>,
     source_type: Option<&str>,
     source_id: Option<&str>,
 ) -> String {
     let root = sanitize_token(nats_subject);
-    let site = sanitize_token(site_id.unwrap_or("unknown-site"));
-    let box_id = sanitize_token(box_id.unwrap_or("unknown-box"));
-    let source_id = sanitize_token(source_id.unwrap_or("unknown-source"));
+    let site = sanitize_token(present(site_id).unwrap_or("unknown-site"));
+    let box_id = sanitize_token(present(box_id).unwrap_or("unknown-box"));
+    let source_id = source_token(source_id, labjack_name, asset);
 
     let _ = source_type;
 
@@ -317,7 +374,7 @@ mod tests {
             "avenabox.1456.data.ch11"
         );
         assert_eq!(
-            live_labjack_stream_subject("avenabox", None, None, None, None, None),
+            live_labjack_stream_subject("avenabox", 1456, None, None, None, None, None),
             "avenabox.*.data.*"
         );
     }
@@ -341,6 +398,7 @@ mod tests {
         assert_eq!(
             live_labjack_stream_subject(
                 "avenars",
+                1456,
                 Some("i69"),
                 Some("i69-mu1"),
                 Some("i69-lj2"),
@@ -352,12 +410,125 @@ mod tests {
         assert_eq!(
             archive_export_request_subject(
                 "avenars",
+                Some(1456),
                 Some("i69"),
                 Some("i69-mu1"),
+                Some("Unit A"),
                 Some("labjack"),
                 Some("i69-lj2"),
             ),
             "avenars.i69.i69-mu1.i69-lj2.export.request"
+        );
+    }
+
+    /// Returns whether a NATS subject matches a pattern with `*` and `>` wildcards.
+    fn nats_subject_matches(pattern: &str, subject: &str) -> bool {
+        let mut pattern = pattern.split('.');
+        let mut subject = subject.split('.');
+        loop {
+            match (pattern.next(), subject.next()) {
+                (Some(">"), Some(_)) => return true,
+                (Some("*"), Some(_)) => {}
+                (Some(p), Some(s)) if p == s => {}
+                (None, None) => return true,
+                _ => return false,
+            }
+        }
+    }
+
+    /// Without identity fields, the stream wildcard still covers every channel subject
+    /// and all three subjects share the `asset<NNN>` source token.
+    #[test]
+    fn stream_wildcard_matches_channels_without_identity_fields() {
+        let stream = live_labjack_stream_subject("avenars", 42, None, None, None, None, None);
+        assert_eq!(stream, "avenars.unknown-site.unknown-box.asset042.live.*");
+        for channel in [0, 3, 11, 120] {
+            let live =
+                live_labjack_channel_subject("avenars", 42, channel, None, None, None, None, None);
+            assert!(
+                nats_subject_matches(&stream, &live),
+                "{stream} should match {live}"
+            );
+        }
+        assert_eq!(
+            archive_export_request_subject("avenars", Some(42), None, None, None, None, None),
+            "avenars.unknown-site.unknown-box.asset042.export.request"
+        );
+    }
+
+    /// Empty identity fields fall back the same way as missing ones, like the webapp.
+    #[test]
+    fn empty_identity_fields_fall_back_like_missing_ones() {
+        let stream =
+            live_labjack_stream_subject("avenars", 7, Some(""), Some(""), Some(""), None, Some(""));
+        let live = live_labjack_channel_subject(
+            "avenars",
+            7,
+            5,
+            Some(""),
+            Some(""),
+            Some(""),
+            None,
+            Some(""),
+        );
+        let export = archive_export_request_subject(
+            "avenars",
+            Some(7),
+            Some(""),
+            Some(""),
+            Some(""),
+            None,
+            Some(""),
+        );
+        assert_eq!(stream, "avenars.unknown-site.unknown-box.asset007.live.*");
+        assert_eq!(live, "avenars.unknown-site.unknown-box.asset007.live.ch05");
+        assert!(nats_subject_matches(&stream, &live));
+        assert_eq!(
+            export,
+            "avenars.unknown-site.unknown-box.asset007.export.request"
+        );
+
+        // With only a LabJack name, every subject uses it as the source.
+        let stream =
+            live_labjack_stream_subject("avenars", 7, None, None, Some("Unit A"), None, None);
+        let live =
+            live_labjack_channel_subject("avenars", 7, 5, None, None, Some("Unit A"), None, None);
+        let export = archive_export_request_subject(
+            "avenars",
+            Some(7),
+            None,
+            None,
+            Some("Unit A"),
+            None,
+            None,
+        );
+        assert!(nats_subject_matches(&stream, &live));
+        assert_eq!(
+            export,
+            "avenars.unknown-site.unknown-box.unit-a.export.request"
+        );
+
+        // An empty legacy config stays in the legacy layout.
+        assert_eq!(
+            live_labjack_channel_subject("avenabox", 7, 5, Some(""), None, None, None, None),
+            "avenabox.007.data.ch05"
+        );
+    }
+
+    /// The exporter falls back to `unknown-source` only when it has no asset number.
+    #[test]
+    fn export_subject_without_any_source_uses_unknown_source() {
+        assert_eq!(
+            archive_export_request_subject(
+                "avenars",
+                None,
+                Some("i69"),
+                Some("i69-mu1"),
+                None,
+                None,
+                None
+            ),
+            "avenars.i69.i69-mu1.unknown-source.export.request"
         );
     }
 }

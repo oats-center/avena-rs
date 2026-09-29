@@ -1,155 +1,37 @@
 <script lang="ts">
-    import { onMount, onDestroy } from "svelte";
+    import { onMount, onDestroy, untrack } from "svelte";
     import { page } from "$app/stores";
-    import { connect, getKeyValue, getKeys } from "$lib/nats.svelte";
-    import { downloadExportViaNats, type ExportRequestPayload } from "$lib/exporter";
-    import { applyCalibration, normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
+    import { connect, getKeyValue, getKeys, type NatsService } from "$lib/nats.svelte";
+    import { downloadExportViaNats, isExportCancelled, type ExportRequestPayload } from "$lib/exporter";
+    import { normalizeCalibration } from "$lib/calibration";
+    import { normalizeLabJackConfig, type LabJackConfig } from "$lib/labjack-config";
     import { archiveExportRequestSubject, liveLabJackChannelPattern, liveLabJackChannelSubject } from "$lib/subjects";
+    import type { Subscription } from "@nats-io/nats-core";
     import RealTimePlot from "$lib/components/RealTimePlot.svelte";
+    import { parseAssetNumberParam } from "$lib/plot/route";
+    import { applyAxisLimitInput, parseFiniteInput, type AxisLimits } from "$lib/plot/axis";
+    import { nextConnectionState, type LiveConnectionState } from "$lib/plot/connection";
+    import { describeChannelUnit, type ChannelUnitInfo } from "$lib/plot/units";
     import {
         FlatBufferParser
     } from "$lib/flatbuffer-parser";
+    import {
+        ScanMessageQueue,
+        createLiveChannel,
+        drainChannelQueue,
+        snapshotNewest,
+        type DataPoint,
+        type LiveChannel
+    } from "$lib/plot/stream";
+    import {
+        advanceTrigger,
+        getTriggerWindows,
+        hasRequiredPreBuffer,
+        type TriggerCapture,
+        type TriggerSettings
+    } from "$lib/plot/trigger";
 
     
-    /** `sensor_settings` object of a LabJack config in KV. See the KV config reference. */
-    interface SensorSettings {
-        scans_per_read: number;
-        scan_rate_hz: number;
-        channels_enabled: number[];
-        gains: number;
-        data_formats: string[];
-        measurement_units: string[];
-        labjack_on_off: boolean;
-        calibrations?: Record<string, CalibrationSpec>;
-    }
-    
-    /**
-     * LabJack config document stored in KV bucket `avenabox` under
-     * `<site>.<box>.<source>.config`.
-     */
-    interface LabJackConfig {
-        labjack_name: string;
-        asset_number: number;
-        max_channels: number;
-        site_id?: string;
-        box_id?: string;
-        source_type?: string;
-        source_id?: string;
-        nats_subject: string;
-        nats_stream: string;
-        rotate_secs: number;
-        sensor_settings: SensorSettings;
-    }
-
-    /**
-     * Fallback values used by {@link normalizeSensorSettings} for missing or invalid
-     * fields.
-     */
-    const DEFAULT_SENSOR_SETTINGS: SensorSettings = {
-        scans_per_read: 200,
-        scan_rate_hz: 1000,
-        channels_enabled: [],
-        gains: 1,
-        data_formats: [],
-        measurement_units: [],
-        labjack_on_off: false,
-        calibrations: {}
-    };
-
-    /**
-     * Builds a complete sensor settings object from a raw `sensor_settings` value.
-     *
-     * Reads the older field names `scan_rate` (for `scans_per_read`) and `sampling_rate`
-     * (for `scan_rate_hz`) when the new ones are absent. Missing or non-finite numbers take
-     * the values in {@link DEFAULT_SENSOR_SETTINGS}. `data_formats` and `measurement_units`
-     * are padded with `"voltage"` and `"V"` to one entry per enabled channel. Arrays and
-     * `calibrations` are shallow copies.
-     *
-     * @param rawSensor - Parsed `sensor_settings` from KV. May be `undefined` or partial.
-     * @returns A new settings object with every field set.
-     */
-    function normalizeSensorSettings(rawSensor: any): SensorSettings {
-        const sensor: SensorSettings = {
-            scans_per_read: Number(
-                rawSensor?.scans_per_read ?? rawSensor?.scan_rate ?? DEFAULT_SENSOR_SETTINGS.scans_per_read
-            ),
-            scan_rate_hz: Number(
-                rawSensor?.scan_rate_hz ?? rawSensor?.sampling_rate ?? DEFAULT_SENSOR_SETTINGS.scan_rate_hz
-            ),
-            channels_enabled: Array.isArray(rawSensor?.channels_enabled) ? [...rawSensor.channels_enabled] : [],
-            gains: Number(rawSensor?.gains ?? DEFAULT_SENSOR_SETTINGS.gains),
-            data_formats: Array.isArray(rawSensor?.data_formats) ? [...rawSensor.data_formats] : [],
-            measurement_units: Array.isArray(rawSensor?.measurement_units) ? [...rawSensor.measurement_units] : [],
-            labjack_on_off: Boolean(rawSensor?.labjack_on_off),
-            calibrations:
-                rawSensor?.calibrations && typeof rawSensor.calibrations === "object"
-                    ? { ...rawSensor.calibrations }
-                    : {}
-        };
-
-        if (!Number.isFinite(sensor.scans_per_read)) sensor.scans_per_read = DEFAULT_SENSOR_SETTINGS.scans_per_read;
-        if (!Number.isFinite(sensor.scan_rate_hz)) sensor.scan_rate_hz = DEFAULT_SENSOR_SETTINGS.scan_rate_hz;
-        if (!Number.isFinite(sensor.gains)) sensor.gains = DEFAULT_SENSOR_SETTINGS.gains;
-        while (sensor.data_formats.length < sensor.channels_enabled.length) sensor.data_formats.push("voltage");
-        while (sensor.measurement_units.length < sensor.channels_enabled.length) sensor.measurement_units.push("V");
-
-        return sensor;
-    }
-
-    /**
-     * Fills in defaults for a config read from KV.
-     *
-     * Defaults: `labjack_name` `"unknown"`, `asset_number` 0, `max_channels` 8, empty
-     * `site_id` and `box_id`, `source_type` `"labjack"`, `source_id` falls back to
-     * `labjack_name`, `nats_subject` `"avenars"`, `nats_stream` `"labjacks"`, `rotate_secs`
-     * 60.
-     *
-     * @param raw - Parsed JSON value of a `*.*.*.config` key.
-     * @returns The normalized config, or `null` when `raw` is not an object.
-     */
-    function normalizeLabJackConfig(raw: any): LabJackConfig | null {
-        if (!raw || typeof raw !== "object") return null;
-        const sensor = normalizeSensorSettings(raw.sensor_settings ?? {});
-
-        return {
-            labjack_name: raw.labjack_name ?? "unknown",
-            asset_number: Number(raw.asset_number ?? 0),
-            max_channels: Number(raw.max_channels ?? 8),
-            site_id: raw.site_id ?? "",
-            box_id: raw.box_id ?? "",
-            source_type: raw.source_type ?? "labjack",
-            source_id: raw.source_id ?? raw.labjack_name ?? "",
-            nats_subject: raw.nats_subject ?? "avenars",
-            nats_stream: raw.nats_stream ?? "labjacks",
-            rotate_secs: Number(raw.rotate_secs ?? 60),
-            sensor_settings: sensor
-        };
-    }
-    
-    /**
-     * One decoded, calibrated sample as stored in the rolling buffers and passed to
-     * `RealTimePlot`.
-     */
-    interface DataPoint {
-        /**
-         * Sample time in Unix milliseconds, from the `Scan` start time plus the sample
-         * interval.
-         */
-        timestamp: number;
-        /** Sample value after the channel's calibration. */
-        value: number;
-        /**
-         * Source sample time in Unix milliseconds. This page sets it equal to
-         * `timestamp`.
-         */
-        sourceTimestamp?: number | null;
-        /**
-         * Browser time in Unix milliseconds when the NATS message arrived. Used for the
-         * lag readout.
-         */
-        receivedAt?: number;
-    }
-
     /**
      * Plot mode of one channel.
      *
@@ -159,20 +41,6 @@
      */
     type ChannelPlotMode = 'free_run' | 'trigger_normal' | 'trigger_single';
 
-    /** Trigger settings of one channel, edited in the Trigger Settings panel. */
-    interface TriggerSettings {
-        /** Edge that fires the trigger. */
-        type: 'rising' | 'falling';
-        /**
-         * Level compared with calibrated sample values, in the channel's calibrated unit.
-         */
-        threshold: number;
-        /** Share of the capture window before the trigger, in percent, 0 to 95. */
-        preTriggerPercent: number;
-        /** Length of the capture after the trigger, in seconds. */
-        postTriggerWindowSec: number;
-    }
-
     /** Axis settings of one channel, edited in the Mode & Axis panel. */
     interface AxisSettings {
         /** When true the plot scales Y to the data and ignores `yMin` and `yMax`. */
@@ -181,10 +49,10 @@
         yMin: number;
         /**
          * Upper Y limit when `autoY` is false. Kept above `yMin` by {@link
-         * updateAxisSettings}.
+         * commitAxisLimit}.
          */
         yMax: number;
-        /** Width of the X axis in seconds. At least 0.1. */
+        /** Width of the X axis in seconds. Above 0. */
         xWindowSec: number;
         /** Mirrors the X axis. */
         invertX: boolean;
@@ -193,63 +61,69 @@
     }
 
     /**
-     * Frozen capture around one trigger, grown as new samples arrive until it is
-     * complete.
-     */
-    interface TriggerCaptureState {
-        /** Samples from `triggerTime - preWindowSec` to `captureEndTime`. */
-        data: DataPoint[];
-        /** Time of the first sample past the threshold, in Unix milliseconds. */
-        triggerTime: number;
-        /**
-         * End of the capture window, `triggerTime + postWindowSec`, in Unix milliseconds.
-         */
-        captureEndTime: number;
-        /** Timestamp of the newest sample in `data`, in Unix milliseconds. */
-        lastCapturedTimestamp: number;
-        /** Pre-trigger window in seconds, fixed when the trigger fired. */
-        preWindowSec: number;
-        /** Post-trigger window in seconds, fixed when the trigger fired. */
-        postWindowSec: number;
-        /** True once samples up to `captureEndTime` have been captured. */
-        complete: boolean;
-    }
-
-    /** Newest undecoded live message for one channel, waiting for the next UI tick. */
-    interface PendingScanBatch {
-        /** Raw FlatBuffer `Scan` bytes from the NATS message. */
-        payload: ArrayBuffer | Uint8Array;
-        /** Browser time in Unix milliseconds when the message arrived. */
-        receivedAt: number;
-    }
-
-    /**
      * Samples the automatic X window aims to show; the window is this count divided by
      * the scan rate.
      */
     const TARGET_SAMPLES_PER_WINDOW = 1000;
     /**
-     * Period of the timer that decodes pending messages and copies buffers into reactive
-     * state, in ms.
+     * Messages taken from one channel's queue at a time. Channels take turns, so one
+     * busy channel cannot starve the other.
      */
-    const UI_SNAPSHOT_INTERVAL_MS = 100;
+    const DECODE_BATCH_MESSAGES = 50;
+    /**
+     * Decoding time allowed per animation frame, in ms. At least one batch per channel
+     * is always decoded; what does not fit stays queued, in order, for the next frame.
+     */
+    const FRAME_DECODE_BUDGET_MS = 8;
+    /** Decoding time allowed per run of the background timer, in ms. */
+    const BACKGROUND_DECODE_BUDGET_MS = 50;
+    /**
+     * Shortest time between two copies of the buffers into reactive state (and so
+     * between redraws), in ms: about 30 redraws per second at most.
+     */
+    const MIN_SNAPSHOT_INTERVAL_MS = 33;
+    /**
+     * Period of the fallback timer that keeps decoding while the browser runs no
+     * animation frames (a background tab), in ms.
+     */
+    const BACKGROUND_PUMP_INTERVAL_MS = 1000;
     /**
      * Live snapshots cover this multiple of the channel's X window, so the plot edge is
      * never empty.
      */
     const SNAPSHOT_OVERSCAN_FACTOR = 1.25;
+    /**
+     * Most undecoded messages held per channel between frames. Normally a frame finds at
+     * most a few; this is reached only if decoding stalls for a long time (for example a
+     * background tab whose timers the browser throttles). Then the oldest are dropped,
+     * counted, shown in Data Statistics, and appear as a gap in the plot.
+     */
+    const MAX_QUEUED_MESSAGES_PER_CHANNEL = 5000;
     
-    /** `asset_number` route parameter. 0 when missing; a non-number gives `NaN`. */
+    /** `asset_number` route parameter; `NaN` when it is not a non-negative integer. */
     let assetNumber = $state<number>(0);
     let labjackConfig = $state<LabJackConfig | null>(null);
     let loading = $state<boolean>(true);
     let error = $state<string>("");
     /**
-     * Connection used for live subscriptions and export requests. Closed in `onDestroy`.
+     * What the error banner offers: `retry` (loading again can succeed), `login` (no
+     * login data in this tab), or `none` (an invalid asset number, which cannot load).
+     */
+    let errorAction = $state<"retry" | "login" | "none">("retry");
+    /**
+     * Connection used for live subscriptions and export requests. Closed before each
+     * reload and in `onDestroy`.
      */
     let natsService: any = null;
-    /** One live-data subscription per enabled channel. */
-    let subscriptions: any[] = [];
+    /** Incremented by each {@link loadLabJackConfig} call; older calls see they are stale. */
+    let loadGeneration = 0;
+    /** Set in `onDestroy`, so a load that finishes afterwards closes its connection. */
+    let destroyed = false;
+    /**
+     * One live-data subscription per selected channel, kept in step with the selection
+     * by {@link syncChannelSubscriptions}.
+     */
+    let channelSubscriptions = new Map<number, Subscription>();
     /**
      * Copy of the live buffers the template reads, refreshed by {@link flushUiSnapshots}.
      */
@@ -261,11 +135,17 @@
     let frozenChannelData = $state<Map<number, DataPoint[]>>(new Map());
     let channelModes = $state<Map<number, ChannelPlotMode>>(new Map());
     let axisSettings = $state<Map<number, AxisSettings>>(new Map());
+    /** Per channel, why the last typed axis limit was rejected. */
+    let axisInputErrors = $state<Map<number, string>>(new Map());
     /**
-     * True after the live subscriptions were created. Does not track later connection
-     * loss.
+     * State of this page's NATS connection, kept up to date by {@link watchConnection}
+     * from the client's status events and `closed()` promise.
      */
-    let isConnected = $state<boolean>(false);
+    let connectionState = $state<LiveConnectionState>("disconnected");
+    /** Why the connection closed, shown in the banner when `disconnected` after a loss. */
+    let connectionLostReason = $state<string>("");
+    /** True while the connection is up and the live subscriptions exist. */
+    let isConnected = $derived(connectionState === "connected");
     let flatBufferParser = new FlatBufferParser();
     let triggerSettings = $state<Map<number, TriggerSettings>>(new Map());
     /** Per channel, true while a trigger capture is held. */
@@ -281,13 +161,15 @@
      */
     let channelPrebufferReady = $state<Map<number, boolean>>(new Map());
     /** Per channel, the current trigger capture, if any. */
-    let channelTriggerCaptures = $state<Map<number, TriggerCaptureState>>(new Map());
-    /**
-     * Browser time updated every tick; used in {@link getPlotConfig} when no capture
-     * state exists.
-     */
-    let uiNow = $state<number>(Date.now());
-    let uiNowTimer: ReturnType<typeof setInterval> | null = null;
+    let channelTriggerCaptures = $state<Map<number, TriggerCapture>>(new Map());
+    /** Pending `requestAnimationFrame` of the decode and redraw loop. */
+    let frameHandle = 0;
+    /** Fallback timer that decodes while no animation frames run. */
+    let backgroundTimer: ReturnType<typeof setInterval> | null = null;
+    /** `performance.now()` of the last decode pass. */
+    let lastPumpAt = 0;
+    /** `performance.now()` of the last {@link flushUiSnapshots}. */
+    let lastFlushAt = 0;
     /**
      * Automatic X window in seconds, from {@link deriveAutoTimeWindowSec}; the default
      * for new channels.
@@ -296,10 +178,12 @@
     /** Maximum points kept in each live buffer. Set by {@link updateMaxDataPoints}. */
     let maxDataPoints = $state<number>(10000);
     let showExportModal = $state<boolean>(false);
-    /** Export start as a `datetime-local` value (`YYYY-MM-DDTHH:mm`, local time). */
+    /** Export start as a `datetime-local` value (`YYYY-MM-DDTHH:mm:ss`, local time). */
     let exportStart = $state<string>("");
-    /** Export end as a `datetime-local` value (`YYYY-MM-DDTHH:mm`, local time). */
+    /** Export end as a `datetime-local` value (`YYYY-MM-DDTHH:mm:ss`, local time). */
     let exportEnd = $state<string>("");
+    /** Aborts the running export; `null` when none runs. */
+    let exportAbort: AbortController | null = null;
     let exportChannels = $state<Set<number>>(new Set());
     let exportError = $state<string>("");
     /** Exporter's missing-channel notice. Cleared when the download finishes. */
@@ -310,42 +194,42 @@
     /** Final size in bytes. Set only after the download completes; `null` while it runs. */
     let exportTotal = $state<number | null>(null);
     /**
-     * Rolling live buffers, one per channel. Not reactive: they are changed in place on
-     * every message and copied into {@link channelData} once per tick.
+     * Rolling live buffers and stream state, one per channel. Not reactive: they are
+     * changed in place on every message and copied into {@link channelData} when they change
+     * (at most about 30 times a second). Buffers are sorted by sample time with no duplicates (see `$lib/plot/stream`).
      */
-    let channelBuffers = new Map<number, DataPoint[]>();
+    let liveChannels = new Map<number, LiveChannel>();
     /**
      * Frozen trigger captures, one per channel. Not reactive; copied into {@link
      * frozenChannelData}.
      */
     let frozenChannelBuffers = new Map<number, DataPoint[]>();
     /**
-     * Newest undecoded message per channel. A message that arrives before the previous one
-     * was decoded replaces it, so at most one message per channel is plotted per tick.
+     * Every received, not yet decoded message per selected channel, in arrival order.
+     * Drained in order by {@link processPendingVisualizationBatches}.
      */
-    let pendingScanBatches = new Map<number, PendingScanBatch>();
+    let scanQueue = new ScanMessageQueue(MAX_QUEUED_MESSAGES_PER_CHANNEL);
+    /**
+     * Per-channel stream counters shown in Data Statistics: messages dropped because the
+     * queue overflowed, gaps (missing time between messages), timeline resets, samples
+     * skipped as duplicates, and undecodable payloads.
+     */
+    let channelStreamStatus = $state<Map<number, { dropped: number; gaps: number; resets: number; skipped: number; decodeErrors: number }>>(new Map());
     /** Channels chosen for plotting, at most two. Only these are decoded. */
     let selectedPlotChannels = $state<Set<number>>(new Set());
-    /**
-     * Channels whose card is on or near the screen. Kept by {@link
-     * observeChannelVisibility}; not read elsewhere.
-     */
-    let visibleChannels = $state<Set<number>>(new Set());
     /** True when buffers changed since the last {@link flushUiSnapshots}. */
     let uiSnapshotDirty = false;
     
     /**
-     * Reads `asset_number` and `key` from the URL and loads the config when the asset number
-     * is positive. Runs again when the page store changes.
+     * Reads `asset_number` and `key` from the URL and loads the config; an asset number
+     * that is not a non-negative integer is reported as an error by
+     * {@link loadLabJackConfig}. Runs again when the page store changes.
      */
     $effect(() => {
-        const nextAssetNumber = parseInt($page.params.asset_number || '0');
+        const nextAssetNumber = parseAssetNumberParam($page.params.asset_number);
         const nextConfigKey = $page.url.searchParams.get('key')?.trim() || "";
-        assetNumber = nextAssetNumber;
-        if (nextAssetNumber > 0) {
-            console.log("Loading plot config", { assetNumber: nextAssetNumber, key: nextConfigKey });
-            loadLabJackConfig();
-        }
+        assetNumber = nextAssetNumber ?? Number.NaN;
+        untrack(() => loadLabJackConfig());
     });
 
     /**
@@ -373,7 +257,7 @@
      *
      * The window is the largest of: twice {@link timeWindow}, twice each channel's X window
      * (at least 0.1 s), and each channel's pre plus post trigger window. It is multiplied by
-     * the scan rate. Then trims the live buffers and marks the snapshot dirty. Does nothing
+     * the scan rate, plus 10 % and one read of headroom. Then trims the live buffers and marks the snapshot dirty. Does nothing
      * before the config is loaded.
      */
     function updateMaxDataPoints() {
@@ -390,10 +274,13 @@
             requiredSeconds = Math.max(requiredSeconds, windows.preWindowSec + windows.postWindowSec);
         }
 
-        maxDataPoints = Math.ceil(sr * requiredSeconds);
+        // 10 % and one read of headroom: the actual scan rate can be slightly above the
+        // configured one, and gap markers take a slot each. Without it a trigger capture
+        // could find the start of its pre-trigger window already trimmed.
+        const scansPerRead = Math.max(1, labjackConfig.sensor_settings.scans_per_read || 1);
+        maxDataPoints = Math.ceil(sr * requiredSeconds * 1.1) + scansPerRead;
         trimAllChannelBuffers();
         markUiSnapshotDirty();
-        console.log(`Max data points in rolling buffer: ${maxDataPoints}`);
     }
 
     /**
@@ -416,18 +303,7 @@
         return Math.max(0.05, TARGET_SAMPLES_PER_WINDOW / scanRateHz);
     }
 
-    /**
-     * Returns the points to plot. Currently returns `data` unchanged.
-     *
-     * @param data - Snapshot of one channel.
-     * @returns The same array.
-     */
-    function downsampleForDisplay(data: DataPoint[]): DataPoint[] {
-        // Preserve all points so the plotted shape matches what was received.
-        return data;
-    }
-
-    /** Marks the buffers as changed so the next tick copies them into reactive state. */
+    /** Marks the buffers as changed so the next frame copies them into reactive state. */
     function markUiSnapshotDirty() {
         uiSnapshotDirty = true;
     }
@@ -437,7 +313,8 @@
      * maxDataPoints}.
      */
     function trimAllChannelBuffers() {
-        for (const data of channelBuffers.values()) {
+        for (const live of liveChannels.values()) {
+            const data = live.buffer;
             const excess = data.length - maxDataPoints;
             if (excess > 0) {
                 data.splice(0, excess);
@@ -446,40 +323,18 @@
     }
 
     /**
-     * Finds the first point at or after a time by binary search.
-     *
-     * @param data - Points sorted by `timestamp`, oldest first.
-     * @param startTime - Time in Unix milliseconds.
-     * @returns Index of the first point with `timestamp >= startTime`, or `data.length`.
-     */
-    function findFirstTimestampIndex(data: DataPoint[], startTime: number): number {
-        let low = 0;
-        let high = data.length;
-
-        while (low < high) {
-            const mid = Math.floor((low + high) / 2);
-            if (data[mid].timestamp < startTime) {
-                low = mid + 1;
-            } else {
-                high = mid;
-            }
-        }
-
-        return low;
-    }
-
-    /**
      * Copies the newest part of a channel's live buffer for the plot.
      *
      * Keeps the X window times {@link SNAPSHOT_OVERSCAN_FACTOR}, at least 0.25 s. In the
      * trigger modes it keeps at least the pre-trigger window plus 0.25 s. The span is
-     * measured back from the newest point's timestamp, not from the clock.
+     * measured back from the newest point's timestamp, not from the clock, and one point
+     * before the span is kept so the line reaches the left edge.
      *
      * @param channel - LabJack channel number.
      * @returns A new array, empty when the buffer is empty.
      */
     function snapshotLiveChannelData(channel: number): DataPoint[] {
-        const data = channelBuffers.get(channel) || [];
+        const data = liveChannels.get(channel)?.buffer ?? [];
         if (data.length === 0) return [];
 
         const axisWindowSec = axisSettings.get(channel)?.xWindowSec ?? timeWindow;
@@ -494,14 +349,11 @@
             }
         }
 
-        const endTime = data[data.length - 1]?.timestamp ?? 0;
-        const startTime = endTime - (keepSeconds * 1000);
-        const startIndex = findFirstTimestampIndex(data, startTime);
-        return data.slice(startIndex);
+        return snapshotNewest(data, keepSeconds * 1000);
     }
 
     /**
-     * Copies the live and frozen buffers of every enabled channel into {@link channelData}
+     * Copies the live and frozen buffers of every selected channel into {@link channelData}
      * and {@link frozenChannelData}, which triggers a redraw.
      *
      * @param force - Copy even when nothing is marked dirty.
@@ -512,14 +364,31 @@
         const liveSnapshots = new Map<number, DataPoint[]>();
         const frozenSnapshots = new Map<number, DataPoint[]>();
 
-        for (const channel of labjackConfig?.sensor_settings.channels_enabled ?? []) {
+        for (const channel of getRenderablePlotChannels()) {
             liveSnapshots.set(channel, snapshotLiveChannelData(channel));
             frozenSnapshots.set(channel, [...(frozenChannelBuffers.get(channel) || [])]);
         }
 
         channelData = liveSnapshots;
         frozenChannelData = frozenSnapshots;
+        refreshStreamStatus();
         uiSnapshotDirty = false;
+    }
+
+    /** Copies the per-channel stream counters into {@link channelStreamStatus}. */
+    function refreshStreamStatus() {
+        const next = new Map<number, { dropped: number; gaps: number; resets: number; skipped: number; decodeErrors: number }>();
+        for (const channel of getRenderablePlotChannels()) {
+            const stats = liveChannels.get(channel)?.stats;
+            next.set(channel, {
+                dropped: scanQueue.droppedMessages.get(channel) ?? 0,
+                gaps: stats?.gaps ?? 0,
+                resets: stats?.resets ?? 0,
+                skipped: stats?.skippedSamples ?? 0,
+                decodeErrors: stats?.decodeErrors ?? 0
+            });
+        }
+        channelStreamStatus = next;
     }
 
     /**
@@ -565,6 +434,23 @@
     }
 
     /**
+     * Returns the unit of a channel's plotted values and whether they are calibrated,
+     * from its calibration and its `measurement_units` entry (see
+     * `describeChannelUnit`).
+     *
+     * @param channel - LabJack channel number.
+     * @returns The unit description. Raw volts before the config loads.
+     */
+    function getChannelUnitInfo(channel: number): ChannelUnitInfo {
+        const calibration = normalizeCalibration(
+            labjackConfig?.sensor_settings.calibrations?.[String(channel)]
+        );
+        const index = getChannelConfigIndex(channel);
+        const measurementUnit = index >= 0 ? labjackConfig?.sensor_settings.measurement_units[index] : undefined;
+        return describeChannelUnit(calibration, measurementUnit);
+    }
+
+    /**
      * Returns a channel's position in `channels_enabled`, which is also its index into
      * `data_formats` and `measurement_units`.
      *
@@ -576,9 +462,11 @@
     }
 
     /**
-     * Adds or removes a channel from the plot selection.
+     * Adds or removes a channel from the plot selection and subscribes or unsubscribes
+     * its live subject.
      *
-     * Adding is ignored when two channels are already selected.
+     * Adding is ignored when two channels are already selected. The channel's stream
+     * state is reset either way, so a channel selected again starts a fresh trace.
      *
      * @param channel - LabJack channel number.
      * @param checked - New checkbox state.
@@ -594,97 +482,90 @@
         }
 
         selectedPlotChannels = next;
+        resetChannelStream(channel);
+        try {
+            syncChannelSubscriptions();
+        } catch (err) {
+            console.error(`Error updating the subscription of channel ${channel}:`, err);
+        }
         markUiSnapshotDirty();
     }
 
     /**
-     * Decodes the pending message of each selected channel and appends it to the buffer.
+     * Decodes queued messages of each selected channel, in arrival order, and appends
+     * the samples to the channel's buffer.
      *
-     * For each selected channel with a pending message: parses the FlatBuffer `Scan`, gives
-     * sample `i` the time `firstSampleUnixNs + i * sampleIntervalNs` (converted to ms),
-     * applies the channel's calibration from `sensor_settings.calibrations`, and passes the
-     * points to {@link addDataChunk}. Pending messages of unselected channels stay in
-     * {@link pendingScanBatches} and are not decoded. Called once per tick.
+     * Each sample gets the time `firstSampleUnixNs + i * sampleIntervalNs` from its
+     * `Scan`, and the channel's calibration from `sensor_settings.calibrations`. A `NaN`
+     * or LJM `-9999` sample is kept as a `NaN` point, drawn as a gap; every other value
+     * is plotted whatever its size. Missing time between messages gets a gap marker,
+     * repeated or late messages are skipped, and a timeline that jumps backward starts a
+     * new buffer (see `drainChannelQueue` in `$lib/plot/stream`). After each message the
+     * trigger logic runs on the new points.
+     *
+     * Work is bounded: channels take turns decoding {@link DECODE_BATCH_MESSAGES}
+     * messages each until the queues are empty or `budgetMs` has passed (at least one
+     * turn always runs). Messages not decoded stay queued, in order, for the next call;
+     * none are dropped or reordered.
+     *
+     * @param budgetMs - Time allowed for this call, in ms.
      */
-    function processPendingVisualizationBatches() {
+    function processPendingVisualizationBatches(budgetMs: number) {
         if (!labjackConfig) return;
-
-        for (const channel of labjackConfig.sensor_settings.channels_enabled) {
-            const pending = pendingScanBatches.get(channel);
-            if (!pending) continue;
-            const shouldProcess = selectedPlotChannels.has(channel);
-            if (!shouldProcess) continue;
-
-            pendingScanBatches.delete(channel);
-
-            try {
-                const scanData = flatBufferParser.parse(pending.payload);
-                if (!scanData) continue;
-
-                const firstSampleMs = Number(scanData.firstSampleUnixNs) / 1_000_000;
-                const sampleIntervalMs = Number(scanData.sampleIntervalNs) / 1_000_000;
-                const calibrationSpec = normalizeCalibration(
-                    labjackConfig.sensor_settings.calibrations?.[String(channel)]
-                );
-
-                const newPoints: DataPoint[] = [];
-                let timestamp = firstSampleMs;
-                for (let i = 0; i < scanData.values.length; i++) {
-                    // Drop non-finite values and raw values with magnitude 100 or more,
-                    // checked before calibration. The timestamp still advances so later
-                    // samples keep their times.
-                    const rawValue = scanData.values[i];
-
-                    if (
-                        typeof rawValue === "number" &&
-                        Number.isFinite(rawValue) &&
-                        Number.isFinite(timestamp) &&
-                        Math.abs(rawValue) < 100
-                    ) {
-                        const calibrated = applyCalibration(calibrationSpec, rawValue);
-                        newPoints.push({
-                            timestamp,
-                            value: calibrated,
-                            sourceTimestamp: timestamp,
-                            receivedAt: pending.receivedAt
-                        });
-                    }
-
-                    timestamp += sampleIntervalMs;
-                }
-
-                if (newPoints.length > 0) {
-                    addDataChunk(channel, newPoints);
-                }
-            } catch (err) {
-                console.error(`Error processing pending batch for channel ${channel}:`, err);
-            }
+        const deadline = performance.now() + budgetMs;
+        let backlog = true;
+        while (backlog) {
+            backlog = decodeOneTurn();
+            if (performance.now() >= deadline) break;
         }
     }
 
-    /** {@link channelData} passed through {@link downsampleForDisplay}. */
-    let channelDisplayData = $derived(
-        new Map(
-            Array.from(channelData.entries()).map(([channel, data]) => {
-                return [channel, downsampleForDisplay(data)];
-            })
-        )
-    );
+    /**
+     * Decodes up to {@link DECODE_BATCH_MESSAGES} queued messages of each selected
+     * channel.
+     *
+     * @returns `true` if some channel still has queued messages.
+     */
+    function decodeOneTurn(): boolean {
+        if (!labjackConfig) return false;
+        let backlog = false;
 
-    /** {@link frozenChannelData} passed through {@link downsampleForDisplay}. */
-    let frozenDisplayData = $derived(
-        new Map(
-            Array.from(frozenChannelData.entries()).map(([channel, data]) => {
-                return [channel, downsampleForDisplay(data)];
-            })
-        )
-    );
+        for (const channel of labjackConfig.sensor_settings.channels_enabled) {
+            if (!selectedPlotChannels.has(channel) || scanQueue.size(channel) === 0) continue;
+
+            let live = liveChannels.get(channel);
+            if (!live) {
+                live = createLiveChannel();
+                liveChannels.set(channel, live);
+            }
+            const calibrationSpec = normalizeCalibration(
+                labjackConfig.sensor_settings.calibrations?.[String(channel)]
+            );
+
+            const liveChannel = live;
+            drainChannelQueue(
+                scanQueue,
+                channel,
+                liveChannel,
+                (payload) => flatBufferParser.parse(payload),
+                calibrationSpec,
+                maxDataPoints,
+                (chunkStartIndex, reset, chunk) => {
+                    handleNewChunk(channel, liveChannel.buffer, chunkStartIndex, reset, chunk);
+                },
+                DECODE_BATCH_MESSAGES
+            );
+            markUiSnapshotDirty();
+            if (scanQueue.size(channel) > 0) backlog = true;
+        }
+        return backlog;
+    }
 
     
     /**
      * Loads the config for {@link assetNumber} and starts the live subscriptions.
      *
-     * Steps: unsubscribes old subscriptions; reads `serverName` and `credentialsContent` from
+     * Steps: closes the old connection; checks the asset number; reads `serverName` and `credentialsContent` from
      * sessionStorage and opens a new connection; reads the `key` query parameter from bucket
      * `avenabox` and uses it if its `asset_number` matches; otherwise reads every
      * `*.*.*.config` key in turn and takes the first match. Then resets channel state,
@@ -692,23 +573,26 @@
      * missing login data, connection failure or no match; the promise does not reject.
      *
      * @remarks
-     * Also used by the Retry button. It lists all config keys even when the `key` config
-     * matches. Each call opens a new connection and does not close the previous one.
+     * Also used by the Retry button and when the URL changes. It lists all config keys
+     * even when the `key` config matches. Each call first closes the previous connection
+     * and its subscriptions. If a newer call starts, or the page is destroyed, while this
+     * one is waiting, this one closes the connection it opened and changes nothing.
      */
     async function loadLabJackConfig() {
+        const generation = ++loadGeneration;
+        const superseded = () => generation !== loadGeneration || destroyed;
         loading = true;
         error = "";
-        isConnected = false;
+        errorAction = "retry";
 
-        if (subscriptions.length > 0) {
-            subscriptions.forEach((sub) => {
-                try {
-                    sub.unsubscribe();
-                } catch (err) {
-                    console.error("Error unsubscribing old subscription:", err);
-                }
-            });
-            subscriptions = [];
+        closeLiveConnection();
+
+        if (!Number.isSafeInteger(assetNumber) || assetNumber < 0) {
+            labjackConfig = null;
+            error = `"${$page.params.asset_number ?? ""}" is not a valid asset number. Open a LabJack's plots from the LabJacks page.`;
+            errorAction = "none";
+            loading = false;
+            return;
         }
         
         try {
@@ -717,24 +601,32 @@
             
             if (!serverName || !credentialsContent) {
                 error = "No NATS connection found. Please login first.";
+                errorAction = "login";
                 loading = false;
                 return;
             }
-            
-            natsService = await connect(serverName, credentialsContent);
-            if (!natsService) {
+
+            connectionState = "connecting";
+            const service = await connect(serverName, credentialsContent);
+            if (superseded()) {
+                closeService(service);
+                return;
+            }
+            if (!service) {
+                connectionState = "disconnected";
                 error = "Failed to connect to NATS server";
                 loading = false;
                 return;
             }
+            natsService = service;
+            watchConnection(service);
             
             const preferredKey = $page.url.searchParams.get('key')?.trim() || "";
-            const keys = await getKeys(natsService, "avenabox", "*.*.*.config");
             let foundConfig: LabJackConfig | null = null;
 
             if (preferredKey) {
                 try {
-                    const configStr = await getKeyValue(natsService, "avenabox", preferredKey);
+                    const configStr = await getKeyValue(service, "avenabox", preferredKey);
                     const config = normalizeLabJackConfig(JSON.parse(configStr));
                     if (config && config.asset_number === assetNumber) {
                         foundConfig = config;
@@ -744,10 +636,13 @@
                 }
             }
 
+            // Search every config only when the ?key= config is missing or is for another asset.
             if (!foundConfig) {
+                const keys = await getKeys(service, "avenabox", "*.*.*.config");
+                if (superseded()) return;
                 for (const key of keys) {
                     try {
-                        const configStr = await getKeyValue(natsService, "avenabox", key);
+                        const configStr = await getKeyValue(service, "avenabox", key);
                         const config = normalizeLabJackConfig(JSON.parse(configStr));
                         if (!config) continue;
                         if (config.asset_number === assetNumber) {
@@ -760,21 +655,88 @@
                 }
             }
             
+            // A newer load has closed this connection; leave its state alone.
+            if (superseded()) return;
+
             if (foundConfig) {
                 labjackConfig = foundConfig;
                 updateMaxDataPoints();
                 initializeChannelData();
                 flushUiSnapshots(true);
-                await startDataSubscription();
+                await startDataSubscription(generation);
             } else {
+                labjackConfig = null;
                 error = `LabJack with asset number ${assetNumber} not found`;
             }
         } catch (err) {
+            if (superseded()) return;
             console.error("Error loading LabJack config:", err);
             error = "Failed to load LabJack configuration";
         } finally {
-            loading = false;
+            if (!superseded()) {
+                loading = false;
+                if (connectionState === "connecting") {
+                    connectionState = natsService ? "connected" : "disconnected";
+                }
+            }
         }
+    }
+
+    /**
+     * Closes a connection without waiting, logging any error.
+     *
+     * @param service - Connection to close, or `null`.
+     */
+    function closeService(service: { connection: { close(): Promise<void> } } | null) {
+        if (!service) return;
+        try {
+            service.connection.close().catch((err) => console.error("Error closing NATS connection:", err));
+        } catch (err) {
+            console.error("Error closing NATS connection:", err);
+        }
+    }
+
+    /**
+     * Follows a connection's status events and its `closed()` promise, updating
+     * {@link connectionState}. Events from a connection the page no longer uses (after
+     * a reload or when leaving the page) are ignored, so the page's own `close()` is not
+     * reported as a lost connection.
+     *
+     * @param service - Connection just opened by {@link loadLabJackConfig}.
+     */
+    function watchConnection(service: NatsService) {
+        const current = () => natsService === service && !destroyed;
+        (async () => {
+            try {
+                for await (const status of service.connection.status()) {
+                    if (!current()) break;
+                    connectionState = nextConnectionState(connectionState, status.type);
+                }
+            } catch (err) {
+                console.error("NATS status stream ended with an error:", err);
+            }
+        })();
+        service.connection.closed().then((err) => {
+            if (!current()) return;
+            connectionState = "disconnected";
+            connectionLostReason = err instanceof Error ? err.message : "The server closed the connection.";
+        });
+    }
+
+    /**
+     * Unsubscribes every live subscription and closes this page's connection. Their
+     * reader loops end; any message they still hold is ignored (see
+     * {@link startDataSubscription}).
+     */
+    function closeLiveConnection() {
+        for (const channel of Array.from(channelSubscriptions.keys())) {
+            unsubscribeChannel(channel);
+        }
+        connectionState = "disconnected";
+        connectionLostReason = "";
+        const service = natsService;
+        natsService = null;
+        closeService(service);
     }
     
     /**
@@ -797,13 +759,13 @@
         const newChannelTriggered = new Map<number, boolean>();
         const newChannelTriggerTime = new Map<number, number>();
         const newChannelPrebufferReady = new Map<number, boolean>();
-        const newChannelTriggerCaptures = new Map<number, TriggerCaptureState>();
-        const newChannelBuffers = new Map<number, DataPoint[]>();
+        const newChannelTriggerCaptures = new Map<number, TriggerCapture>();
+        const newLiveChannels = new Map<number, LiveChannel>();
         const newFrozenBuffers = new Map<number, DataPoint[]>();
         labjackConfig.sensor_settings.channels_enabled.forEach(channel => {
             newChannelData.set(channel, []);
             newFrozenChannelData.set(channel, []);
-            newChannelBuffers.set(channel, []);
+            newLiveChannels.set(channel, createLiveChannel());
             newFrozenBuffers.set(channel, []);
             newChannelModes.set(channel, 'free_run');
             newAxisSettings.set(channel, {
@@ -829,371 +791,248 @@
         frozenChannelData = newFrozenChannelData;
         channelModes = newChannelModes;
         axisSettings = newAxisSettings;
+        axisInputErrors = new Map();
         triggerSettings = newTriggerSettings;
         channelTriggered = newChannelTriggered;
         channelTriggerTime = newChannelTriggerTime;
         channelPrebufferReady = newChannelPrebufferReady;
         channelTriggerCaptures = newChannelTriggerCaptures;
-        channelBuffers = newChannelBuffers;
+        liveChannels = newLiveChannels;
         frozenChannelBuffers = newFrozenBuffers;
-        pendingScanBatches = new Map<number, PendingScanBatch>();
+        scanQueue.clear();
+        channelStreamStatus = new Map();
         selectedPlotChannels = pickInitialPlotChannels(
             labjackConfig.sensor_settings.channels_enabled,
             selectedPlotChannels
         );
-        visibleChannels = new Set<number>(labjackConfig.sensor_settings.channels_enabled);
         uiSnapshotDirty = false;
     }
 
     /**
-     * Svelte action that tracks whether a channel card is on or near the screen.
+     * Subscribes to the live subjects of the selected channels (see
+     * {@link syncChannelSubscriptions}). Sets {@link connectionState} to `connected`
+     * when the subscriptions exist, or `error` if subscribing throws.
      *
-     * Adds the channel to {@link visibleChannels} at once, then updates it from an
-     * `IntersectionObserver` with a 300 px margin above and below the viewport. On destroy
-     * it disconnects the observer and removes the channel.
-     *
-     * @param node - The channel card element.
-     * @param channel - LabJack channel number.
-     * @returns The action object with `destroy`.
+     * @param generation - The {@link loadGeneration} of the load that owns the
+     *   subscriptions; reader loops stop once a newer load starts.
      */
-    function observeChannelVisibility(node: HTMLElement, channel: number) {
-        const initiallyVisible = new Set(visibleChannels);
-        initiallyVisible.add(channel);
-        visibleChannels = initiallyVisible;
-
-        const observer = new IntersectionObserver(
-            (entries) => {
-                const visible = entries.some((entry) => entry.isIntersecting);
-                const next = new Set(visibleChannels);
-                if (visible) {
-                    next.add(channel);
-                } else {
-                    next.delete(channel);
-                }
-                visibleChannels = next;
-            },
-            {
-                root: null,
-                threshold: 0,
-                rootMargin: "300px 0px 300px 0px"
-            }
-        );
-
-        observer.observe(node);
-
-        return {
-            destroy() {
-                observer.disconnect();
-                const next = new Set(visibleChannels);
-                next.delete(channel);
-                visibleChannels = next;
-            }
-        };
-    }
-    
-    /**
-     * Subscribes to the live subject of every enabled channel.
-     *
-     * The subject comes from `liveLabJackChannelSubject`:
-     * `avenars.<site>.<box>.<source>.live.chNN` for structured configs, or
-     * `<root>.<asset>.data.chNN` for legacy ones. All enabled channels are subscribed, not
-     * only the selected ones. Sets {@link isConnected} when all subscriptions exist, or
-     * `error` if subscribing throws.
-     */
-    async function startDataSubscription() {
+    async function startDataSubscription(generation: number) {
         if (!natsService || !labjackConfig) return;
         
         try {
-            for (const channel of labjackConfig.sensor_settings.channels_enabled) {
-                const subject = liveLabJackChannelSubject(labjackConfig, channel);
-                const subscription = natsService.connection.subscribe(subject);
-                subscriptions.push(subscription);
-                
-                // One reader loop per subscription, not awaited. It ends when the
-                // subscription is unsubscribed. It only stores the newest payload;
-                // decoding waits for the UI tick.
-                (async () => {
-                    for await (const msg of subscription) {
-                        try {
-                            pendingScanBatches.set(channel, {
-                                payload: msg.data instanceof ArrayBuffer
-                                    ? msg.data
-                                    : (msg.data as Uint8Array),
-                                receivedAt: Date.now()
-                            });
-                        } catch (err) {
-                            console.error(`Error processing message for channel ${channel}:`, err);
-                        }
-                    }
-                })();
-            }
-            isConnected = true;
+            syncChannelSubscriptions(generation);
+            if (connectionState === "connecting") connectionState = "connected";
         } catch (err) {
             console.error("Error starting data subscription:", err);
             error = "Failed to start data subscription";
         }
     }
-    
+
     /**
-     * Appends decoded points to a channel's live buffer and runs the trigger logic.
+     * Subscribes to every selected channel that has no subscription and unsubscribes
+     * every channel that is no longer selected, so only the plotted channels are
+     * received.
      *
-     * Trims the buffer to {@link maxDataPoints}. In a trigger mode it calls
-     * {@link processTriggerMode}; in free run it marks the pre-buffer as ready.
+     * The subject comes from `liveLabJackChannelSubject`:
+     * `avenars.<site>.<box>.<source>.live.chNN` for structured configs, or
+     * `<root>.<asset>.data.chNN` for legacy ones.
+     *
+     * @param generation - The {@link loadGeneration} the new subscriptions belong to.
+     * @throws If subscribing throws (for example on a closed connection).
+     */
+    function syncChannelSubscriptions(generation: number = loadGeneration) {
+        if (!natsService || !labjackConfig) return;
+        for (const channel of Array.from(channelSubscriptions.keys())) {
+            if (!selectedPlotChannels.has(channel)) unsubscribeChannel(channel);
+        }
+        for (const channel of labjackConfig.sensor_settings.channels_enabled) {
+            if (selectedPlotChannels.has(channel) && !channelSubscriptions.has(channel)) {
+                subscribeChannel(channel, generation);
+            }
+        }
+    }
+
+    /**
+     * Subscribes to one channel's live subject and starts its reader loop.
+     *
+     * The loop, not awaited, queues every payload in arrival order; decoding waits for
+     * the next frame. It stops when the subscription is unsubscribed, when a reload
+     * starts, or when this subscription is no longer the channel's current one (the
+     * channel was deselected and selected again), so an old loop never feeds the
+     * channel's fresh stream.
      *
      * @param channel - LabJack channel number.
-     * @param chunk - Points from one `Scan`, oldest first.
+     * @param generation - The {@link loadGeneration} this subscription belongs to.
      */
-    function addDataChunk(channel: number, chunk: DataPoint[]) {
-        const currentData = channelBuffers.get(channel) || [];
-        for (const point of chunk) {
-            currentData.push(point);
-        }
-        const excess = currentData.length - maxDataPoints;
-        if (excess > 0) {
-            currentData.splice(0, excess);
-        }
-        channelBuffers.set(channel, currentData);
+    function subscribeChannel(channel: number, generation: number) {
+        if (!natsService || !labjackConfig) return;
+        const subject = liveLabJackChannelSubject(labjackConfig, channel);
+        const subscription: Subscription = natsService.connection.subscribe(subject);
+        channelSubscriptions.set(channel, subscription);
 
+        (async () => {
+            for await (const msg of subscription) {
+                if (generation !== loadGeneration || channelSubscriptions.get(channel) !== subscription) break;
+                try {
+                    scanQueue.push(channel, {
+                        payload: msg.data instanceof ArrayBuffer
+                            ? msg.data
+                            : (msg.data as Uint8Array),
+                        receivedAt: Date.now()
+                    });
+                } catch (err) {
+                    console.error(`Error processing message for channel ${channel}:`, err);
+                }
+            }
+        })();
+    }
+
+    /**
+     * Unsubscribes one channel and forgets its subscription.
+     *
+     * @param channel - LabJack channel number.
+     */
+    function unsubscribeChannel(channel: number) {
+        const subscription = channelSubscriptions.get(channel);
+        channelSubscriptions.delete(channel);
+        if (!subscription) return;
+        try {
+            subscription.unsubscribe();
+        } catch (err) {
+            console.error("Error unsubscribing:", err);
+        }
+    }
+
+    /**
+     * Empties a channel's buffer, stream state, counters, queued messages and trigger
+     * capture, so its next data starts a fresh trace instead of joining data from
+     * before it was deselected.
+     *
+     * @param channel - LabJack channel number.
+     */
+    function resetChannelStream(channel: number) {
+        liveChannels.set(channel, createLiveChannel());
+        scanQueue.clearChannel(channel);
+        clearTriggerState(channel);
+        channelPrebufferReady.set(channel, false);
+        channelPrebufferReady = new Map(channelPrebufferReady);
+    }
+    
+    /**
+     * Runs the trigger logic after a batch was appended to a channel's live buffer.
+     *
+     * In a trigger mode it calls {@link processTriggerMode}; in free run it marks the
+     * pre-buffer as ready.
+     *
+     * @param channel - LabJack channel number.
+     * @param buffer - The channel's live buffer, already including `chunk`.
+     * @param chunkStartIndex - Index in `buffer` of the chunk's first point.
+     * @param reset - The buffer was emptied before this chunk (timeline jumped back).
+     * @param chunk - Points just appended, oldest first.
+     */
+    function handleNewChunk(
+        channel: number,
+        buffer: DataPoint[],
+        chunkStartIndex: number,
+        reset: boolean,
+        chunk: DataPoint[]
+    ) {
         const channelMode = channelModes.get(channel) ?? "free_run";
         if (channelMode === "trigger_normal" || channelMode === "trigger_single") {
-            processTriggerMode(channel, channelMode, currentData, chunk);
+            processTriggerMode(channel, channelMode, buffer, chunkStartIndex, reset, chunk);
         } else {
             if (!(channelPrebufferReady.get(channel) ?? false)) {
                 channelPrebufferReady.set(channel, true);
                 channelPrebufferReady = new Map(channelPrebufferReady);
             }
         }
-
-        markUiSnapshotDirty();
     }
 
     /**
-     * Advances the trigger state of one channel after a new chunk.
+     * Advances the trigger state of one channel after a new batch.
      *
-     * While not triggered, waits until the buffer spans the pre-trigger window, then looks
-     * for a crossing with {@link checkTriggerCondition}. While triggered, extends the
-     * capture. In `trigger_single` the capture is held until Re-arm. In `trigger_normal`,
-     * once the chunk's last sample passes the post-trigger window, the trigger is cleared
-     * (the frozen plot stays) and the same chunk is checked for the next crossing.
+     * Updates the pre-buffer flag, then lets `advanceTrigger` (`$lib/plot/trigger`) extend
+     * the open capture or look for the next crossing. A capture holds exactly the
+     * samples in `[trigger - pre, trigger + post]`. In `trigger_normal` the last capture
+     * stays on screen until the next trigger replaces it; in `trigger_single` it is held
+     * until Re-arm.
      *
      * @param channel - LabJack channel number.
      * @param mode - `trigger_normal` or `trigger_single`.
-     * @param fullData - The channel's live buffer, already including `newChunk`.
-     * @param newChunk - Points just appended.
+     * @param buffer - The channel's live buffer, already including the batch.
+     * @param chunkStartIndex - Index in `buffer` of the batch's first point.
+     * @param reset - The buffer was emptied before this batch.
+     * @param chunk - Points just appended.
      */
     function processTriggerMode(
         channel: number,
         mode: ChannelPlotMode,
-        fullData: DataPoint[],
-        newChunk: DataPoint[]
+        buffer: DataPoint[],
+        chunkStartIndex: number,
+        reset: boolean,
+        chunk: DataPoint[]
     ) {
-        const channelTriggerSetting = triggerSettings.get(channel);
-        if (!channelTriggerSetting) return;
+        const settings = triggerSettings.get(channel);
+        if (!settings) return;
 
-        const isSingleShot = mode === "trigger_single";
-        const lastTimestamp = newChunk[newChunk.length - 1]?.timestamp ?? Date.now();
-        const isChannelTriggered = channelTriggered.get(channel) || false;
-        const prebufferReady = hasRequiredPreBuffer(fullData, channelTriggerSetting);
-        const triggerTime = channelTriggerTime.get(channel) || 0;
-        const postWindowMs = Math.max(0, channelTriggerSetting.postTriggerWindowSec || 0) * 1000;
-        const postWindowEnd = triggerTime + postWindowMs;
-
-        const previousReady = channelPrebufferReady.get(channel) ?? false;
-        if (previousReady !== prebufferReady) {
+        const prebufferReady = hasRequiredPreBuffer(buffer, settings);
+        if ((channelPrebufferReady.get(channel) ?? false) !== prebufferReady) {
             channelPrebufferReady.set(channel, prebufferReady);
             channelPrebufferReady = new Map(channelPrebufferReady);
         }
 
-        if (!isChannelTriggered && !prebufferReady) {
-            return;
+        const previous = channelTriggerCaptures.get(channel) ?? null;
+        const capture = advanceTrigger(
+            previous,
+            mode === "trigger_single",
+            settings,
+            buffer,
+            chunkStartIndex,
+            reset,
+            chunk
+        );
+
+        if (capture && capture !== previous) {
+            setTriggerCapture(channel, capture);
         }
-
-        if (isChannelTriggered) {
-            const capture = channelTriggerCaptures.get(channel);
-            if (capture && !capture.complete) {
-                appendToTriggerCapture(channel, newChunk);
-            }
-
-            if (isSingleShot) {
-                return;
-            }
-
-            if (lastTimestamp < postWindowEnd) {
-                return;
-            }
-
-            clearTriggerState(channel, false);
-        }
-
-        checkTriggerCondition(channel, fullData, newChunk);
     }
 
     /**
-     * Arms the channel again by clearing its trigger flag, time and capture.
+     * Stores a channel's capture and the trigger flags derived from it.
      *
      * @param channel - LabJack channel number.
-     * @param clearFrozen - Also empty the frozen plot. `trigger_normal` passes `false` so
-     *   the last capture stays on screen until the next trigger.
+     * @param capture - New or updated capture.
      */
-    function clearTriggerState(channel: number, clearFrozen: boolean = true) {
+    function setTriggerCapture(channel: number, capture: TriggerCapture) {
+        channelTriggerCaptures.set(channel, capture);
+        channelTriggerCaptures = new Map(channelTriggerCaptures);
+        if (!(channelTriggered.get(channel) ?? false)) {
+            channelTriggered.set(channel, true);
+            channelTriggered = new Map(channelTriggered);
+        }
+        if (channelTriggerTime.get(channel) !== capture.triggerTime) {
+            channelTriggerTime.set(channel, capture.triggerTime);
+            channelTriggerTime = new Map(channelTriggerTime);
+        }
+        frozenChannelBuffers.set(channel, capture.data);
+        markUiSnapshotDirty();
+    }
+
+    /**
+     * Arms the channel again by clearing its trigger flag, time, capture and frozen plot.
+     *
+     * @param channel - LabJack channel number.
+     */
+    function clearTriggerState(channel: number) {
         channelTriggered.set(channel, false);
         channelTriggerTime.set(channel, 0);
         channelTriggerCaptures.delete(channel);
-
-        if (clearFrozen) {
-            frozenChannelBuffers.set(channel, []);
-            markUiSnapshotDirty();
-        }
+        frozenChannelBuffers.set(channel, []);
+        markUiSnapshotDirty();
 
         channelTriggered = new Map(channelTriggered);
         channelTriggerTime = new Map(channelTriggerTime);
         channelTriggerCaptures = new Map(channelTriggerCaptures);
-    }
-    
-    /**
-     * Looks for the first threshold crossing in a new chunk and starts a capture there.
-     *
-     * Compares each point with the one before it, starting from the last point before the
-     * chunk. Rising fires when the previous value is at or below the threshold and the
-     * current one is above it; falling is the mirror. Does nothing if there is no point
-     * before the chunk.
-     *
-     * @param channel - LabJack channel number.
-     * @param fullData - The channel's live buffer, already including `newChunk`.
-     * @param newChunk - Points just appended.
-     */
-    function checkTriggerCondition(channel: number, fullData: DataPoint[], newChunk: DataPoint[]) {
-        const channelTriggerSetting = triggerSettings.get(channel);
-        if (!channelTriggerSetting) return;
-
-        // Get the last point before the new chunk was added
-        const lastPointBeforeChunk = fullData[fullData.length - newChunk.length - 1];
-        if (!lastPointBeforeChunk) return; // Not enough data to compare
-
-        let previousPoint = lastPointBeforeChunk;
-        const threshold = channelTriggerSetting.threshold;
-
-        for (const currentPoint of newChunk) {
-            let triggered = false;
-            if (channelTriggerSetting.type === 'rising' && previousPoint.value <= threshold && currentPoint.value > threshold) {
-                triggered = true;
-            } else if (channelTriggerSetting.type === 'falling' && previousPoint.value >= threshold && currentPoint.value < threshold) {
-                triggered = true;
-            }
-
-            if (triggered) {
-                channelTriggered.set(channel, true);
-                channelTriggerTime.set(channel, currentPoint.timestamp);
-                channelTriggered = new Map(channelTriggered);
-                channelTriggerTime = new Map(channelTriggerTime);
-                
-                initializeTriggerCapture(
-                    channel,
-                    fullData,
-                    currentPoint.timestamp,
-                    channelTriggerSetting
-                );
-
-                return; 
-            }
-
-            previousPoint = currentPoint;
-        }
-    }
-
-    /**
-     * Starts a capture with the buffered points around a trigger.
-     *
-     * Copies points from `triggerTime - preWindowSec` to `triggerTime + postWindowSec`
-     * into the capture and the frozen buffer. The capture is complete at once if the buffer
-     * already reaches the end of the window.
-     *
-     * @param channel - LabJack channel number.
-     * @param data - The channel's live buffer.
-     * @param triggerTime - Time of the crossing sample, in Unix milliseconds.
-     * @param settings - The channel's trigger settings.
-     */
-    function initializeTriggerCapture(
-        channel: number,
-        data: DataPoint[],
-        triggerTime: number,
-        settings: TriggerSettings
-    ) {
-        const { preWindowSec, postWindowSec } = getTriggerWindows(settings);
-        const startTime = triggerTime - (preWindowSec * 1000);
-        const endTime = triggerTime + (postWindowSec * 1000);
-
-        const frozenData = data.filter(point =>
-            point.timestamp >= startTime && point.timestamp <= endTime
-        );
-        const lastCapturedTimestamp =
-            frozenData.length > 0 ? frozenData[frozenData.length - 1].timestamp : triggerTime;
-        const capture: TriggerCaptureState = {
-            data: frozenData,
-            triggerTime,
-            captureEndTime: endTime,
-            lastCapturedTimestamp,
-            preWindowSec,
-            postWindowSec,
-            complete: lastCapturedTimestamp >= endTime
-        };
-
-        channelTriggerCaptures.set(channel, capture);
-        channelTriggerCaptures = new Map(channelTriggerCaptures);
-        frozenChannelBuffers.set(channel, frozenData);
-        markUiSnapshotDirty();
-    }
-
-    /**
-     * Adds new points to an open capture and marks it complete at the end of the window.
-     *
-     * Only points newer than the last captured one and not past `captureEndTime` are added.
-     *
-     * @param channel - LabJack channel number.
-     * @param chunk - Points just appended to the live buffer.
-     */
-    function appendToTriggerCapture(channel: number, chunk: DataPoint[]) {
-        const capture = channelTriggerCaptures.get(channel);
-        if (!capture || capture.complete) return;
-
-        const appended = chunk.filter(
-            (point) =>
-                point.timestamp > capture.lastCapturedTimestamp &&
-                point.timestamp <= capture.captureEndTime
-        );
-
-        if (appended.length === 0) {
-            const latestChunkTimestamp = chunk[chunk.length - 1]?.timestamp ?? capture.lastCapturedTimestamp;
-            if (latestChunkTimestamp >= capture.captureEndTime) {
-                channelTriggerCaptures.set(channel, { ...capture, complete: true });
-                channelTriggerCaptures = new Map(channelTriggerCaptures);
-            }
-            return;
-        }
-
-        const data = capture.data.concat(appended);
-        const lastCapturedTimestamp = data[data.length - 1]?.timestamp ?? capture.lastCapturedTimestamp;
-        const updatedCapture: TriggerCaptureState = {
-            ...capture,
-            data,
-            lastCapturedTimestamp,
-            complete: lastCapturedTimestamp >= capture.captureEndTime
-        };
-
-        channelTriggerCaptures.set(channel, updatedCapture);
-        channelTriggerCaptures = new Map(channelTriggerCaptures);
-        frozenChannelBuffers.set(channel, data);
-        markUiSnapshotDirty();
-    }
-    
-    
-    /**
-     * Handles the Re-arm button: clears the trigger and the frozen plot.
-     *
-     * @param channel - LabJack channel number.
-     */
-    function resetChannelTrigger(channel: number) {
-        clearTriggerState(channel, true);
     }
 
     /**
@@ -1210,8 +1049,7 @@
      * Changes a channel's plot mode.
      *
      * Switching between the two trigger modes keeps the current capture; any other change
-     * clears it. The pre-buffer flag is recomputed from the last snapshot in
-     * {@link channelData}, not from the live buffer.
+     * clears it. The pre-buffer flag is recomputed from the live buffer.
      *
      * @param channel - LabJack channel number.
      * @param nextMode - Mode chosen in the Plot Mode select.
@@ -1221,12 +1059,12 @@
         if (currentMode === nextMode) return;
 
         if (!isTriggerMode(nextMode) || !isTriggerMode(currentMode)) {
-            clearTriggerState(channel, true);
+            clearTriggerState(channel);
         }
 
         if (isTriggerMode(nextMode)) {
             const settings = triggerSettings.get(channel);
-            const data = channelData.get(channel) || [];
+            const data = liveChannels.get(channel)?.buffer ?? [];
             const ready = settings ? hasRequiredPreBuffer(data, settings) : false;
             channelPrebufferReady.set(channel, ready);
         } else {
@@ -1239,10 +1077,9 @@
     }
 
     /**
-     * Merges changes into a channel's axis settings.
-     *
-     * A missing or non-positive X window is replaced by {@link timeWindow}, and the window
-     * is raised to at least 0.1 s. If `yMax` is not above `yMin` it is set to `yMin + 0.001`.
+     * Merges changes into a channel's axis settings and clears the channel's axis input
+     * message, which described an earlier rejected value. Numeric limits are checked by
+     * {@link commitAxisLimit} before they get here.
      *
      * @param channel - LabJack channel number.
      * @param updates - Fields to change.
@@ -1250,68 +1087,74 @@
     function updateAxisSettings(channel: number, updates: Partial<AxisSettings>) {
         const current = axisSettings.get(channel);
         if (!current) return;
-
-        const updated = { ...current, ...updates };
-        if (!Number.isFinite(updated.xWindowSec) || updated.xWindowSec <= 0) {
-            updated.xWindowSec = timeWindow;
-        }
-        updated.xWindowSec = Math.max(0.1, updated.xWindowSec);
-        if (updated.yMax <= updated.yMin) {
-            updated.yMax = updated.yMin + 0.001;
+        if (axisInputErrors.has(channel)) {
+            const nextErrors = new Map(axisInputErrors);
+            nextErrors.delete(channel);
+            axisInputErrors = nextErrors;
         }
 
-        axisSettings.set(channel, updated);
+        axisSettings.set(channel, { ...current, ...updates });
         axisSettings = new Map(axisSettings);
         markUiSnapshotDirty();
     }
 
     /**
-     * Converts trigger settings into pre and post window lengths.
+     * Applies a typed Y Min, Y Max or X Window.
      *
-     * The post window is at least 0.01 s. The pre-trigger percent is clamped to 0 to 95 and
-     * taken as a share of the whole window, so `pre = post * p / (1 - p)`.
+     * Any finite number is accepted, including 0, as long as Y Min stays below Y Max and
+     * the X window is above 0 (see `applyAxisLimitInput`). Otherwise the input is reset
+     * to the value in use and the reason is shown under the inputs.
      *
-     * @param settings - The channel's trigger settings, or `undefined` for the minimums.
-     * @returns `preWindowSec` and `postWindowSec`, in seconds.
-     *
-     * @example
-     * ```ts
-     * getTriggerWindows({ type: "rising", threshold: 0, preTriggerPercent: 40, postTriggerWindowSec: 1 });
-     * // { preWindowSec: 0.667, postWindowSec: 1 } (approximately)
-     * ```
+     * @param channel - LabJack channel number.
+     * @param field - Limit being edited.
+     * @param input - The input element.
      */
-    function getTriggerWindows(settings: TriggerSettings | undefined) {
-        const postWindowSec = Math.max(0.01, settings?.postTriggerWindowSec || 0.01);
-        const preFraction = Math.min(0.95, Math.max(0, (settings?.preTriggerPercent || 0) / 100));
-        const preWindowSec = postWindowSec * (preFraction / (1 - preFraction));
-        return { preWindowSec, postWindowSec };
+    function commitAxisLimit(channel: number, field: keyof AxisLimits, input: HTMLInputElement) {
+        const current = axisSettings.get(channel);
+        if (!current) return;
+        const result = applyAxisLimitInput(current, field, input.value);
+        const nextErrors = new Map(axisInputErrors);
+        if (result.ok) {
+            nextErrors.delete(channel);
+            updateAxisSettings(channel, result.limits);
+        } else {
+            nextErrors.set(channel, result.error);
+            input.value = String(current[field]);
+        }
+        axisInputErrors = nextErrors;
     }
 
     /**
-     * Tells whether a buffer spans the pre-trigger window.
+     * Applies a typed trigger threshold or post-trigger window. Any finite threshold is
+     * accepted, including 0; the post window must be at least 0.01 s. Otherwise the
+     * input is reset to the value in use.
      *
-     * @param data - Points sorted by time, oldest first.
-     * @param settings - The channel's trigger settings.
-     * @returns `true` when there are at least two points and the newest is at least
-     *   `preWindowSec` after the oldest.
+     * @param channel - LabJack channel number.
+     * @param field - Setting being edited.
+     * @param input - The input element.
      */
-    function hasRequiredPreBuffer(data: DataPoint[], settings: TriggerSettings): boolean {
-        if (data.length < 2) return false;
-        const { preWindowSec } = getTriggerWindows(settings);
-        const requiredMs = preWindowSec * 1000;
-        const oldest = data[0]?.timestamp;
-        const latest = data[data.length - 1]?.timestamp;
-        if (!Number.isFinite(oldest) || !Number.isFinite(latest)) return false;
-        return (latest - oldest) >= requiredMs;
+    function commitTriggerNumber(
+        channel: number,
+        field: "threshold" | "postTriggerWindowSec",
+        input: HTMLInputElement
+    ) {
+        const setting = triggerSettings.get(channel);
+        if (!setting) return;
+        const value = parseFiniteInput(input.value);
+        if (value === null || (field === "postTriggerWindowSec" && value < 0.01)) {
+            input.value = String(setting[field]);
+            return;
+        }
+        triggerSettings.set(channel, { ...setting, [field]: value });
+        triggerSettings = new Map(triggerSettings);
     }
 
     /**
      * Builds the data and trigger props for one channel's `RealTimePlot`.
      *
-     * In a trigger mode with a held trigger it returns mode `"frozen"` with the capture as
-     * `frozenData`; otherwise mode `"continuous"`. `frozenCollecting` is true while the
-     * capture is still filling. If no capture state exists it falls back to comparing
-     * {@link uiNow} with the end of the post-trigger window.
+     * In a trigger mode with a capture it returns mode `"frozen"` with the capture as
+     * `frozenData` and its own pre and post windows; `frozenCollecting` is true while the
+     * capture is still filling. Otherwise mode `"continuous"`.
      *
      * @param channel - LabJack channel number.
      * @returns `mode`, `data` (live snapshot), `frozenData`, `isTriggered`, `triggerTime`
@@ -1319,31 +1162,23 @@
      */
     function getPlotConfig(channel: number) {
         const mode = channelModes.get(channel) ?? "free_run";
-        const liveData = channelDisplayData.get(channel) || [];
+        const liveData = channelData.get(channel) || [];
         const capture = channelTriggerCaptures.get(channel);
-        const frozenData = capture?.data ?? (frozenDisplayData.get(channel) || []);
-        const isTriggered = channelTriggered.get(channel) || false;
-        const triggerTime = channelTriggerTime.get(channel) || 0;
-        const triggerConfig = triggerSettings.get(channel);
-        const { preWindowSec, postWindowSec } = capture ?? getTriggerWindows(triggerConfig);
-        const isFrozenCollecting =
-            isTriggered &&
-            triggerTime > 0 &&
-            !(capture?.complete ?? (uiNow >= (triggerTime + postWindowSec * 1000)));
 
-        if (isTriggerMode(mode) && isTriggered) {
+        if (isTriggerMode(mode) && capture) {
             return {
                 mode: "frozen" as const,
                 data: liveData,
-                frozenData,
+                frozenData: capture.data,
                 isTriggered: true,
-                triggerTime,
-                frozenPreWindowSec: preWindowSec,
-                frozenPostWindowSec: postWindowSec,
-                frozenCollecting: isFrozenCollecting
+                triggerTime: capture.triggerTime,
+                frozenPreWindowSec: capture.preWindowSec,
+                frozenPostWindowSec: capture.postWindowSec,
+                frozenCollecting: !capture.complete
             };
         }
 
+        const { preWindowSec, postWindowSec } = getTriggerWindows(triggerSettings.get(channel));
         return {
             mode: "continuous" as const,
             data: liveData,
@@ -1355,27 +1190,76 @@
             frozenCollecting: false
         };
     }
-    
-    /** Does a full page load of `/labjacks`. */
-    function goBack() {
-        window.location.href = "/labjacks";
+
+    /**
+     * Text of the connection badges.
+     *
+     * @param state - Connection state.
+     */
+    function connectionLabel(state: LiveConnectionState): string {
+        switch (state) {
+            case "connected": return "Connected";
+            case "connecting": return "Connecting...";
+            case "reconnecting": return "Reconnecting...";
+            default: return "Disconnected";
+        }
     }
 
     /**
-     * Formats a date for a `datetime-local` input, in local time.
+     * Color class of the connection dot in the header.
+     *
+     * @param state - Connection state.
+     */
+    function connectionDotClass(state: LiveConnectionState): string {
+        if (state === "connected") return "bg-success";
+        if (state === "disconnected") return "bg-error";
+        return "bg-warning";
+    }
+
+    /** Default length of the export range, ending now, in ms. */
+    const DEFAULT_EXPORT_RANGE_MS = 2 * 60 * 1000;
+
+    /**
+     * Formats a date for a `datetime-local` input, in local time, to the second.
      *
      * @param date - Date to format.
-     * @returns `YYYY-MM-DDTHH:mm`.
+     * @returns `YYYY-MM-DDTHH:mm:ss`.
      */
     function toLocalInputValue(date: Date): string {
         const pad = (value: number) => value.toString().padStart(2, "0");
-        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+    }
+
+    /**
+     * Describes the browser's time zone, in which the export times are entered.
+     *
+     * @returns E.g. `Europe/Berlin (UTC+02:00)`.
+     */
+    function describeLocalTimeZone(): string {
+        const name = Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
+        const offsetMin = -new Date().getTimezoneOffset();
+        const sign = offsetMin >= 0 ? "+" : "-";
+        const abs = Math.abs(offsetMin);
+        const pad = (value: number) => value.toString().padStart(2, "0");
+        return `${name} (UTC${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)})`;
+    }
+
+    /**
+     * Shows an export input value as UTC, the time the request is sent in.
+     *
+     * @param value - `datetime-local` value.
+     * @returns E.g. `2026-09-28 12:00:05 UTC`, or `""` when the value is not a date.
+     */
+    function formatUtcPreview(value: string): string {
+        const date = new Date(value);
+        if (!value || isNaN(date.getTime())) return "";
+        return `${date.toISOString().slice(0, 19).replace("T", " ")} UTC`;
     }
 
     /**
      * Converts a `datetime-local` value, read as local time, to an RFC 3339 UTC string.
      *
-     * @param value - Value such as `2025-01-31T14:05`.
+     * @param value - Value such as `2025-01-31T14:05` or `2025-01-31T14:05:30`.
      * @returns The time from `Date.toISOString()`, e.g. `2025-01-31T19:05:00.000Z` in UTC-5.
      * @throws Error if the value is not a valid date.
      */
@@ -1388,15 +1272,16 @@
     }
 
     /**
-     * Opens the export form with all enabled channels and the last five minutes selected.
+     * Opens the export form with the plotted channels (all enabled channels if none is
+     * plotted) and the last {@link DEFAULT_EXPORT_RANGE_MS} selected.
      */
     function openExportModal() {
         if (!labjackConfig) return;
-        const defaults = new Set(labjackConfig.sensor_settings.channels_enabled);
-        exportChannels = defaults;
+        const plotted = getRenderablePlotChannels();
+        exportChannels = new Set(plotted.length > 0 ? plotted : labjackConfig.sensor_settings.channels_enabled);
         const now = new Date();
         exportEnd = toLocalInputValue(now);
-        const start = new Date(now.getTime() - 5 * 60 * 1000);
+        const start = new Date(now.getTime() - DEFAULT_EXPORT_RANGE_MS);
         exportStart = toLocalInputValue(start);
         exportError = "";
         exportWarning = "";
@@ -1407,13 +1292,12 @@
     }
 
     /**
-     * Hides the export form.
-     *
-     * It does not cancel a running download. The Cancel button is disabled during a
-     * download, but the backdrop still calls this, and the file is still saved when the
-     * download finishes.
+     * Closes the export form, cancelling a running download first: the download stops
+     * reading frames, releases its subscription, and nothing is saved.
      */
     function closeExportModal() {
+        exportAbort?.abort();
+        exportAbort = null;
         showExportModal = false;
         exporting = false;
         exportWarning = "";
@@ -1501,6 +1385,8 @@
         exportWarning = "";
         exportProgress = 0;
         exportTotal = null;
+        const abort = new AbortController();
+        exportAbort = abort;
 
         try {
             const payload: ExportRequestPayload = {
@@ -1515,6 +1401,7 @@
             };
 
             const result = await downloadExportViaNats(natsService, archiveExportRequestSubject(labjackConfig), payload, {
+                signal: abort.signal,
                 onProgress: (received) => {
                     exportProgress = received;
                 },
@@ -1546,46 +1433,67 @@
             showExportModal = false;
             exportWarning = "";
         } catch (err) {
+            // A cancelled export was closed by the user; there is nothing to report.
+            if (isExportCancelled(err) || abort.signal.aborted) return;
             console.error("Export failed", err);
             exportError = err instanceof Error ? err.message : "Export failed";
         } finally {
-            exporting = false;
+            if (exportAbort === abort) {
+                exportAbort = null;
+                exporting = false;
+            }
         }
     }
 
-    // One timer drives both decoding and redraws, so the plots update at most every
-    // UI_SNAPSHOT_INTERVAL_MS no matter how fast messages arrive.
-    onMount(() => {
-        uiNowTimer = setInterval(() => {
-            uiNow = Date.now();
-            processPendingVisualizationBatches();
+    /**
+     * One pass of the decode and redraw loop: decodes queued messages within
+     * `budgetMs`, then copies the buffers into reactive state if they changed and
+     * {@link MIN_SNAPSHOT_INTERVAL_MS} has passed since the last copy.
+     *
+     * @param budgetMs - Decoding time allowed, in ms.
+     */
+    function pumpLiveData(budgetMs: number) {
+        const now = performance.now();
+        lastPumpAt = now;
+        processPendingVisualizationBatches(budgetMs);
+        if (uiSnapshotDirty && performance.now() - lastFlushAt >= MIN_SNAPSHOT_INTERVAL_MS) {
             flushUiSnapshots();
-        }, UI_SNAPSHOT_INTERVAL_MS);
+            lastFlushAt = performance.now();
+        }
+    }
+
+    /** Runs {@link pumpLiveData} on every animation frame. */
+    function onAnimationFrame() {
+        pumpLiveData(FRAME_DECODE_BUDGET_MS);
+        frameHandle = requestAnimationFrame(onAnimationFrame);
+    }
+
+    // Decoding and redraws run on animation frames. Browsers pause animation frames in
+    // background tabs, so a slow timer keeps decoding there and the queue does not fill.
+    onMount(() => {
+        frameHandle = requestAnimationFrame(onAnimationFrame);
+        backgroundTimer = setInterval(() => {
+            if (performance.now() - lastPumpAt > BACKGROUND_PUMP_INTERVAL_MS / 2) {
+                pumpLiveData(BACKGROUND_DECODE_BUDGET_MS);
+            }
+        }, BACKGROUND_PUMP_INTERVAL_MS);
     });
     
-    // Stop the timer, unsubscribe and close this page's connection when leaving the page.
+    // Stop the loop, unsubscribe and close this page's connection when leaving the page.
+    // A load still in progress sees `destroyed` and closes its own connection.
     onDestroy(() => {
-        if (uiNowTimer) {
-            clearInterval(uiNowTimer);
-            uiNowTimer = null;
+        destroyed = true;
+        if (frameHandle) {
+            cancelAnimationFrame(frameHandle);
+            frameHandle = 0;
         }
-
-        // Clean up subscriptions
-        subscriptions.forEach(sub => {
-            try {
-                sub.unsubscribe();
-            } catch (err) {
-                console.error("Error unsubscribing:", err);
-            }
-        });
-        
-        if (natsService) {
-            try {
-                natsService.connection.close();
-            } catch (err) {
-                console.error("Error closing NATS connection:", err);
-            }
+        if (backgroundTimer) {
+            clearInterval(backgroundTimer);
+            backgroundTimer = null;
         }
+        exportAbort?.abort();
+        closeLiveConnection();
+        scanQueue.clear();
     });
 </script>
 
@@ -1594,8 +1502,8 @@
 Live plot page for one LabJack, with a form to download archived data as CSV.
 
 URL: `/labjacks/plots/[asset_number]?key=<kv key>`
-- `asset_number`: the config's `asset_number`. If it is not a positive number the page
-  loads nothing and keeps showing the loading spinner.
+- `asset_number`: the config's `asset_number`. If it is not a non-negative integer,
+  `+page.ts` answers 404 and SvelteKit shows the shared error page.
 - `key` (optional): KV key of the config in bucket `avenabox`, such as
   `<site>.<box>.<source>.config`. It is used only when that config's `asset_number`
   matches. Otherwise the page reads every `*.*.*.config` key and takes the first config
@@ -1604,13 +1512,19 @@ URL: `/labjacks/plots/[asset_number]?key=<kv key>`
 Reads `serverName` and `credentialsContent` from sessionStorage (written by the login
 page) and opens its own connection to central NATS. Shows an error if either is missing.
 
-Live data: subscribes to one subject per enabled channel, built by
-`liveLabJackChannelSubject`: `avenars.<site>.<box>.<source>.live.chNN` for structured
-configs or `<root>.<asset>.data.chNN` for legacy ones. Each message is a FlatBuffer
-`Scan`. Only the newest undecoded message per channel is kept. Every 100 ms a timer
-decodes it for the channels selected for plotting (at most two), applies the channel's
-calibration, appends to a rolling buffer, runs the trigger logic and copies the buffers
-into reactive state. Each channel can run in Free Run, Trigger Normal or Trigger Single.
+Live data: subscribes only to the channels selected for plotting (at most two), one
+subject each, built by `liveLabJackChannelSubject`:
+`avenars.<site>.<box>.<source>.live.chNN` for structured configs or
+`<root>.<asset>.data.chNN` for legacy ones. Selecting a channel subscribes it and
+starts a fresh trace; deselecting unsubscribes it and drops its buffer. Each message
+is a FlatBuffer `Scan`. Every message is queued
+(bounded; overflow drops the oldest and is shown in Data Statistics). On each
+animation frame the page decodes queued messages in order, within a time budget
+(what does not fit waits, in order, for the next frame; a 1 s timer takes over in
+background tabs), applies the channel's calibration, appends
+to a rolling buffer sorted by sample time (NaN and missing time become gaps; duplicates
+are skipped), runs the trigger logic and, at most about 30 times a second, copies the buffers into
+reactive state. Each channel can run in Free Run, Trigger Normal or Trigger Single.
 
 Hands off to one `RealTimePlot` per selected channel, passing the live snapshot, the
 frozen trigger capture, axis settings and trigger state.
@@ -1618,10 +1532,14 @@ frozen trigger capture, axis settings and trigger state.
 Export: builds an `ExportRequestPayload` and calls `downloadExportViaNats` with subject
 `<root>.<site>.<box>.<source>.export.request` (from `archiveExportRequestSubject`).
 That helper streams the CSV in chunks and acknowledges each one; this page shows the
-progress and saves the result through a temporary download link.
+progress and saves the result through a temporary download link. The form defaults to
+the plotted channels and the last two minutes, takes times to the second in the
+browser's time zone (shown in the form, with the UTC range sent), and Cancel Download
+aborts a running export: no more chunks are read or acknowledged, the reply
+subscription is released and nothing is saved.
 -->
 <svelte:head>
-    <title>Real-time Plots - LabJack {assetNumber} - Avena-OTR</title>
+    <title>Real-time Plots - LabJack {assetNumber} - Avena-RS</title>
 </svelte:head>
 
 <div class="min-h-screen bg-base-300">
@@ -1629,8 +1547,8 @@ progress and saves the result through a temporary download link.
     <div class="navbar bg-base-100 shadow-xl border-b border-base-200">
         <div class="flex-1">
             <div class="flex items-center">
-                <button
-                    onclick={goBack}
+                <a
+                    href="/labjacks"
                     class="btn btn-ghost btn-circle mr-4"
                     title="Back to LabJacks"
                     aria-label="Back to LabJacks"
@@ -1638,7 +1556,7 @@ progress and saves the result through a temporary download link.
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
                     </svg>
-                </button>
+                </a>
                 <div class="avatar placeholder mr-4">
                     <div class="flex items-center justify-center">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-12 h-12">
@@ -1651,22 +1569,21 @@ progress and saves the result through a temporary download link.
                     <p class="text-base-content/70 text-sm">
                         {#if labjackConfig}
                             {labjackConfig.labjack_name} (Asset #{labjackConfig.asset_number})
-                        {:else}
+                        {:else if loading}
                             Loading...
+                        {:else}
+                            No LabJack loaded
                         {/if}
                     </p>
                 </div>
             </div>
         </div>
         <div class="flex-none">
-            <!--
-                Connection Status. "Connected" means the live subscriptions were created;
-                it does not follow later connection loss.
-            -->
+            <!-- Connection status, following the NATS client's status events. -->
             <div class="flex items-center mr-4">
-                <div class="w-2 h-2 rounded-full mr-2 {isConnected ? 'bg-success' : 'bg-error'}"></div>
+                <div class="w-2 h-2 rounded-full mr-2 {connectionDotClass(connectionState)}"></div>
                 <span class="text-base-content text-sm">
-                    {isConnected ? 'Connected' : 'Disconnected'}
+                    {connectionLabel(connectionState)}
                 </span>
             </div>
         </div>
@@ -1681,13 +1598,38 @@ progress and saves the result through a temporary download link.
                     <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
                 </svg>
                 <span>{error}</span>
+                {#if errorAction === "retry"}
+                    <div>
+                        <button
+                            onclick={loadLabJackConfig}
+                            class="btn btn-sm btn-error"
+                        >
+                            Retry
+                        </button>
+                    </div>
+                {:else if errorAction === "login"}
+                    <div>
+                        <a href="/" class="btn btn-sm btn-error">Log in</a>
+                    </div>
+                {:else}
+                    <div>
+                        <a href="/labjacks" class="btn btn-sm btn-error">LabJacks</a>
+                    </div>
+                {/if}
+            </div>
+        {/if}
+
+        <!-- Lost connection banner -->
+        {#if labjackConfig && !loading && connectionState === "reconnecting"}
+            <div class="alert alert-warning mb-6" role="status">
+                <span class="loading loading-spinner loading-sm"></span>
+                <span>Connection to NATS lost. Reconnecting... The plots resume by themselves; the missing time shows as a gap.</span>
+            </div>
+        {:else if labjackConfig && !loading && connectionState === "disconnected" && !error}
+            <div class="alert alert-error mb-6" role="alert">
+                <span>Disconnected from NATS{connectionLostReason ? `: ${connectionLostReason}` : ""}. Live data has stopped.</span>
                 <div>
-                    <button
-                        onclick={loadLabJackConfig}
-                        class="btn btn-sm btn-error"
-                    >
-                        Retry
-                    </button>
+                    <button onclick={loadLabJackConfig} class="btn btn-sm">Reconnect</button>
                 </div>
             </div>
         {/if}
@@ -1726,7 +1668,7 @@ progress and saves the result through a temporary download link.
                         </div>
                         <div class="flex justify-between">
                             <span>NATS Subject Pattern:</span>
-                            <span class="badge badge-accent badge-sm font-mono">{liveLabJackChannelPattern(labjackConfig)}</span>
+                            <span class="badge badge-accent badge-sm font-mono h-auto break-all">{liveLabJackChannelPattern(labjackConfig)}</span>
                         </div>
                         <div class="flex justify-between">
                             <span>Channel Data Status:</span>
@@ -1737,21 +1679,31 @@ progress and saves the result through a temporary download link.
                                 -->
                                 {#each Array.from(channelData.entries()) as [ch, data]}
                                     {@const latest = data[data.length - 1]}
-                                    {@const rate = data.length > 1 ? Math.round(1000 / ((latest?.timestamp - data[0]?.timestamp) / data.length)) : 0}
+                                    {@const rate = data.length > 1 ? Math.round(1000 * (data.length - 1) / (latest?.timestamp - data[0]?.timestamp)) : 0}
+                                    {@const status = channelStreamStatus.get(ch)}
                                     <span class="badge badge-outline badge-xs">Ch{ch}: {data.length} pts ({rate} Hz)</span>
+                                    <!--
+                                        Stream problems since the page loaded: messages
+                                        dropped because decoding fell behind, gaps in the
+                                        received data, timeline resets, samples skipped as
+                                        duplicates, undecodable messages.
+                                    -->
+                                    {#if status && status.dropped > 0}
+                                        <span class="badge badge-error badge-xs">Ch{ch}: {status.dropped} msgs dropped (overload)</span>
+                                    {/if}
+                                    {#if status && (status.gaps > 0 || status.resets > 0 || status.skipped > 0 || status.decodeErrors > 0)}
+                                        <span class="badge badge-warning badge-xs">
+                                            Ch{ch}: {status.gaps} gaps{status.resets > 0 ? `, ${status.resets} resets` : ''}{status.skipped > 0 ? `, ${status.skipped} dup samples` : ''}{status.decodeErrors > 0 ? `, ${status.decodeErrors} bad msgs` : ''}
+                                        </span>
+                                    {/if}
                                 {/each}
                             </div>
                         </div>
                         <div class="flex justify-between">
                             <span>Connection Status:</span>
-                            <span class="badge {isConnected ? 'badge-success' : 'badge-error'} badge-sm">
-                                <div class="w-2 h-2 rounded-full mr-1 {isConnected ? 'bg-success-content' : 'bg-error-content'}"></div>
-                                {isConnected ? 'Connected' : 'Disconnected'}
+                            <span class="badge {connectionState === 'connected' ? 'badge-success' : connectionState === 'disconnected' ? 'badge-error' : 'badge-warning'} badge-sm">
+                                {connectionLabel(connectionState)}
                             </span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span>Data Parser:</span>
-                            <span class="badge badge-info badge-sm">Source-time plot + receive-time lag</span>
                         </div>
                     </div>
                 </div>
@@ -1773,7 +1725,7 @@ progress and saves the result through a temporary download link.
                         <div>
                             <h4 class="card-title text-base-content">Visible Plot Channels</h4>
                             <p class="text-sm text-base-content/70">
-                                Select up to 2 channels. Only selected channels are parsed and rendered in the browser.
+                                Select up to 2 channels. Only selected channels are received, parsed and rendered in the browser; a newly selected channel starts with an empty plot.
                             </p>
                         </div>
                         <span class="badge badge-info badge-sm">
@@ -1815,20 +1767,24 @@ progress and saves the result through a temporary download link.
                     {@const isChannelTriggered = channelTriggered.get(channel) || false}
                     {@const channelTriggerTimeValue = channelTriggerTime.get(channel) || 0}
                     {@const isPrebufferReady = channelPrebufferReady.get(channel) ?? false}
+                    {@const unitInfo = getChannelUnitInfo(channel)}
                     
                     <!-- Combined Channel Section -->
-                    <div
-                        class="card bg-base-100 shadow-xl border border-base-200"
-                        use:observeChannelVisibility={channel}
-                    >
+                    <div class="card bg-base-100 shadow-xl border border-base-200">
                         <div class="card-body">
                             <!-- Channel Header -->
                             <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
                                 <h3 class="card-title text-base-content">Channel {channel}</h3>
                                 <div class="flex flex-wrap items-center gap-3">
                                     <div class="badge badge-outline badge-sm">
-                                        {labjackConfig.sensor_settings.data_formats[index]} 
-                                        ({labjackConfig.sensor_settings.measurement_units[index]})
+                                        {labjackConfig.sensor_settings.data_formats[index]}
+                                    </div>
+                                    <!-- Whether the plotted values are raw volts or calibrated, and into which unit. -->
+                                    <div
+                                        class="badge badge-sm {unitInfo.warning ? 'badge-warning' : unitInfo.calibrated ? 'badge-secondary' : 'badge-ghost'}"
+                                        title={unitInfo.warning ?? ""}
+                                    >
+                                        {unitInfo.tag}
                                     </div>
                                     <span class="badge badge-info badge-sm">
                                         {#if channelMode === 'free_run'}
@@ -1848,6 +1804,10 @@ progress and saves the result through a temporary download link.
                                     {/if}
                                 </div>
                             </div>
+
+                            {#if unitInfo.warning}
+                                <p class="text-sm text-warning -mt-4 mb-4">{unitInfo.warning}</p>
+                            {/if}
 
                             <div class="mb-6 p-4 bg-base-200 rounded-lg">
                                 <h4 class="text-md font-medium text-base-content mb-4">Mode & Axis</h4>
@@ -1879,13 +1839,12 @@ progress and saves the result through a temporary download link.
                                         <input
                                             id="x-window-{channel}"
                                             type="number"
-                                            min="0.1"
                                             step="0.1"
                                             class="input input-bordered"
                                             value={channelAxis?.xWindowSec ?? timeWindow}
                                             onchange={(e) => {
                                                 if (e.target instanceof HTMLInputElement) {
-                                                    updateAxisSettings(channel, { xWindowSec: parseFloat(e.target.value) || timeWindow });
+                                                    commitAxisLimit(channel, "xWindowSec", e.target);
                                                 }
                                             }}
                                         />
@@ -1909,18 +1868,19 @@ progress and saves the result through a temporary download link.
 
                                     <div class="form-control">
                                         <label class="label" for="y-min-{channel}">
-                                            <span class="label-text">Y Min</span>
+                                            <span class="label-text">Y Min ({unitInfo.unit})</span>
                                         </label>
                                         <input
                                             id="y-min-{channel}"
                                             type="number"
                                             step="0.01"
                                             class="input input-bordered"
-                                            value={channelAxis?.yMin ?? -1}
+                                            value={(channelAxis?.autoY ?? true) ? "" : (channelAxis?.yMin ?? -1)}
+                                            placeholder={(channelAxis?.autoY ?? true) ? "auto" : undefined}
                                             disabled={channelAxis?.autoY ?? true}
                                             onchange={(e) => {
                                                 if (e.target instanceof HTMLInputElement) {
-                                                    updateAxisSettings(channel, { yMin: parseFloat(e.target.value) || -1 });
+                                                    commitAxisLimit(channel, "yMin", e.target);
                                                 }
                                             }}
                                         />
@@ -1928,18 +1888,19 @@ progress and saves the result through a temporary download link.
 
                                     <div class="form-control">
                                         <label class="label" for="y-max-{channel}">
-                                            <span class="label-text">Y Max</span>
+                                            <span class="label-text">Y Max ({unitInfo.unit})</span>
                                         </label>
                                         <input
                                             id="y-max-{channel}"
                                             type="number"
                                             step="0.01"
                                             class="input input-bordered"
-                                            value={channelAxis?.yMax ?? 1}
+                                            value={(channelAxis?.autoY ?? true) ? "" : (channelAxis?.yMax ?? 1)}
+                                            placeholder={(channelAxis?.autoY ?? true) ? "auto" : undefined}
                                             disabled={channelAxis?.autoY ?? true}
                                             onchange={(e) => {
                                                 if (e.target instanceof HTMLInputElement) {
-                                                    updateAxisSettings(channel, { yMax: parseFloat(e.target.value) || 1 });
+                                                    commitAxisLimit(channel, "yMax", e.target);
                                                 }
                                             }}
                                         />
@@ -1977,14 +1938,17 @@ progress and saves the result through a temporary download link.
                                         </label>
                                     </div>
                                 </div>
+                                {#if axisInputErrors.get(channel)}
+                                    <p class="text-sm text-error mt-2">{axisInputErrors.get(channel)}</p>
+                                {/if}
                             </div>
 
                             {#if isTriggerMode(channelMode)}
                                 <div class="mb-6 p-4 bg-base-200 rounded-lg">
                                     <!--
-                                        The threshold is compared with calibrated values,
-                                        so its unit is the channel's unit, not always
-                                        volts.
+                                        The threshold is compared with the plotted
+                                        (calibrated) values, so it is in the channel's
+                                        unit, not always volts.
                                     -->
                                     <h4 class="text-md font-medium text-base-content mb-4">Trigger Settings</h4>
                                     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
@@ -2013,21 +1977,16 @@ progress and saves the result through a temporary download link.
                                         </div>
                                         <div class="form-control">
                                             <label class="label" for="trigger-threshold-{channel}">
-                                                <span class="label-text">Threshold (V)</span>
+                                                <span class="label-text">Threshold ({unitInfo.unit})</span>
                                             </label>
                                             <input
                                                 id="trigger-threshold-{channel}"
                                                 type="number"
                                                 step="0.01"
-                                                value={channelTriggerSetting?.threshold || 0}
+                                                value={channelTriggerSetting?.threshold ?? 0}
                                                 onchange={(e) => {
-                                                    const setting = triggerSettings.get(channel);
-                                                    if (setting && e.target instanceof HTMLInputElement) {
-                                                        triggerSettings.set(channel, {
-                                                            ...setting,
-                                                            threshold: parseFloat(e.target.value) || 0
-                                                        });
-                                                        triggerSettings = new Map(triggerSettings);
+                                                    if (e.target instanceof HTMLInputElement) {
+                                                        commitTriggerNumber(channel, "threshold", e.target);
                                                     }
                                                 }}
                                                 class="input input-bordered input-warning"
@@ -2067,16 +2026,10 @@ progress and saves the result through a temporary download link.
                                                 type="number"
                                                 min="0.01"
                                                 step="0.1"
-                                                value={channelTriggerSetting?.postTriggerWindowSec || timeWindow}
+                                                value={channelTriggerSetting?.postTriggerWindowSec ?? timeWindow}
                                                 onchange={(e) => {
-                                                    const setting = triggerSettings.get(channel);
-                                                    if (setting && e.target instanceof HTMLInputElement) {
-                                                        const raw = parseFloat(e.target.value) || 0.01;
-                                                        triggerSettings.set(channel, {
-                                                            ...setting,
-                                                            postTriggerWindowSec: Math.max(0.01, raw)
-                                                        });
-                                                        triggerSettings = new Map(triggerSettings);
+                                                    if (e.target instanceof HTMLInputElement) {
+                                                        commitTriggerNumber(channel, "postTriggerWindowSec", e.target);
                                                     }
                                                 }}
                                                 class="input input-bordered input-warning"
@@ -2085,7 +2038,7 @@ progress and saves the result through a temporary download link.
                                         <div class="form-control justify-end">
                                             <button
                                                 class="btn btn-outline btn-warning mt-8"
-                                                onclick={() => resetChannelTrigger(channel)}
+                                                onclick={() => clearTriggerState(channel)}
                                             >
                                                 Re-arm Trigger
                                             </button>
@@ -2098,7 +2051,8 @@ progress and saves the result through a temporary download link.
                                 <h4 class="text-md font-medium text-base-content mb-4">Data Plot</h4>
                                 <RealTimePlot
                                     data={plotConfig.data}
-                                    unit={labjackConfig.sensor_settings.measurement_units[index]}
+                                    unit={unitInfo.unit}
+                                    calibrated={unitInfo.calibrated}
                                     timeWindow={channelAxis?.xWindowSec ?? timeWindow}
                                     isTriggered={plotConfig.isTriggered}
                                     triggerTime={plotConfig.triggerTime}
@@ -2136,6 +2090,7 @@ progress and saves the result through a temporary download link.
                                         id="export-start"
                                         type="datetime-local"
                                         class="input input-bordered"
+                                        step="1"
                                         bind:value={exportStart}
                                         max={exportEnd || undefined}
                                         required
@@ -2150,6 +2105,7 @@ progress and saves the result through a temporary download link.
                                         id="export-end"
                                         type="datetime-local"
                                         class="input input-bordered"
+                                        step="1"
                                         bind:value={exportEnd}
                                         min={exportStart || undefined}
                                         required
@@ -2157,6 +2113,13 @@ progress and saves the result through a temporary download link.
                                     />
                                 </div>
                             </div>
+
+                            <p class="text-sm text-base-content/70">
+                                Times are in your browser's time zone, {describeLocalTimeZone()}.
+                                {#if formatUtcPreview(exportStart) && formatUtcPreview(exportEnd)}
+                                    Requested range: {formatUtcPreview(exportStart)} to {formatUtcPreview(exportEnd)}.
+                                {/if}
+                            </p>
 
                             <div>
                                 <h4 class="font-semibold text-base-content mb-2">Channels</h4>
@@ -2209,16 +2172,15 @@ progress and saves the result through a temporary download link.
                                     type="button"
                                     class="btn btn-ghost"
                                     onclick={closeExportModal}
-                                    disabled={exporting}
                                 >
-                                    Cancel
+                                    {exporting ? "Cancel Download" : "Cancel"}
                                 </button>
                                 <button
                                     type="submit"
                                     class="btn btn-warning"
                                     disabled={exporting}
                                 >
-                                    {exporting ? "Preparing..." : "Start Download"}
+                                    {exporting ? "Downloading..." : "Start Download"}
                                 </button>
                             </div>
                         </form>
@@ -2227,9 +2189,12 @@ progress and saves the result through a temporary download link.
                         class="modal-backdrop bg-black/40"
                         role="button"
                         tabindex="0"
-                        onclick={closeExportModal}
+                        onclick={() => {
+                            // While downloading, only the Cancel Download button stops it.
+                            if (!exporting) closeExportModal();
+                        }}
                         onkeydown={(event) => {
-                            if (event.key === "Escape" || event.key === "Enter" || event.key === " ") {
+                            if (!exporting && (event.key === "Escape" || event.key === "Enter" || event.key === " ")) {
                                 event.preventDefault();
                                 closeExportModal();
                             }

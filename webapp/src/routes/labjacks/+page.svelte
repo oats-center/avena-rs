@@ -1,151 +1,14 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onMount, onDestroy } from "svelte";
     import { connect, getKeys, getKeyValue, updateConfig, deleteKey } from "$lib/nats.svelte";
-    import { normalizeCalibration, type CalibrationSpec } from "$lib/calibration";
-    import { labjackConfigKey } from "$lib/subjects";
+    import { normalizeCalibration, resolveCalibrationUnit, RAW_UNIT } from "$lib/calibration";
+    import { planConfigSave } from "$lib/plot/config-key";
     import LabJackConfigModal from "$lib/components/LabJackConfigModal.svelte";
-    
-    /** `sensor_settings` object of a LabJack config in KV. See the KV config reference. */
-    interface SensorSettings {
-        scans_per_read: number;
-        scan_rate_hz: number;
-        channels_enabled: number[];
-        gains: number;
-        data_formats: string[];
-        measurement_units: string[];
-        labjack_on_off: boolean;
-        calibrations?: Record<string, CalibrationSpec>;
-    }
-    
-    /**
-     * LabJack config document stored in KV bucket `avenabox` under
-     * `<site>.<box>.<source>.config`.
-     */
-    interface LabJackConfig {
-        labjack_name: string;
-        asset_number: number;
-        max_channels: number;
-        site_id?: string;
-        box_id?: string;
-        source_type?: string;
-        source_id?: string;
-        nats_subject: string;
-        nats_stream: string;
-        rotate_secs: number;
-        sensor_settings: SensorSettings;
-    }
-
-    /**
-     * Fallback values used by {@link normalizeSensorSettings} for missing or invalid
-     * fields.
-     */
-    const DEFAULT_SENSOR_SETTINGS: SensorSettings = {
-        scans_per_read: 200,
-        scan_rate_hz: 1000,
-        channels_enabled: [],
-        gains: 1,
-        data_formats: [],
-        measurement_units: [],
-        labjack_on_off: false,
-        calibrations: {}
-    };
-
-    /**
-     * Builds a complete sensor settings object from a raw `sensor_settings` value.
-     *
-     * Reads the older field names `scan_rate` (for `scans_per_read`) and `sampling_rate`
-     * (for `scan_rate_hz`) when the new ones are absent. Missing or non-finite numbers take
-     * the values in {@link DEFAULT_SENSOR_SETTINGS}. `data_formats` and `measurement_units`
-     * are padded with `"voltage"` and `"V"` to one entry per enabled channel. Arrays and
-     * `calibrations` are shallow copies.
-     *
-     * @param rawSensor - Parsed `sensor_settings` from KV or from the edit modal. May be
-     *   `undefined` or partial.
-     * @returns A new settings object with every field set.
-     */
-    function normalizeSensorSettings(rawSensor: any): SensorSettings {
-        const sensor: SensorSettings = {
-            scans_per_read: Number(
-                rawSensor?.scans_per_read ?? rawSensor?.scan_rate ?? DEFAULT_SENSOR_SETTINGS.scans_per_read
-            ),
-            scan_rate_hz: Number(
-                rawSensor?.scan_rate_hz ?? rawSensor?.sampling_rate ?? DEFAULT_SENSOR_SETTINGS.scan_rate_hz
-            ),
-            channels_enabled: Array.isArray(rawSensor?.channels_enabled) ? [...rawSensor.channels_enabled] : [],
-            gains: Number(rawSensor?.gains ?? DEFAULT_SENSOR_SETTINGS.gains),
-            data_formats: Array.isArray(rawSensor?.data_formats) ? [...rawSensor.data_formats] : [],
-            measurement_units: Array.isArray(rawSensor?.measurement_units) ? [...rawSensor.measurement_units] : [],
-            labjack_on_off: Boolean(rawSensor?.labjack_on_off),
-            calibrations:
-                rawSensor?.calibrations && typeof rawSensor.calibrations === "object"
-                    ? { ...rawSensor.calibrations }
-                    : {}
-        };
-
-        if (!Number.isFinite(sensor.scans_per_read)) sensor.scans_per_read = DEFAULT_SENSOR_SETTINGS.scans_per_read;
-        if (!Number.isFinite(sensor.scan_rate_hz)) sensor.scan_rate_hz = DEFAULT_SENSOR_SETTINGS.scan_rate_hz;
-        if (!Number.isFinite(sensor.gains)) sensor.gains = DEFAULT_SENSOR_SETTINGS.gains;
-        while (sensor.data_formats.length < sensor.channels_enabled.length) sensor.data_formats.push("voltage");
-        while (sensor.measurement_units.length < sensor.channels_enabled.length) sensor.measurement_units.push("V");
-
-        return sensor;
-    }
-
-    /**
-     * Copies a config from the edit modal into the shape written to KV.
-     *
-     * Converts the numeric top-level fields with `Number()` and normalizes the sensor
-     * settings with {@link normalizeSensorSettings}. Only the fields listed in
-     * `LabJackConfig` are kept; any other field on `raw` is dropped.
-     *
-     * @param raw - Config returned by `LabJackConfigModal`.
-     * @returns A new config object.
-     */
-    function sanitizeLabJackConfig(raw: LabJackConfig): LabJackConfig {
-        return {
-            labjack_name: raw.labjack_name,
-            asset_number: Number(raw.asset_number),
-            max_channels: Number(raw.max_channels),
-            site_id: raw.site_id,
-            box_id: raw.box_id,
-            source_type: raw.source_type,
-            source_id: raw.source_id,
-            nats_subject: raw.nats_subject,
-            nats_stream: raw.nats_stream,
-            rotate_secs: Number(raw.rotate_secs),
-            sensor_settings: normalizeSensorSettings(raw.sensor_settings)
-        };
-    }
-
-    /**
-     * Fills in defaults for a config read from KV.
-     *
-     * Defaults: `labjack_name` `"unknown"`, `asset_number` 0, `max_channels` 8, empty
-     * `site_id` and `box_id`, `source_type` `"labjack"`, `source_id` falls back to
-     * `labjack_name`, `nats_subject` `"avenars"`, `nats_stream` `"labjacks"`, `rotate_secs`
-     * 60.
-     *
-     * @param raw - Parsed JSON value of a `*.*.*.config` key.
-     * @returns The normalized config, or `null` when `raw` is not an object.
-     */
-    function normalizeLabJackConfig(raw: any): LabJackConfig | null {
-        if (!raw || typeof raw !== "object") return null;
-        const sensor = normalizeSensorSettings(raw.sensor_settings ?? {});
-
-        return {
-            labjack_name: raw.labjack_name ?? "unknown",
-            asset_number: Number(raw.asset_number ?? 0),
-            max_channels: Number(raw.max_channels ?? 8),
-            site_id: raw.site_id ?? "",
-            box_id: raw.box_id ?? "",
-            source_type: raw.source_type ?? "labjack",
-            source_id: raw.source_id ?? raw.labjack_name ?? "",
-            nats_subject: raw.nats_subject ?? "avenars",
-            nats_stream: raw.nats_stream ?? "labjacks",
-            rotate_secs: Number(raw.rotate_secs ?? 60),
-            sensor_settings: sensor
-        };
-    }
+    import {
+        normalizeLabJackConfig,
+        sanitizeLabJackConfig,
+        type LabJackConfig
+    } from "$lib/labjack-config";
     
     /**
      * Configs shown as cards, keyed by their KV key in `avenabox`. Replaced, not mutated,
@@ -168,67 +31,105 @@
      */
     let isAddingNew = $state<boolean>(false);
     /**
-     * Connection opened by {@link loadLabJacks} and used for KV reads. Not closed by this
-     * page.
+     * Connection opened by {@link loadLabJacks} and used for KV reads. Closed before each
+     * reload and when the page is destroyed.
      */
     let natsService: any = null;
     /**
-     * Calibration presets from `calibration.*` keys, keyed by preset id, offered in the
-     * modal.
+     * True once {@link loadLabJacks} has connected. Adding a config is disabled until then.
      */
-    let availableCalibrations = $state<Map<string, CalibrationSpec>>(new Map());
+    let connected = $state<boolean>(false);
+    /** True when sessionStorage holds no login data; the page then only links to `/`. */
+    let notLoggedIn = $state<boolean>(false);
+    /**
+     * True when sessionStorage holds login data, checked by {@link loadLabJacks}. The
+     * Logout button is shown only then; before the check neither Logout nor Log in shows.
+     */
+    let loggedIn = $state<boolean>(false);
+    /** Incremented by each {@link loadLabJacks} call; older calls see they are stale. */
+    let loadGeneration = 0;
+    /** Set in `onDestroy`, so a load that finishes afterwards closes its connection. */
+    let destroyed = false;
     
     onMount(async () => {
         await loadLabJacks();
     });
+
+    onDestroy(() => {
+        destroyed = true;
+        closeConnection();
+    });
+
+    /** Closes this page's connection, if any, without waiting. */
+    function closeConnection() {
+        const service = natsService;
+        natsService = null;
+        connected = false;
+        if (!service) return;
+        try {
+            service.connection.close().catch((err: unknown) => console.error("Error closing NATS connection:", err));
+        } catch (err) {
+            console.error("Error closing NATS connection:", err);
+        }
+    }
     
     /**
-     * Connects to central NATS and loads all LabJack configs and calibration presets.
+     * Connects to central NATS and loads all LabJack configs.
      *
      * Reads `serverName` and `credentialsContent` from sessionStorage and opens a new
-     * connection. Loads presets with {@link loadCalibrations}, then lists keys matching
+     * connection, then lists keys matching
      * `*.*.*.config` in bucket `avenabox` and parses each one with
      * {@link normalizeLabJackConfig}. A key that fails to parse is logged and skipped.
      * Replaces {@link labjacks} with the result. Sets `error` when login data is missing,
      * the connection fails or listing fails; the promise does not reject.
      *
      * @remarks
-     * Also used by the Retry button. Each call opens a new connection and does not close
-     * the previous one.
+     * Also used by the Retry button. Each call first closes the previous connection. If
+     * a newer call starts, or the page is destroyed, while this one is waiting, this one
+     * closes the connection it opened and changes nothing.
      */
     async function loadLabJacks() {
+        const generation = ++loadGeneration;
+        const superseded = () => generation !== loadGeneration || destroyed;
         loading = true;
         error = "";
+        notLoggedIn = false;
+        closeConnection();
         
         try {
             const serverName = sessionStorage.getItem("serverName");
             const credentialsContent = sessionStorage.getItem("credentialsContent");
+            loggedIn = Boolean(serverName && credentialsContent);
             
             if (!serverName || !credentialsContent) {
-                error = "No NATS connection found. Please login first.";
+                error = "Not logged in. Log in to view and edit LabJack configurations.";
+                notLoggedIn = true;
                 loading = false;
                 return;
             }
             
-            natsService = await connect(serverName, credentialsContent);
-            if (!natsService) {
+            const service = await connect(serverName, credentialsContent);
+            if (superseded()) {
+                service?.connection.close().catch(() => {});
+                return;
+            }
+            if (!service) {
                 error = "Failed to connect to NATS server";
                 loading = false;
                 return;
             }
+            natsService = service;
+            connected = true;
             
-            await loadCalibrations();
-
             // Get all LabJack config keys from avenabox bucket
-            const keys = await getKeys(natsService, "avenabox", "*.*.*.config");
-            console.log("Found keys:", keys);
+            const keys = await getKeys(service, "avenabox", "*.*.*.config");
             
             const newLabJacks = new Map<string, LabJackConfig>();
             
             // Load each LabJack configuration
             for (const key of keys) {
                 try {
-                    const configStr = await getKeyValue(natsService, "avenabox", key);
+                    const configStr = await getKeyValue(service, "avenabox", key);
                     const config = normalizeLabJackConfig(JSON.parse(configStr));
                     if (config) newLabJacks.set(key, config);
                 } catch (err) {
@@ -236,48 +137,23 @@
                 }
             }
             
+            if (superseded()) return;
             labjacks = newLabJacks;
         } catch (err) {
+            if (superseded()) return;
             console.error("Error loading LabJacks:", err);
             error = "Failed to load LabJack configurations";
         } finally {
-            loading = false;
+            if (!superseded()) loading = false;
         }
     }
 
     /**
-     * Loads calibration presets from keys matching `calibration.*` in bucket `avenabox`.
-     *
-     * Each value is passed through `normalizeCalibration`. The preset id is the value's `id`
-     * field, or the key without the `calibration.` prefix. Errors are logged; a failure to
-     * list keys leaves {@link availableCalibrations} unchanged.
-     */
-    async function loadCalibrations() {
-        try {
-            const keys = await getKeys(natsService, "avenabox", "calibration.*");
-            const presets = new Map<string, CalibrationSpec>();
-            for (const key of keys) {
-                try {
-                    const raw = await getKeyValue(natsService, "avenabox", key);
-                    const parsed = normalizeCalibration(JSON.parse(raw));
-                    const id = parsed.id ?? key.replace(/^calibration\./, "");
-                    presets.set(id, { ...parsed, id });
-                } catch (err) {
-                    console.error(`Failed to parse calibration ${key}:`, err);
-                }
-            }
-            availableCalibrations = presets;
-        } catch (err) {
-            console.error("Error loading calibrations:", err);
-        }
-    }
-    
-    /**
      * Opens the modal to edit an existing config.
      *
      * @param key - KV key of the config. Saves go back to this key.
-     * @param config - Config to edit. The modal receives a shallow copy, so
-     *   `sensor_settings` is still shared with the card's object.
+     * @param config - Config to edit. The modal deep-copies it, so edits never reach the
+     *   card's object until they are saved.
      */
     function handleEdit(key: string, config: LabJackConfig) {
         editingKey = key;
@@ -310,10 +186,14 @@
                 scan_rate_hz: 1000,
                 channels_enabled: [0, 1, 2],
                 gains: 1,
-                data_formats: ["voltage", "temperature", "pressure"],
-                measurement_units: ["V", "°C", "PSI"],
+                data_formats: ["voltage", "voltage", "voltage"],
+                measurement_units: ["V", "V", "V"],
                 labjack_on_off: false,
-                calibrations: {}
+                calibrations: {
+                    "0": { type: "identity", unit: "V" },
+                    "1": { type: "identity", unit: "V" },
+                    "2": { type: "identity", unit: "V" }
+                }
             }
         };
         isAddingNew = true;
@@ -330,7 +210,8 @@
      * @param key - KV key in `avenabox` to delete.
      */
     async function handleDelete(key: string) {
-        if (!confirm(`Are you sure you want to delete LabJack "${key}"?`)) {
+        const name = labjacks.get(key)?.labjack_name ?? key;
+        if (!confirm(`Delete LabJack "${name}" (key "${key}") from KV? This cannot be undone.`)) {
             return;
         }
         
@@ -363,11 +244,20 @@
     /**
      * Writes a config from the modal to KV and updates the card list.
      *
-     * The config is cleaned with {@link sanitizeLabJackConfig}. A new config is stored
-     * under `labjackConfigKey(config)`, i.e. `<site>.<box>.<source>.config`. An edited
-     * config is stored under its original key, even if its site, box or source changed.
-     * `updateConfig` opens its own short-lived connection. On success the modal closes; on
-     * failure `error` is set and the modal stays open.
+     * The config is cleaned with {@link sanitizeLabJackConfig}. The key comes from
+     * `planConfigSave`: a new config goes to `<site>.<box>.<source>.config`; an edit that
+     * keeps site, box and source stays under the key it was loaded from; an edit that
+     * changes any of them moves to the key of the new identity. Saving onto a key that
+     * already holds another config is refused.
+     *
+     * A move asks for confirmation, writes the new key, and only after that write
+     * succeeds deletes the old key, so a failed write never loses the config. If the
+     * delete fails, both keys remain and `error` says so. Edge boxes read the key named
+     * in their `CFG_KEY` setting and ignore deletes, so a box keeps running its last
+     * config until `CFG_KEY` is changed to the new key.
+     *
+     * `updateConfig` and `deleteKey` open their own short-lived connections. On success
+     * the modal closes; on failure `error` is set and the modal stays open.
      *
      * @param config - Config returned by `LabJackConfigModal`.
      */
@@ -382,13 +272,46 @@
             }
             
             const sanitizedConfig = sanitizeLabJackConfig(config);
-            const key = isAddingNew ? labjackConfigKey(sanitizedConfig) : editingKey;
+            const plan = planConfigSave({
+                isAddingNew,
+                editingKey,
+                original: labjacks.get(editingKey) ?? null,
+                updated: sanitizedConfig,
+                existingKeys: labjacks.keys()
+            });
+            const key = plan.key;
+
+            if (plan.conflict) {
+                error = `Not saved: another configuration already uses key "${key}". Change the site, box or source.`;
+                return;
+            }
+            if (
+                plan.previousKey &&
+                !confirm(
+                    `Site, box or source changed, so this configuration moves from "${plan.previousKey}" to "${key}".\n\n` +
+                    `An edge box reads the key named in its CFG_KEY setting. Until that is changed to "${key}", ` +
+                    `the box keeps running its last configuration and does not see this edit.\n\nContinue?`
+                )
+            ) {
+                return;
+            }
+
             const success = await updateConfig(serverName, credentialsContent, "avenabox", key, sanitizedConfig);
             
             if (success) {
                 // Update local state
                 const newLabJacks = new Map(labjacks);
                 newLabJacks.set(key, sanitizedConfig);
+
+                // Remove the old key only after the new one is stored.
+                if (plan.previousKey) {
+                    const deleted = await deleteKey(serverName, credentialsContent, "avenabox", plan.previousKey);
+                    if (deleted) {
+                        newLabJacks.delete(plan.previousKey);
+                    } else {
+                        error = `Saved under "${key}", but the old key "${plan.previousKey}" could not be deleted. Delete it by hand.`;
+                    }
+                }
                 labjacks = newLabJacks;
                 
                 showModal = false;
@@ -405,64 +328,19 @@
     }
 
     /**
-     * Saves a calibration preset to KV key `calibration.<id>` in bucket `avenabox`.
+     * Unit a channel's calibrated values are in, for the card's channel list.
      *
-     * The id is cleaned with {@link sanitizeCalibrationId} and written back into the stored
-     * value. On success the preset is added to {@link availableCalibrations}.
-     *
-     * @param spec - Preset from the modal. Its `id` becomes part of the key.
-     * @returns Resolves to `true` when the write succeeded, `false` when login data is
-     *   missing, the cleaned id is empty or the write failed.
+     * @param config - Config of the card.
+     * @param channel - Channel number.
+     * @param index - Position of the channel in `channels_enabled`.
+     * @returns The calibration's unit (see `resolveCalibrationUnit`), or `V?` for an
+     *   older calibrated channel whose unit was never set.
      */
-    async function handleSaveCalibration(spec: CalibrationSpec): Promise<boolean> {
-        try {
-            const serverName = sessionStorage.getItem("serverName");
-            const credentialsContent = sessionStorage.getItem("credentialsContent");
-            if (!serverName || !credentialsContent) {
-                error = "No NATS connection found";
-                return false;
-            }
-            const sanitizedId = sanitizeCalibrationId(spec.id ?? "");
-            if (!sanitizedId) {
-                return false;
-            }
-            const key = `calibration.${sanitizedId}`;
-            const normalized = { ...spec, id: sanitizedId };
-            const success = await updateConfig(serverName, credentialsContent, "avenabox", key, normalized);
-            if (success) {
-                const updated = new Map(availableCalibrations);
-                updated.set(sanitizedId, normalized);
-                availableCalibrations = updated;
-            }
-            return success;
-        } catch (err) {
-            console.error("Error saving calibration:", err);
-            return false;
-        }
+    function channelUnit(config: LabJackConfig, channel: number, index: number): string {
+        const calibration = normalizeCalibration(config.sensor_settings.calibrations?.[String(channel)]);
+        return resolveCalibrationUnit(calibration, config.sensor_settings.measurement_units[index]) ?? `${RAW_UNIT}?`;
     }
 
-    /**
-     * Turns a preset name into a KV key token.
-     *
-     * Trims, lowercases, replaces whitespace runs with `-` and drops any character outside
-     * `a-z`, `0-9`, `.`, `_` and `-`.
-     *
-     * @param raw - Preset id typed by the user.
-     * @returns The cleaned id. May be empty.
-     *
-     * @example
-     * ```ts
-     * sanitizeCalibrationId("  PT100 Probe #2 "); // "pt100-probe-2"
-     * ```
-     */
-    function sanitizeCalibrationId(raw: string): string {
-        return raw
-            .trim()
-            .toLowerCase()
-            .replace(/\s+/g, "-")
-            .replace(/[^a-z0-9._-]/g, "");
-    }
-    
     /** Closes the modal without saving and clears the edit state. */
     function handleModalClose() {
         showModal = false;
@@ -484,25 +362,29 @@
 LabJack config list at `/labjacks`. It takes no URL parameters.
 
 Reads `serverName` and `credentialsContent` from sessionStorage (written by the login
-page) and opens a connection to central NATS. If either item is missing it shows an
-error with a link back to `/`.
+page) and opens a connection to central NATS, closed on retry and when leaving the page. If either item is missing it shows
+only an error with a link back to `/`. Adding a config is disabled until the connection is
+open. The header shows Logout only when the login data is present, and a Log in link
+otherwise.
 
 KV bucket `avenabox`:
 - Reads every key matching `*.*.*.config` (one LabJack config each, shown as a card)
-  and every key matching `calibration.*` (calibration presets).
-- Writes a config to `<site>.<box>.<source>.config` on save, deletes a config key on
-  delete, and writes `calibration.<id>` when a preset is saved from the modal. Writes
+  (older versions also read `calibration.*` preset keys; this page no longer does).
+- Writes a config to `<site>.<box>.<source>.config` on save (an edit that changes site,
+  box or source moves it to the new key and then deletes the old one), deletes a config
+  key on delete. Writes
   and deletes go through `updateConfig` and `deleteKey`, which each open their own
   short-lived connection.
 
 The page subscribes to no subjects. Editing and adding are done in
-`LabJackConfigModal`, which gets the config, `isAddingNew`, all loaded configs, the
-calibration presets and the `onSave`, `onSaveCalibration` and `onClose` callbacks. The
-plot button on each card does a full page load of
-`/labjacks/plots/<asset_number>?key=<kv key>`.
+`LabJackConfigModal`, which gets the config, `isAddingNew`, all loaded configs and the
+`onSave` and `onClose` callbacks. The
+plot button on each card is a link to `/labjacks/plots/<asset_number>?key=<kv key>`. The
+Enabled/Disabled badge shows the config's `labjack_on_off` flag, not whether the box is
+running.
 -->
 <svelte:head>
-    <title>LabJack Management - Avena-OTR</title>
+    <title>LabJack Management - Avena-RS</title>
 </svelte:head>
 
 <div class="min-h-screen bg-base-300">
@@ -520,28 +402,32 @@ plot button on each card does a full page load of
                     </div>
                 </div>
                 <div>
-                    <h1 class="text-2xl font-bold text-base-content">Avena-OTR</h1>
+                    <h1 class="text-2xl font-bold text-base-content">Avena-RS</h1>
                     <p class="text-base-content/70 text-sm">LabJack Management Dashboard</p>
                 </div>
             </div>
         </div>
         <div class="flex-none">
-            <button
-                onclick={logout}
-                class="btn btn-error btn-sm"
-            >
-                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-                </svg>
-                Logout
-            </button>
+            {#if loggedIn}
+                <button
+                    onclick={logout}
+                    class="btn btn-error btn-sm"
+                >
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                    </svg>
+                    Logout
+                </button>
+            {:else if notLoggedIn}
+                <a href="/" class="btn btn-warning btn-sm">Log in</a>
+            {/if}
         </div>
     </div>
 
     <!-- Main Content -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <!-- Page Header -->
-        <div class="flex justify-between items-center mb-8">
+        <div class="flex flex-wrap justify-between items-center gap-4 mb-8">
             <div>
                 <h2 class="text-3xl font-bold mb-2">LabJack Configurations</h2>
                 <p class="text-base-content/70">Manage your LabJack devices and sensor settings</p>
@@ -549,6 +435,8 @@ plot button on each card does a full page load of
             <button
                 onclick={handleAddNew}
                 class="btn btn-warning"
+                disabled={!connected}
+                title={connected ? undefined : "Connect to NATS to add a LabJack"}
             >
                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
@@ -565,20 +453,16 @@ plot button on each card does a full page load of
                 </svg>
                 <span>{error}</span>
                 <div class="flex space-x-2">
-                    {#if error.includes("No NATS connection")}
+                    {#if notLoggedIn}
+                        <a href="/" class="btn btn-sm btn-primary">Go to Login</a>
+                    {:else}
                         <button
-                            onclick={() => window.location.href = "/"}
-                            class="btn btn-sm btn-primary"
+                            onclick={loadLabJacks}
+                            class="btn btn-sm btn-error"
                         >
-                            Go to Login
+                            Retry
                         </button>
                     {/if}
-                    <button
-                        onclick={loadLabJacks}
-                        class="btn btn-sm btn-error"
-                    >
-                        Retry
-                    </button>
                 </div>
             </div>
         {/if}
@@ -589,6 +473,8 @@ plot button on each card does a full page load of
                 <span class="loading loading-spinner loading-lg text-warning"></span>
                 <span class="ml-4 text-lg">Loading LabJack configurations...</span>
             </div>
+        {:else if labjacks.size === 0 && !connected}
+            <!-- Not connected: the error above says why; show no empty state. -->
         {:else if labjacks.size === 0}
             <!-- Empty State -->
             <div class="text-center py-12">
@@ -604,6 +490,7 @@ plot button on each card does a full page load of
                 <button
                     onclick={handleAddNew}
                     class="btn btn-warning"
+                    disabled={!connected}
                 >
                     Add Your First LabJack
                 </button>
@@ -624,8 +511,8 @@ plot button on each card does a full page load of
                                     {/if}
                                 </div>
                                 <div class="flex space-x-1">
-                                    <button
-                                        onclick={() => window.location.href = `/labjacks/plots/${config.asset_number}?key=${encodeURIComponent(key)}`}
+                                    <a
+                                        href={`/labjacks/plots/${config.asset_number}?key=${encodeURIComponent(key)}`}
                                         class="btn btn-sm btn-success btn-circle"
                                         title="View Real-time Plots"
                                         aria-label="View Real-time Plots"
@@ -633,7 +520,7 @@ plot button on each card does a full page load of
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
                                         </svg>
-                                    </button>
+                                    </a>
                                     <button
                                         onclick={() => handleEdit(key, config)}
                                         class="btn btn-sm btn-primary btn-circle"
@@ -642,16 +529,6 @@ plot button on each card does a full page load of
                                     >
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                                        </svg>
-                                    </button>
-                                    <button
-                                        onclick={() => handleDelete(key)}
-                                        class="btn btn-sm btn-error btn-circle"
-                                        title="Delete Configuration"
-                                        aria-label="Delete Configuration"
-                                    >
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                                         </svg>
                                     </button>
                                 </div>
@@ -696,19 +573,32 @@ plot button on each card does a full page load of
                                             {#each config.sensor_settings.channels_enabled as channel, index}
                                                 <span class="badge badge-outline badge-sm">
                                                     Ch {channel}: {config.sensor_settings.data_formats[index] || 'N/A'} 
-                                                    ({config.sensor_settings.measurement_units[index] || 'N/A'})
+                                                    ({channelUnit(config, channel, index)})
                                                 </span>
                                             {/each}
                                         </div>
                                     </div>
                                     <div class="flex justify-between items-center text-sm mt-3">
-                                        <span class="text-base-content/70">Status:</span>
-                                        <span class="badge {config.sensor_settings.labjack_on_off ? 'badge-success' : 'badge-error'} badge-sm">
-                                            <div class="w-2 h-2 rounded-full mr-1 {config.sensor_settings.labjack_on_off ? 'bg-success-content' : 'bg-error-content'}"></div>
-                                            {config.sensor_settings.labjack_on_off ? 'Online' : 'Offline'}
+                                        <span class="text-base-content/70" title="The labjack_on_off flag in this configuration. It is not a live status.">Acquisition:</span>
+                                        <span class="badge {config.sensor_settings.labjack_on_off ? 'badge-success' : 'badge-ghost'} badge-sm">
+                                            {config.sensor_settings.labjack_on_off ? 'Enabled' : 'Disabled'}
                                         </span>
                                     </div>
                                 </div>
+                            </div>
+
+                            <!-- Delete sits apart from Edit so it is not hit by mistake. -->
+                            <div class="card-actions justify-end mt-4 pt-4 border-t border-base-200">
+                                <button
+                                    onclick={() => handleDelete(key)}
+                                    class="btn btn-xs btn-outline btn-error"
+                                    title="Delete this configuration from KV"
+                                >
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                    </svg>
+                                    Delete
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -723,8 +613,6 @@ plot button on each card does a full page load of
             config={editingConfig}
             isAddingNew={isAddingNew}
             existingLabJacks={labjacks}
-            availableCalibrations={availableCalibrations}
-            onSaveCalibration={handleSaveCalibration}
             onSave={handleSave}
             onClose={handleModalClose}
         />

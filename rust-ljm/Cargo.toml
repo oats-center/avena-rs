@@ -56,5 +56,9 @@ path = "src/exporter.rs"
 name = "recompress"
 path = "src/recompress.rs"
 
+[[bin]]
+name = "dedupe"
+path = "src/dedupe.rs"
+
 [dev-dependencies]
 tokio-tungstenite = "0.21"

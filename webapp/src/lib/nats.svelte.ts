@@ -253,14 +253,26 @@ export async function putKeyValue(nats: NatsService, bucket: string, key: string
 }
 
 /**
+ * Closes a short-lived connection, logging instead of throwing if closing fails.
+ *
+ * @param nats - Service to close, or `null` if connecting failed.
+ */
+async function closeQuietly(nats: NatsService | null): Promise<void> {
+  if (!nats) return;
+  try {
+    await nats.connection.close();
+  } catch (error) {
+    console.error("Failed to close NATS connection:", error);
+  }
+}
+
+/**
  * Opens a new connection, writes a configuration object to KV as JSON, and closes it.
  *
  * The object is serialized with two-space indentation. Errors are logged to the
  * console and reported through the return value instead of being thrown.
  *
- * @remarks
- * The connection is closed only on success. If the write fails, the connection
- * opened here is left open.
+ * The connection opened here is always closed before returning.
  *
  * @param serverName - Server text passed to {@link connect}.
  * @param credentialsContent - Contents of a `.creds` file, not a path.
@@ -270,8 +282,9 @@ export async function putKeyValue(nats: NatsService, bucket: string, key: string
  * @returns `true` if the value was written, `false` if connecting or writing failed.
  */
 export async function updateConfig(serverName: string, credentialsContent: string, bucket: string, key: string, configData: any): Promise<boolean> {
+  let nats: NatsService | null = null;
   try {
-    const nats = await connect(serverName, credentialsContent);
+    nats = await connect(serverName, credentialsContent);
     if (!nats) {
       console.error("Failed to connect to NATS for update");
       return false;
@@ -279,12 +292,12 @@ export async function updateConfig(serverName: string, credentialsContent: strin
     
     const configJson = JSON.stringify(configData, null, 2);
     await putKeyValue(nats, bucket, key, configJson);
-    
-    nats.connection.close();
     return true;
   } catch (error) {
     console.error("Failed to update config:", error);
     return false;
+  } finally {
+    await closeQuietly(nats);
   }
 }
 
@@ -295,9 +308,7 @@ export async function updateConfig(serverName: string, credentialsContent: strin
  * the key's history. Errors are logged to the console and reported through the
  * return value instead of being thrown.
  *
- * @remarks
- * The connection is closed only on success. If the delete fails, the connection
- * opened here is left open.
+ * The connection opened here is always closed before returning.
  *
  * @param serverName - Server text passed to {@link connect}.
  * @param credentialsContent - Contents of a `.creds` file, not a path.
@@ -306,8 +317,9 @@ export async function updateConfig(serverName: string, credentialsContent: strin
  * @returns `true` if the key was deleted, `false` if connecting or deleting failed.
  */
 export async function deleteKey(serverName: string, credentialsContent: string, bucket: string, key: string): Promise<boolean> {
+  let nats: NatsService | null = null;
   try {
-    const nats = await connect(serverName, credentialsContent);
+    nats = await connect(serverName, credentialsContent);
     if (!nats) {
       console.error("Failed to connect to NATS for deletion");
       return false;
@@ -315,11 +327,11 @@ export async function deleteKey(serverName: string, credentialsContent: string, 
     
     const kv = await nats.kvm.open(bucket);
     await kv.delete(key);
-    
-    nats.connection.close();
     return true;
   } catch (error) {
     console.error("Failed to delete key:", error);
     return false;
+  } finally {
+    await closeQuietly(nats);
   }
 }

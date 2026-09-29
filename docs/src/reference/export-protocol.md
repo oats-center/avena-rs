@@ -65,7 +65,7 @@ timestamp,channel,raw_value,calibrated_value,calibration_id
 | `channel` | `chNN` |
 | `raw_value` | Volts, as recorded |
 | `calibrated_value` | `raw_value` with the calibration stored in that sample's file |
-| `calibration_id` | The calibration's `id`, or `identity` |
+| `calibration_id` | The calibration's `id` if it has one, otherwise its `type`: `identity`, `linear` or `polynomial` |
 
 Rows come channel by channel, and within a channel in file order.
 
@@ -82,8 +82,11 @@ Without `ack_subject`, the exporter sends as fast as it can.
 
 The exporter answers with an `error` frame, and nothing else, when the
 request is not valid JSON, `channels` is empty, a time does not parse, `end` is
-before `start`, or `format` is not `csv`. If a client gets no reply at all,
-nothing is subscribed to the request subject: the exporter is not running or
-the box is offline.
+before `start`, or `format` is not `csv`. If nothing is subscribed to the
+request subject (the exporter is not running or the box is offline), the NATS
+server answers the request's reply subject with a no-responders status message
+(code 503) instead, provided the client connected with headers and no-responders
+support, as nats.js does. The dashboard stops the export at once when it sees
+it.
 
 Requests are handled concurrently, each on its own task.

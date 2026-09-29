@@ -29,6 +29,8 @@ on the network.
 | `src/lib/subjects.ts` | Subject names, matching `rust-ljm/src/subjects.rs` |
 | `src/lib/flatbuffer-parser.ts` | Decoding live `Scan` messages |
 | `src/lib/calibration.ts` | Volts to engineering units, matching `rust-ljm/src/calibration.rs` |
+| `src/lib/labjack-config.ts` | LabJack configuration types and filling in missing fields |
+| `src/lib/plot/` | The live plot's data path, trigger logic and drawing helpers |
 | `src/lib/exporter.ts` | The client side of the [export protocol](../reference/export-protocol.md) |
 | `src/lib/sampler/` | FlatBuffers code generated from `rust-ljm/src/data.fbs`; do not edit |
 
@@ -47,6 +49,8 @@ pnpm install --frozen-lockfile
 pnpm build                  # writes build/
 node build                  # serves on 0.0.0.0:3000
 ```
+
+`pnpm test` runs the unit tests (Vitest) for the modules in `src/lib`.
 
 `PORT` and `HOST` change the listen address, for example
 `PORT=8088 node build`. Copy `build/`, `package.json` and the lockfile to

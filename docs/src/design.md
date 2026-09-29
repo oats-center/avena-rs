@@ -103,10 +103,28 @@ sample interval.
 
 Two clocks are involved, and they disagree. The LabJack's crystal and the
 system clock drift apart by a few parts per million, which added up to 4 to 5
-seconds over one 26-day run. The streamer now compares its timeline with the
-system clock every 60 seconds. It uses the smallest difference seen in the
-window, which removes jitter from read latency, and shifts the timeline when
-the difference reaches 5 ms. Each shift is logged.
+seconds over one 26-day run. The streamer therefore compares its timeline with
+the system clock and corrects it.
+
+The first version of that correction jumped the timeline by the full offset
+seen in each minute. On an idle box that was fine. On MU1, with the camera
+software loading the CPU, the time a read took to arrive wandered by tens to
+hundreds of milliseconds, and the correction chased it, stepping timestamps by
+up to 430 ms every minute. The current version separates drift from latency:
+
+- It uses the fastest read over the last 15 minutes as the offset, because on
+  a busy host a whole minute can pass without a fast read, while drift moves
+  the offset by under 2 ms in that time.
+- It acts only when the offset points the same way twice in a row, and then
+  nudges the timeline by at most 1 ms a minute (less at high sample rates), so
+  timestamps never go backwards.
+- It jumps only for a system clock step of 2 seconds or more that lasts three
+  minutes, and once after the first minute of a run to correct the initial
+  anchor, which otherwise carries whatever delay the very first read had.
+
+The tests replay the latency pattern measured on MU1, steady drift, 2 kHz
+sampling and a clock step, and check that timestamps stay within a few
+milliseconds of the truth.
 
 This makes the timestamps exactly as good as the system clock, which is why
 the setup guide insists on a synchronized `chronyd`. A box with a broken NTP

@@ -63,7 +63,9 @@ configuration document, not from the environment. The renderer also writes
 | `NATS_SUBJECT` | `avenars` | First token of the request subject. |
 | `SITE_ID` | `unknown-site` | Site token of the request subject. |
 | `EXPORT_BOX_ID` or `BOX_ID` | none, required in `worker` mode | Box token of the request subject. |
-| `SOURCE_ID` | `unknown-source` | Source token of the request subject. |
+| `SOURCE_ID` | unset | Source token of the request subject. |
+| `LABJACK_NAME` | unset | Source token when `SOURCE_ID` is unset. |
+| `ASSET_NUMBER` | unset | Source token `asset<NNN>` when `SOURCE_ID` and `LABJACK_NAME` are unset; with none of the three the token is `unknown-source`. This is the same fallback the streamer and the webapp use. |
 | `SOURCE_TYPE` | `labjack` | Read but currently not used in the subject. |
 
 In `worker` mode the exporter subscribes to
