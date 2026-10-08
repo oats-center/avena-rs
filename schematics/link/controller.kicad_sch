@@ -4699,16 +4699,6 @@
 		)
 		(uuid "74f72375-99cf-4c28-b29c-2c6ed9dfa261")
 	)
-	(text "Note: 71KBT3 for initial\n128KB Flash/36 KB RAM"
-		(exclude_from_sim no)
-		(at 205.486 83.058 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-		)
-		(uuid "76266d69-a89d-4b2f-adfb-ec2466faca41")
-	)
 	(text "Memory"
 		(exclude_from_sim no)
 		(at 150.622 161.036 0)
@@ -5457,6 +5447,16 @@
 	)
 	(wire
 		(pts
+			(xy 93.98 72.39) (xy 93.98 73.66)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "30ef6bab-127d-47bd-bfa9-1cb12500be52")
+	)
+	(wire
+		(pts
 			(xy 187.96 45.72) (xy 187.96 46.99)
 		)
 		(stroke
@@ -6024,6 +6024,16 @@
 			(type default)
 		)
 		(uuid "822aa7f6-76bb-4c13-9099-73b1b21521e8")
+	)
+	(wire
+		(pts
+			(xy 33.02 127) (xy 33.02 128.27)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "82765bd4-c05a-46d0-9a27-bd2672b3f6e6")
 	)
 	(wire
 		(pts
@@ -7717,6 +7727,84 @@
 		)
 	)
 	(symbol
+		(lib_id "Connector:TestPoint")
+		(at 33.02 127 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "02c15ed3-d8f7-4b9d-ab29-a5f58d2922b9")
+		(property "Reference" "TP16"
+			(at 31.242 118.618 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "GND"
+			(at 31.242 121.158 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Link_Footprints:TestPoint_Pad_D1.5mm"
+			(at 38.1 127 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 38.1 127 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "test point"
+			(at 33.02 127 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "1cee3835-aa1f-410e-a625-f987611010d6")
+		)
+		(instances
+			(project "link"
+				(path "/e6a73b1b-9233-47b9-8d6b-253608bed688/52b142e8-f09f-4cd6-a457-0fb0339c406d"
+					(reference "TP16")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "power:+3V3")
 		(at 163.83 168.91 0)
 		(unit 1)
@@ -8609,6 +8697,86 @@
 			(project "link"
 				(path "/e6a73b1b-9233-47b9-8d6b-253608bed688/52b142e8-f09f-4cd6-a457-0fb0339c406d"
 					(reference "#PWR072")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 33.02 128.27 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "2f81fa11-5873-4f08-8268-c3aa1f202afb")
+		(property "Reference" "#PWR0109"
+			(at 33.02 134.62 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 35.56 129.5399 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 33.02 128.27 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 33.02 128.27 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 33.02 128.27 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "3d29e3da-4fc8-4d5d-bb50-4efc5397c53f")
+		)
+		(instances
+			(project "link"
+				(path "/e6a73b1b-9233-47b9-8d6b-253608bed688/52b142e8-f09f-4cd6-a457-0fb0339c406d"
+					(reference "#PWR0109")
 					(unit 1)
 				)
 			)
@@ -10692,6 +10860,86 @@
 		)
 	)
 	(symbol
+		(lib_id "power:GND")
+		(at 93.98 73.66 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "719e670c-525d-4cf9-afbc-53b485671e78")
+		(property "Reference" "#PWR0110"
+			(at 93.98 80.01 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 96.52 74.9299 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 93.98 73.66 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 93.98 73.66 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 93.98 73.66 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "92046342-a063-4868-85b5-5ae23e12d010")
+		)
+		(instances
+			(project "link"
+				(path "/e6a73b1b-9233-47b9-8d6b-253608bed688/52b142e8-f09f-4cd6-a457-0fb0339c406d"
+					(reference "#PWR0110")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "power:+3V3")
 		(at 97.79 24.13 0)
 		(unit 1)
@@ -11084,7 +11332,7 @@
 				)
 			)
 		)
-		(property "MPN" "CGA0603X7R104K500JT"
+		(property "MPN" ""
 			(at 149.86 119.38 0)
 			(hide yes)
 			(show_name no)
@@ -11369,7 +11617,7 @@
 				)
 			)
 		)
-		(property "MPN" "TS04-66-55-BK-260-SMT"
+		(property "MPN" ""
 			(at 138.43 119.38 90)
 			(hide yes)
 			(show_name no)
@@ -11814,7 +12062,7 @@
 				)
 			)
 		)
-		(property "MPN" "KT-0603B"
+		(property "MPN" ""
 			(at 187.96 50.8 90)
 			(hide yes)
 			(show_name no)
@@ -12537,6 +12785,84 @@
 			(project "link"
 				(path "/e6a73b1b-9233-47b9-8d6b-253608bed688/52b142e8-f09f-4cd6-a457-0fb0339c406d"
 					(reference "#PWR0103")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Connector:TestPoint")
+		(at 93.98 72.39 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "a5e45a66-729b-490b-80b4-8195552712ff")
+		(property "Reference" "TP17"
+			(at 92.202 64.008 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "GND"
+			(at 92.202 66.548 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Link_Footprints:TestPoint_Pad_D1.5mm"
+			(at 99.06 72.39 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 99.06 72.39 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "test point"
+			(at 93.98 72.39 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "e0282b61-8c76-44b7-8b0f-c9ddb8129fe6")
+		)
+		(instances
+			(project "link"
+				(path "/e6a73b1b-9233-47b9-8d6b-253608bed688/52b142e8-f09f-4cd6-a457-0fb0339c406d"
+					(reference "TP17")
 					(unit 1)
 				)
 			)
@@ -15380,7 +15706,7 @@
 				)
 			)
 		)
-		(property "MPN" "RCA0310KJLF"
+		(property "MPN" ""
 			(at 138.43 105.41 0)
 			(hide yes)
 			(show_name no)

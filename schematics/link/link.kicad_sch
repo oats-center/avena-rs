@@ -4659,16 +4659,6 @@
 	)
 	(wire
 		(pts
-			(xy 50.8 140.97) (xy 50.8 142.24)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "d05c4f2d-68e8-48a6-8982-441ff7a1f4f9")
-	)
-	(wire
-		(pts
 			(xy 195.58 38.1) (xy 203.2 38.1)
 		)
 		(stroke
@@ -4699,7 +4689,7 @@
 	)
 	(wire
 		(pts
-			(xy 50.8 148.59) (xy 50.8 147.32)
+			(xy 50.8 140.97) (xy 50.8 143.51)
 		)
 		(stroke
 			(width 0)
@@ -6011,7 +6001,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 50.8 148.59 0)
+		(at 50.8 143.51 0)
 		(mirror y)
 		(unit 1)
 		(body_style 1)
@@ -6022,7 +6012,7 @@
 		(dnp no)
 		(uuid "23414d11-9299-4e47-ae4e-dd6758b5f7d9")
 		(property "Reference" "#PWR017"
-			(at 50.8 154.94 0)
+			(at 50.8 149.86 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -6033,7 +6023,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 50.8 152.4 0)
+			(at 50.8 147.32 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -6044,7 +6034,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 50.8 148.59 0)
+			(at 50.8 143.51 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -6055,7 +6045,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 50.8 148.59 0)
+			(at 50.8 143.51 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -6066,7 +6056,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
-			(at 50.8 148.59 0)
+			(at 50.8 143.51 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -9712,111 +9702,6 @@
 			(project "link"
 				(path "/e6a73b1b-9233-47b9-8d6b-253608bed688"
 					(reference "#PWR016")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Device:C_Small")
-		(at 50.8 144.78 0)
-		(mirror y)
-		(unit 1)
-		(body_style 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(fields_autoplaced yes)
-		(uuid "f52aeffe-4d67-4a2e-bc3f-18707dab7c94")
-		(property "Reference" "C5"
-			(at 48.26 143.5162 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Value" "1nF / 200V"
-			(at 48.26 146.0562 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
-			(at 50.8 144.78 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" ""
-			(at 50.8 144.78 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" "Unpolarized capacitor, small symbol"
-			(at 50.8 144.78 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "FT Rotation Offset" ""
-			(at 50.8 144.78 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "LCSC" "C1588 "
-			(at 50.8 144.78 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(pin "1"
-			(uuid "21bfb32d-b9f0-4715-a959-338e211fe13f")
-		)
-		(pin "2"
-			(uuid "2b8db5da-c976-48e3-954c-cd569c1053b9")
-		)
-		(instances
-			(project "link"
-				(path "/e6a73b1b-9233-47b9-8d6b-253608bed688"
-					(reference "C5")
 					(unit 1)
 				)
 			)
