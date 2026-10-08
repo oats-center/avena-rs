@@ -5301,7 +5301,7 @@
 		)
 		(embedded_fonts no)
 	)
-	(symbol "STM32G031K6Tx"
+	(symbol "STM32G0B1KETx"
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
@@ -5318,7 +5318,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "STM32G031K8Tx"
+		(property "Value" "STM32G0B1KETx"
 			(at 2.1433 27.94 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -5396,7 +5396,7 @@
 				)
 			)
 		)
-		(symbol "STM32G031K6Tx_0_1"
+		(symbol "STM32G0B1KETx_0_1"
 			(rectangle
 				(start -15.24 25.4)
 				(end 15.24 -22.86)
@@ -5409,7 +5409,7 @@
 				)
 			)
 		)
-		(symbol "STM32G031K6Tx_1_1"
+		(symbol "STM32G0B1KETx_1_1"
 			(pin bidirectional line
 				(at -17.78 -17.78 0)
 				(length 2.54)
