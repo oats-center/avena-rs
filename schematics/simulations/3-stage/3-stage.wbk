@@ -1,0 +1,314 @@
+{
+  "custom_cursors": 2,
+  "last_sch_text_sim_command": "",
+  "tabs": [
+    {
+      "analysis": "TRAN",
+      "commands": [
+        ".tran 50n 100u",
+        ".kicad adjustpaths",
+        ".save all",
+        ".probe alli",
+        ".probe allp"
+      ],
+      "dottedSecondary": true,
+      "margins": {
+        "bottom": 45,
+        "left": 70,
+        "right": 70,
+        "top": 30
+      },
+      "measurements": [],
+      "showGrid": true,
+      "traces": [
+        {
+          "color": "rgb(55, 126, 184)",
+          "signal": "V(/S1+)",
+          "trace_type": 257
+        },
+        {
+          "color": "rgb(228, 26, 28)",
+          "cursor1": {
+            "position": 4.1540905480540115e-05,
+            "x_format": "3~Hz",
+            "y_format": "3~"
+          },
+          "cursor2": {
+            "position": 5.718824463860207e-05,
+            "x_format": "3~Hz",
+            "y_format": "3~"
+          },
+          "cursorD": {
+            "x_format": "3~Hz",
+            "y_format": "3~"
+          },
+          "signal": "V(/Sc1-)",
+          "trace_type": 257
+        }
+      ]
+    },
+    {
+      "analysis": "TRAN",
+      "commands": [
+        ".tran 50n 100u",
+        ".kicad adjustpaths",
+        ".save all",
+        ".probe alli",
+        ".probe allp"
+      ],
+      "dottedSecondary": true,
+      "margins": {
+        "bottom": 45,
+        "left": 70,
+        "right": 70,
+        "top": 30
+      },
+      "measurements": [],
+      "showGrid": true,
+      "traces": [
+        {
+          "color": "rgb(55, 126, 184)",
+          "signal": "V(/S3+)",
+          "trace_type": 257
+        },
+        {
+          "color": "rgb(228, 26, 28)",
+          "cursor1": {
+            "position": 4.122319301032566e-05,
+            "x_format": "3~Hz",
+            "y_format": "3~"
+          },
+          "cursor2": {
+            "position": 5.6870532168387613e-05,
+            "x_format": "3~Hz",
+            "y_format": "3~"
+          },
+          "cursorD": {
+            "x_format": "3~Hz",
+            "y_format": "3~"
+          },
+          "signal": "V(/Sc3-)",
+          "trace_type": 257
+        }
+      ]
+    },
+    {
+      "analysis": "TRAN",
+      "commands": [
+        ".tran 50n 100u",
+        ".kicad adjustpaths",
+        ".save all",
+        ".probe alli",
+        ".probe allp"
+      ],
+      "dottedSecondary": true,
+      "margins": {
+        "bottom": 45,
+        "left": 70,
+        "right": 70,
+        "top": 30
+      },
+      "measurements": [],
+      "showGrid": true,
+      "traces": [
+        {
+          "color": "rgb(228, 26, 28)",
+          "signal": "V(/S2+)",
+          "trace_type": 257
+        },
+        {
+          "color": "rgb(55, 126, 184)",
+          "cursor1": {
+            "position": 4.0984908657664817e-05,
+            "x_format": "3~Hz",
+            "y_format": "3~"
+          },
+          "cursor2": {
+            "position": 5.6791104050833995e-05,
+            "x_format": "3~Hz",
+            "y_format": "3~"
+          },
+          "cursorD": {
+            "x_format": "3~Hz",
+            "y_format": "3~"
+          },
+          "signal": "V(/Sc2-)",
+          "trace_type": 257
+        }
+      ]
+    },
+    {
+      "analysis": "AC",
+      "commands": [
+        ".ac dec 80 100m 10Meg",
+        ".kicad adjustpaths",
+        ".save all",
+        ".probe alli",
+        ".probe allp"
+      ],
+      "dottedSecondary": true,
+      "margins": {
+        "bottom": 45,
+        "left": 70,
+        "right": 70,
+        "top": 30
+      },
+      "measurements": [],
+      "showGrid": true,
+      "traces": [
+        {
+          "color": "rgb(77, 175, 74)",
+          "signal": "V(/Sc1-) (phase)",
+          "trace_type": 517
+        },
+        {
+          "color": "rgb(77, 175, 74)",
+          "signal": "V(/Sc1-) (gain)",
+          "trace_type": 521
+        },
+        {
+          "color": "rgb(152, 78, 163)",
+          "signal": "V(/Sc2-) (phase)",
+          "trace_type": 517
+        },
+        {
+          "color": "rgb(152, 78, 163)",
+          "signal": "V(/Sc2-) (gain)",
+          "trace_type": 521
+        },
+        {
+          "color": "rgb(255, 127, 0)",
+          "signal": "V(/Sc3-) (phase)",
+          "trace_type": 517
+        },
+        {
+          "color": "rgb(255, 127, 0)",
+          "signal": "V(/Sc3-) (gain)",
+          "trace_type": 521
+        }
+      ]
+    },
+    {
+      "analysis": "NOISE",
+      "commands": [
+        ".noise v(/Sc1-) V4 dec 60 100m 1Meg 1",
+        ".kicad adjustpaths",
+        ".save all",
+        ".probe alli",
+        ".probe allp"
+      ],
+      "dottedSecondary": true,
+      "margins": {
+        "bottom": 45,
+        "left": 70,
+        "right": 70,
+        "top": 30
+      },
+      "measurements": [],
+      "showGrid": true,
+      "traces": [
+        {
+          "color": "rgb(228, 26, 28)",
+          "signal": "inoise_spectrum",
+          "trace_type": 513
+        },
+        {
+          "color": "rgb(55, 126, 184)",
+          "cursor2": {
+            "position": 1000.0,
+            "x_format": "3~Hz",
+            "y_format": "3~"
+          },
+          "cursorD": {
+            "x_format": "3~Hz",
+            "y_format": "3~"
+          },
+          "signal": "onoise_spectrum",
+          "trace_type": 513
+        }
+      ]
+    },
+    {
+      "analysis": "NOISE",
+      "commands": [
+        ".noise v(/Sc3-) V6 dec 60 100m 1Meg 1",
+        ".kicad adjustpaths",
+        ".save all",
+        ".probe alli",
+        ".probe allp"
+      ],
+      "dottedSecondary": true,
+      "margins": {
+        "bottom": 45,
+        "left": 70,
+        "right": 70,
+        "top": 30
+      },
+      "measurements": [],
+      "showGrid": true,
+      "traces": [
+        {
+          "color": "rgb(228, 26, 28)",
+          "signal": "inoise_spectrum",
+          "trace_type": 513
+        },
+        {
+          "color": "rgb(55, 126, 184)",
+          "cursor2": {
+            "position": 1000.0,
+            "x_format": "3~Hz",
+            "y_format": "3~"
+          },
+          "cursorD": {
+            "x_format": "3~Hz",
+            "y_format": "3~"
+          },
+          "signal": "onoise_spectrum",
+          "trace_type": 513
+        }
+      ]
+    },
+    {
+      "analysis": "NOISE",
+      "commands": [
+        ".noise v(/Sc2-) V5 dec 60 100m 1Meg 1",
+        ".kicad adjustpaths",
+        ".save all",
+        ".probe alli",
+        ".probe allp"
+      ],
+      "dottedSecondary": true,
+      "margins": {
+        "bottom": 45,
+        "left": 70,
+        "right": 70,
+        "top": 30
+      },
+      "measurements": [],
+      "showGrid": true,
+      "traces": [
+        {
+          "color": "rgb(228, 26, 28)",
+          "signal": "inoise_spectrum",
+          "trace_type": 513
+        },
+        {
+          "color": "rgb(55, 126, 184)",
+          "cursor2": {
+            "position": 1000.0,
+            "x_format": "3~Hz",
+            "y_format": "3~"
+          },
+          "cursorD": {
+            "x_format": "3~Hz",
+            "y_format": "3~"
+          },
+          "signal": "onoise_spectrum",
+          "trace_type": 513
+        }
+      ]
+    }
+  ],
+  "user_defined_signals": [],
+  "version": 7
+}
