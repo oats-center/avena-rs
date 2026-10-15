@@ -27,6 +27,7 @@
 - [Data formats](reference/data-formats.md)
 - [Export protocol](reference/export-protocol.md)
 - [Command-line tools](reference/tools.md)
+- [Acquisition board interface](reference/acquisition-board.md)
 
 # Webapp
 
