@@ -1309,7 +1309,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "AT25SF128A-SHB-T"
+		(property "Datasheet" "https://www.renesas.com/en/document/dst/at25sf128aat25qf128a-datasheet?r=1608781"
 			(at 0 17.272 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -5364,6 +5364,17 @@
 			)
 		)
 		(property "LCSC Part #" "C529348 "
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" " STM32G0B1KET6"
 			(at 0 0 0)
 			(show_name no)
 			(do_not_autoplace no)

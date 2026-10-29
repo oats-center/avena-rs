@@ -61,7 +61,7 @@
           "hatch_smoothing_value": 0.1,
           "hatch_thickness": 1.0,
           "min_clearance": 0.5,
-          "min_island_area": 0.32258,
+          "min_island_area": 0.16129,
           "min_thickness": 0.25,
           "pad_connection": 1,
           "remove_islands": 2,
@@ -76,12 +76,7 @@
           "width": 0.0
         }
       ],
-      "drc_exclusions": [
-        [
-          "footprint_type_mismatch|156337800|74361000|ec401e05-2688-4c92-9576-293e738dd520|00000000-0000-0000-0000-000000000000",
-          ""
-        ]
-      ],
+      "drc_exclusions": [],
       "meta": {
         "version": 2
       },
@@ -152,13 +147,13 @@
       "rules": {
         "max_error": 0.005,
         "min_clearance": 0.127,
-        "min_connection": 0.0,
+        "min_connection": 0.127,
         "min_copper_edge_clearance": 0.3048,
         "min_groove_width": 0.0,
-        "min_hole_clearance": 0.295148,
+        "min_hole_clearance": 0.254,
         "min_hole_to_hole": 0.3048,
-        "min_microvia_diameter": 0.2,
-        "min_microvia_drill": 0.1,
+        "min_microvia_diameter": 0.0,
+        "min_microvia_drill": 0.0,
         "min_resolved_spokes": 1,
         "min_silk_clearance": 0.0,
         "min_text_height": 0.8128,
@@ -166,7 +161,7 @@
         "min_through_hole_diameter": 0.254,
         "min_track_width": 0.127,
         "min_via_annular_width": 0.1016,
-        "min_via_diameter": 0.254,
+        "min_via_diameter": 0.4572,
         "solder_mask_to_copper_clearance": 0.005,
         "use_height_for_length_calcs": true
       },
@@ -254,15 +249,15 @@
         },
         {
           "diameter": 0.508,
-          "drill": 0.2032
-        },
-        {
-          "diameter": 0.6096,
           "drill": 0.254
         },
         {
-          "diameter": 0.7112,
+          "diameter": 0.6096,
           "drill": 0.3048
+        },
+        {
+          "diameter": 0.7112,
+          "drill": 0.4064
         }
       ],
       "zones_allow_external_fillets": true
@@ -854,7 +849,7 @@
         "uuid": "e6a73b1b-9233-47b9-8d6b-253608bed688"
       }
     ],
-    "used_designators": "C1-53,J1-14,JP1-6,R1-46,TP1-18,SW1-6,F1-2,D1-17,U1-11,#FLG1-15,PS1,FB1-3,#PWR1-131,Y1-2",
+    "used_designators": "C1-57,J1-14,JP1-6,R1-55,TP1-22,SW1-7,F1-2,D1-17,U1-13,#FLG1-15,PS1,FB1-3,#PWR1-131,Y1-2",
     "variants": []
   },
   "sheets": [
