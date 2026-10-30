@@ -10047,7 +10047,7 @@
 				)
 			)
 		)
-		(property "MPN" ""
+		(property "MPN" "RC0603JR-072K2L"
 			(at 182.88 91.44 0)
 			(hide yes)
 			(show_name no)
@@ -12070,17 +12070,6 @@
 		)
 		(property "Sim.Pins" "1=K 2=A"
 			(at 182.88 100.33 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "mpn" " 598-8E90-107F "
-			(at 182.88 100.33 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)

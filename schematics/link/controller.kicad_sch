@@ -8721,7 +8721,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 101.6 29.21 0)
 			(hide yes)
 			(show_name no)
@@ -8855,7 +8855,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 74.93 52.07 90)
 			(hide yes)
 			(show_name no)
@@ -9845,7 +9845,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 196.85 135.89 0)
 			(hide yes)
 			(show_name no)
@@ -11209,7 +11209,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 228.6 137.16 0)
 			(hide yes)
 			(show_name no)
@@ -11424,7 +11424,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 83.82 36.83 0)
 			(hide yes)
 			(show_name no)
@@ -11694,7 +11694,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 34.29 151.13 0)
 			(hide yes)
 			(show_name no)
@@ -12043,7 +12043,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 113.03 99.06 0)
 			(hide yes)
 			(show_name no)
@@ -12473,7 +12473,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 63.5 99.06 0)
 			(hide yes)
 			(show_name no)
@@ -12766,7 +12766,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 50.8 99.06 0)
 			(hide yes)
 			(show_name no)
@@ -14223,7 +14223,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
 			(at 187.96 43.18 0)
 			(hide yes)
 			(show_name no)
@@ -14278,7 +14278,7 @@
 				)
 			)
 		)
-		(property "MPN" "RT0603BRD07100RL"
+		(property "MPN" "RT0402BRD07100RL"
 			(at 187.96 43.18 0)
 			(hide yes)
 			(show_name no)
@@ -14393,7 +14393,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 142.24 83.82 0)
 			(hide yes)
 			(show_name no)
@@ -15047,7 +15047,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 76.2 99.06 0)
 			(hide yes)
 			(show_name no)
@@ -15998,7 +15998,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 185.42 135.89 0)
 			(hide yes)
 			(show_name no)
@@ -17210,7 +17210,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 88.9 99.06 0)
 			(hide yes)
 			(show_name no)
@@ -17346,7 +17346,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 262.89 38.1 0)
 			(hide yes)
 			(show_name no)
@@ -19044,7 +19044,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 101.6 99.06 0)
 			(hide yes)
 			(show_name no)
@@ -19531,7 +19531,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 30.48 99.06 0)
 			(hide yes)
 			(show_name no)
@@ -19746,7 +19746,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 21.59 168.91 0)
 			(hide yes)
 			(show_name no)
@@ -20012,7 +20012,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "10uF/16V"
+		(property "Value" "10uF"
 			(at 20.32 100.3362 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -20089,7 +20089,7 @@
 				)
 			)
 		)
-		(property "MPN" "GCM21BR71A106KE22L"
+		(property "MPN" "GRM21BR61E106MA73L"
 			(at 17.78 99.06 0)
 			(hide yes)
 			(show_name no)

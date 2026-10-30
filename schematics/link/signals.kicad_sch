@@ -4592,7 +4592,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 262.89 72.39 0)
 			(hide yes)
 			(show_name no)
@@ -4750,7 +4750,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 265.43 109.22 0)
 			(hide yes)
 			(show_name no)
@@ -6749,7 +6749,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 265.43 127 0)
 			(hide yes)
 			(show_name no)
@@ -6907,7 +6907,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 262.89 54.61 0)
 			(hide yes)
 			(show_name no)
@@ -7379,7 +7379,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 95.25 43.18 0)
 			(hide yes)
 			(show_name no)
@@ -7695,7 +7695,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 92.71 71.12 0)
 			(hide yes)
 			(show_name no)
@@ -9071,7 +9071,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 92.71 134.62 0)
 			(hide yes)
 			(show_name no)
@@ -15048,7 +15048,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R71H104KE14D"
+		(property "MPN" "GCM155R71H104KE02D"
 			(at 95.25 106.68 0)
 			(hide yes)
 			(show_name no)
