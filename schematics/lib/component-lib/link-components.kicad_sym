@@ -5341,7 +5341,7 @@
 				(justify right)
 			)
 		)
-		(property "Datasheet" "https://www.st.com/resource/en/datasheet/stm32g031k8.pdf"
+		(property "Datasheet" "https://www.st.com/resource/en/datasheet/stm32g0b1ke.pdf"
 			(at 0.254 28.956 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -5352,19 +5352,8 @@
 				)
 			)
 		)
-		(property "Description" "STMicroelectronics Arm Cortex-M0+ MCU, 64KB flash, 8KB RAM, 64 MHz, 1.7-3.6V, 30 GPIO, LQFP32"
+		(property "Description" "STMicroelectronics Arm Cortex-M0+ MCU, 512KB flash, 144KB RAM, 64 MHz, 1.7-3.6V, 30 GPIO, LQFP32"
 			(at 1.524 28.956 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(hide yes)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "LCSC Part #" "C529348 "
-			(at 0 0 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(hide yes)

@@ -524,7 +524,7 @@
     "classes": [
       {
         "bus_width": 12,
-        "clearance": 0.0254,
+        "clearance": 0.1524,
         "diff_pair_gap": 0.25,
         "diff_pair_via_gap": 0.25,
         "diff_pair_width": 0.2,
@@ -537,8 +537,8 @@
         "schematic_color": "rgba(0, 0, 0, 0.000)",
         "track_width": 0.2032,
         "tuning_profile": "",
-        "via_diameter": 0.4572,
-        "via_drill": 0.2032,
+        "via_diameter": 0.6096,
+        "via_drill": 0.3048,
         "wire_width": 6
       },
       {
@@ -799,6 +799,12 @@
           "label": "Arrow Part Number",
           "name": "Arrow Part Number",
           "show": false
+        },
+        {
+          "group_by": false,
+          "label": "Field10",
+          "name": "Field10",
+          "show": false
         }
       ],
       "filter_string": "",
@@ -849,7 +855,7 @@
         "uuid": "e6a73b1b-9233-47b9-8d6b-253608bed688"
       }
     ],
-    "used_designators": "C1-57,J1-14,JP1-6,R1-55,TP1-22,SW1-7,F1-2,D1-17,U1-13,#FLG1-15,PS1,FB1-3,#PWR1-131,Y1-2",
+    "used_designators": "C1-57,J1-14,#FLG1-15,R1-55,JP1-6,TP1-22,SW1-7,F1-2,D1-17,U1-13,PS1,FB1-3,#PWR1-131,Y1-2",
     "variants": []
   },
   "sheets": [

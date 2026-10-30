@@ -2047,7 +2047,7 @@
 			)
 			(embedded_fonts no)
 		)
-		(symbol "Regulator_Linear:TC1262-33"
+		(symbol "Regulator_Linear:AP2112K-3.3"
 			(pin_names
 				(offset 0.254)
 			)
@@ -2057,17 +2057,7 @@
 			(in_pos_files yes)
 			(duplicate_pin_numbers_are_jumpers no)
 			(property "Reference" "U"
-				(at -3.81 3.175 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Value" "TC1262-33"
-				(at 0 3.175 0)
+				(at -5.08 5.715 0)
 				(show_name no)
 				(do_not_autoplace no)
 				(effects
@@ -2077,20 +2067,19 @@
 					(justify left)
 				)
 			)
-			(property "Footprint" ""
+			(property "Value" "AP2112K-3.3"
 				(at 0 5.715 0)
 				(show_name no)
 				(do_not_autoplace no)
-				(hide yes)
 				(effects
 					(font
 						(size 1.27 1.27)
-						(italic yes)
 					)
+					(justify left)
 				)
 			)
-			(property "Datasheet" "http://ww1.microchip.com/downloads/en/DeviceDoc/21373C.pdf"
-				(at 0 -7.62 0)
+			(property "Footprint" "Package_TO_SOT_SMD:SOT-23-5"
+				(at 0 8.255 0)
 				(show_name no)
 				(do_not_autoplace no)
 				(hide yes)
@@ -2100,7 +2089,18 @@
 					)
 				)
 			)
-			(property "Description" "500mA Low Dropout CMOS Voltage Regulator, Fixed Output 3.3V, TO-220/SOT-223/TO-263"
+			(property "Datasheet" "https://www.diodes.com/assets/Datasheets/AP2112.pdf"
+				(at 0 2.54 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "600mA low dropout linear regulator, with enable pin, 3.8V-6V input voltage range, 3.3V fixed positive output, SOT-23-5"
 				(at 0 0 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -2111,7 +2111,7 @@
 					)
 				)
 			)
-			(property "ki_keywords" "Voltage Regulator 3.3V 500mA Positive CMOS LDO Microchip"
+			(property "ki_keywords" "linear regulator ldo fixed positive"
 				(at 0 0 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -2122,7 +2122,7 @@
 					)
 				)
 			)
-			(property "ki_fp_filters" "SOT?223* TO?220* TO?263*"
+			(property "ki_fp_filters" "SOT?23?5*"
 				(at 0 0 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -2133,9 +2133,9 @@
 					)
 				)
 			)
-			(symbol "TC1262-33_1_1"
+			(symbol "AP2112K-3.3_0_1"
 				(rectangle
-					(start -5.08 1.905)
+					(start -5.08 4.445)
 					(end 5.08 -5.08)
 					(stroke
 						(width 0.254)
@@ -2145,10 +2145,12 @@
 						(type background)
 					)
 				)
+			)
+			(symbol "AP2112K-3.3_1_1"
 				(pin power_in line
-					(at -7.62 0 0)
+					(at -7.62 2.54 0)
 					(length 2.54)
-					(name "VI"
+					(name "VIN"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -2181,10 +2183,10 @@
 						)
 					)
 				)
-				(pin power_out line
-					(at 7.62 0 180)
+				(pin input line
+					(at -7.62 0 0)
 					(length 2.54)
-					(name "VO"
+					(name "EN"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -2192,6 +2194,43 @@
 						)
 					)
 					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin no_connect line
+					(at 5.08 0 180)
+					(length 2.54)
+					(hide yes)
+					(name "NC"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "4"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin power_out line
+					(at 7.62 2.54 180)
+					(length 2.54)
+					(name "VOUT"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "5"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -3432,6 +3471,12 @@
 		(uuid "e0bc787c-d24e-4378-b08e-c017885317b3")
 	)
 	(junction
+		(at 233.68 138.43)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "033ce44d-0a28-4f96-90b0-e2fe85733139")
+	)
+	(junction
 		(at 262.89 45.72)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -3448,12 +3493,6 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "20c2e6c1-3f73-45b7-ad01-d9f690cfa511")
-	)
-	(junction
-		(at 233.68 140.97)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "218173b6-e49c-41f0-be9f-86c3f306e5d5")
 	)
 	(junction
 		(at 152.4 72.39)
@@ -3516,6 +3555,12 @@
 		(uuid "7cba6d05-ca29-4e14-995f-363ee1056382")
 	)
 	(junction
+		(at 252.73 138.43)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "8745580b-5dd3-4de7-aa20-031302528298")
+	)
+	(junction
 		(at 180.34 33.02)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -3540,6 +3585,18 @@
 		(uuid "a4a6f4b5-bb20-45b9-9ec5-dfbce4cfe62d")
 	)
 	(junction
+		(at 233.68 140.97)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "aa13c35d-8422-4a3b-a408-20cd461ca2bb")
+	)
+	(junction
+		(at 243.84 149.86)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "b3014f31-9095-4f7a-910a-9a503054c56e")
+	)
+	(junction
 		(at 228.6 97.79)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -3550,12 +3607,6 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "bafdf0f1-00d2-47b6-bd69-83c0038db5a2")
-	)
-	(junction
-		(at 242.57 149.86)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "bfc592e2-6bd8-4fc4-8195-1a6f958a536a")
 	)
 	(junction
 		(at 250.19 45.72)
@@ -3580,12 +3631,6 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "e25c4396-6917-440a-afab-5bc9bd372c8d")
-	)
-	(junction
-		(at 252.73 140.97)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "ecb296cc-c4cf-4dd1-b85f-577b69b37e98")
 	)
 	(no_connect
 		(at 208.28 36.83)
@@ -3863,6 +3908,16 @@
 	)
 	(wire
 		(pts
+			(xy 251.46 138.43) (xy 252.73 138.43)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "36ef0e8d-cc87-4666-9669-df462d10ac11")
+	)
+	(wire
+		(pts
 			(xy 208.28 39.37) (xy 209.55 39.37)
 		)
 		(stroke
@@ -3953,7 +4008,7 @@
 	)
 	(wire
 		(pts
-			(xy 252.73 140.97) (xy 252.73 139.7)
+			(xy 252.73 138.43) (xy 252.73 143.51)
 		)
 		(stroke
 			(width 0)
@@ -3970,16 +4025,6 @@
 			(type default)
 		)
 		(uuid "58b125f0-38e4-4170-9e3c-5273b0822847")
-	)
-	(wire
-		(pts
-			(xy 242.57 148.59) (xy 242.57 149.86)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "59e500c9-6d75-478d-9c2c-c00b2cceee1e")
 	)
 	(wire
 		(pts
@@ -4000,16 +4045,6 @@
 			(type default)
 		)
 		(uuid "61e59d66-b23e-488a-b907-1b33ea8b3d48")
-	)
-	(wire
-		(pts
-			(xy 250.19 140.97) (xy 252.73 140.97)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "625aec97-2782-4899-97d1-d0a9f36b93d2")
 	)
 	(wire
 		(pts
@@ -4053,26 +4088,6 @@
 	)
 	(wire
 		(pts
-			(xy 233.68 149.86) (xy 242.57 149.86)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "6c20f6e1-7170-4497-a839-d715b546e8c2")
-	)
-	(wire
-		(pts
-			(xy 242.57 149.86) (xy 252.73 149.86)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "70588e79-3720-4af4-8d2e-e202afe3f48d")
-	)
-	(wire
-		(pts
 			(xy 187.96 39.37) (xy 186.69 39.37)
 		)
 		(stroke
@@ -4083,7 +4098,7 @@
 	)
 	(wire
 		(pts
-			(xy 233.68 140.97) (xy 234.95 140.97)
+			(xy 233.68 140.97) (xy 236.22 140.97)
 		)
 		(stroke
 			(width 0)
@@ -4353,6 +4368,16 @@
 	)
 	(wire
 		(pts
+			(xy 243.84 149.86) (xy 243.84 151.13)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "a74e15c3-902a-42f7-87a1-492ebae879b9")
+	)
+	(wire
+		(pts
 			(xy 180.34 40.64) (xy 184.15 40.64)
 		)
 		(stroke
@@ -4383,13 +4408,23 @@
 	)
 	(wire
 		(pts
-			(xy 252.73 140.97) (xy 252.73 143.51)
+			(xy 233.68 138.43) (xy 233.68 140.97)
 		)
 		(stroke
 			(width 0)
 			(type default)
 		)
-		(uuid "b80da750-7985-475c-86e9-e59efb1a63e3")
+		(uuid "b7f11d8b-0b1e-40f9-b42e-156cc7091c2f")
+	)
+	(wire
+		(pts
+			(xy 252.73 138.43) (xy 252.73 135.89)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "b9057c38-e0c2-42ab-8930-f22124bafac1")
 	)
 	(wire
 		(pts
@@ -4413,16 +4448,6 @@
 	)
 	(wire
 		(pts
-			(xy 242.57 149.86) (xy 242.57 151.13)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "c54d7152-00f4-4173-95b3-9fc34e554add")
-	)
-	(wire
-		(pts
 			(xy 60.96 71.12) (xy 72.39 71.12)
 		)
 		(stroke
@@ -4430,6 +4455,26 @@
 			(type default)
 		)
 		(uuid "c7004728-b8db-4b19-ac1f-4ff68022e364")
+	)
+	(wire
+		(pts
+			(xy 243.84 148.59) (xy 243.84 149.86)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "c91676ae-8a1e-4bb9-9e02-ecca42758a31")
+	)
+	(wire
+		(pts
+			(xy 243.84 149.86) (xy 252.73 149.86)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "cea4e489-7b4e-449c-8931-c7896da00148")
 	)
 	(wire
 		(pts
@@ -4553,7 +4598,7 @@
 	)
 	(wire
 		(pts
-			(xy 233.68 139.7) (xy 233.68 140.97)
+			(xy 233.68 135.89) (xy 233.68 138.43)
 		)
 		(stroke
 			(width 0)
@@ -4570,6 +4615,16 @@
 			(type default)
 		)
 		(uuid "ec8faa52-7d17-4383-92ec-cb78e033ba9f")
+	)
+	(wire
+		(pts
+			(xy 233.68 149.86) (xy 243.84 149.86)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "eeddfc42-4e0f-4a44-ba23-f2dbb18d93ca")
 	)
 	(wire
 		(pts
@@ -4640,6 +4695,16 @@
 			(type default)
 		)
 		(uuid "f75def2f-e7cc-4af3-be44-a6c607225de7")
+	)
+	(wire
+		(pts
+			(xy 233.68 138.43) (xy 236.22 138.43)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "fa91016a-704d-4bfd-9309-f04097d2a440")
 	)
 	(wire
 		(pts
@@ -4849,7 +4914,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C25741 "
+		(property "LCSC" ""
 			(at 138.43 52.07 0)
 			(hide yes)
 			(show_name no)
@@ -4883,6 +4948,17 @@
 			)
 		)
 		(property "MPN" "RT0402BRD07100KL"
+			(at 138.43 52.07 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 138.43 52.07 0)
 			(hide yes)
 			(show_name no)
@@ -5065,7 +5141,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C326595 "
+		(property "LCSC" ""
 			(at 257.81 102.87 0)
 			(hide yes)
 			(show_name no)
@@ -5098,7 +5174,18 @@
 				)
 			)
 		)
-		(property "MPN" "GCM21BR71A106KE22L"
+		(property "MPN" "GRM21BR61E106MA73L"
+			(at 257.81 102.87 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 257.81 102.87 0)
 			(hide yes)
 			(show_name no)
@@ -5235,6 +5322,17 @@
 			)
 		)
 		(property "MPN" "N/A"
+			(at 156.21 72.39 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 156.21 72.39 0)
 			(hide yes)
 			(show_name no)
@@ -5436,7 +5534,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C412437 "
+		(property "LCSC" ""
 			(at 237.49 49.53 90)
 			(hide yes)
 			(show_name no)
@@ -5470,6 +5568,17 @@
 			)
 		)
 		(property "MPN" "US1M"
+			(at 237.49 49.53 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 237.49 49.53 90)
 			(hide yes)
 			(show_name no)
@@ -5606,6 +5715,17 @@
 			)
 		)
 		(property "MPN" " 61300311121"
+			(at 218.44 45.72 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 218.44 45.72 90)
 			(hide yes)
 			(show_name no)
@@ -5788,7 +5908,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C326595 "
+		(property "LCSC" ""
 			(at 228.6 104.14 0)
 			(hide yes)
 			(show_name no)
@@ -5821,7 +5941,18 @@
 				)
 			)
 		)
-		(property "MPN" "GCM21BR71A106KE22L"
+		(property "MPN" "GRM21BR61E106MA73L"
+			(at 228.6 104.14 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 228.6 104.14 0)
 			(hide yes)
 			(show_name no)
@@ -6124,6 +6255,17 @@
 				)
 			)
 		)
+		(property "Field10" ""
+			(at 139.7 77.47 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "1"
 			(uuid "c5464190-0d44-446e-882f-b470ea53ee8d")
 		)
@@ -6247,6 +6389,17 @@
 			)
 		)
 		(property "MPN" "N/A"
+			(at 273.05 46.99 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 273.05 46.99 0)
 			(hide yes)
 			(show_name no)
@@ -6504,7 +6657,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C70462 "
+		(property "LCSC" ""
 			(at 262.89 48.26 0)
 			(hide yes)
 			(show_name no)
@@ -6538,6 +6691,17 @@
 			)
 		)
 		(property "MPN" "GRM31CR71E106KA12L"
+			(at 262.89 48.26 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 262.89 48.26 0)
 			(hide yes)
 			(show_name no)
@@ -6718,7 +6882,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C5121740 "
+		(property "LCSC" ""
 			(at 184.15 36.83 90)
 			(hide yes)
 			(show_name no)
@@ -6752,6 +6916,17 @@
 			)
 		)
 		(property "MPN" "SMAJ58A"
+			(at 184.15 36.83 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 184.15 36.83 90)
 			(hide yes)
 			(show_name no)
@@ -7013,7 +7188,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C43922 "
+		(property "LCSC" ""
 			(at 67.31 53.34 0)
 			(hide yes)
 			(show_name no)
@@ -7047,6 +7222,17 @@
 			)
 		)
 		(property "MPN" "GRM188R71A225KE15D"
+			(at 67.31 53.34 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 67.31 53.34 0)
 			(hide yes)
 			(show_name no)
@@ -7094,7 +7280,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "10uF"
+		(property "Value" "1uF"
 			(at 224.79 147.32 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7105,7 +7291,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
 			(at 233.68 146.05 0)
 			(hide yes)
 			(show_name no)
@@ -7149,7 +7335,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C326595 "
+		(property "LCSC" ""
 			(at 233.68 146.05 0)
 			(hide yes)
 			(show_name no)
@@ -7182,7 +7368,18 @@
 				)
 			)
 		)
-		(property "MPN" "GCM21BR71A106KE22L"
+		(property "MPN" "GCM188R71C105KA64D"
+			(at 233.68 146.05 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 233.68 146.05 0)
 			(hide yes)
 			(show_name no)
@@ -7210,7 +7407,7 @@
 	)
 	(symbol
 		(lib_id "Connector:TestPoint")
-		(at 252.73 140.97 270)
+		(at 252.73 138.43 270)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -7220,7 +7417,7 @@
 		(dnp no)
 		(uuid "4e140ad5-50dd-4907-a656-d47aca2361cc")
 		(property "Reference" "TP9"
-			(at 257.81 139.6999 90)
+			(at 257.81 137.1599 90)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -7231,7 +7428,7 @@
 			)
 		)
 		(property "Value" "+3V3D"
-			(at 257.302 141.986 90)
+			(at 257.302 139.446 90)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -7242,7 +7439,7 @@
 			)
 		)
 		(property "Footprint" "Link_Footprints:TestPoint_Pad_D1.5mm"
-			(at 252.73 146.05 0)
+			(at 252.73 143.51 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7253,7 +7450,7 @@
 			)
 		)
 		(property "Datasheet" "N/A"
-			(at 252.73 146.05 0)
+			(at 252.73 143.51 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7264,7 +7461,7 @@
 			)
 		)
 		(property "Description" "test point"
-			(at 252.73 140.97 0)
+			(at 252.73 138.43 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7275,7 +7472,7 @@
 			)
 		)
 		(property "FT Rotation Offset" ""
-			(at 252.73 140.97 90)
+			(at 252.73 138.43 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7286,7 +7483,7 @@
 			)
 		)
 		(property "LCSC" ""
-			(at 252.73 140.97 90)
+			(at 252.73 138.43 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7297,7 +7494,7 @@
 			)
 		)
 		(property "Sim.Library" ""
-			(at 252.73 140.97 90)
+			(at 252.73 138.43 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7308,7 +7505,7 @@
 			)
 		)
 		(property "Sim.Name" ""
-			(at 252.73 140.97 90)
+			(at 252.73 138.43 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7319,7 +7516,18 @@
 			)
 		)
 		(property "MPN" "N/A"
-			(at 252.73 140.97 90)
+			(at 252.73 138.43 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
+			(at 252.73 138.43 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7419,7 +7627,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C103107 "
+		(property "LCSC" ""
 			(at 138.43 58.42 0)
 			(hide yes)
 			(show_name no)
@@ -7453,6 +7661,17 @@
 			)
 		)
 		(property "MPN" "RT0402BRD0756KL"
+			(at 138.43 58.42 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 138.43 58.42 0)
 			(hide yes)
 			(show_name no)
@@ -7500,7 +7719,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "10uF"
+		(property "Value" "1uF"
 			(at 255.27 148.082 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7511,7 +7730,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
 			(at 252.73 146.05 0)
 			(hide yes)
 			(show_name no)
@@ -7555,7 +7774,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C326595 "
+		(property "LCSC" ""
 			(at 252.73 146.05 0)
 			(hide yes)
 			(show_name no)
@@ -7588,7 +7807,18 @@
 				)
 			)
 		)
-		(property "MPN" "GCM21BR71A106KE22L"
+		(property "MPN" "GCM188R71C105KA64D"
+			(at 252.73 146.05 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 252.73 146.05 0)
 			(hide yes)
 			(show_name no)
@@ -7609,6 +7839,117 @@
 			(project "link"
 				(path "/e6a73b1b-9233-47b9-8d6b-253608bed688/dab49fcf-3c96-4274-9192-150c01f7c53c"
 					(reference "C16")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Regulator_Linear:AP2112K-3.3")
+		(at 243.84 140.97 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "51c4cb13-1088-4e80-a1e4-a3f3149741f1")
+		(property "Reference" "U10"
+			(at 243.84 132.08 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "AP2112K-3.3"
+			(at 243.84 134.62 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Package_TO_SOT_SMD:SOT-23-5"
+			(at 243.84 132.715 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "https://www.diodes.com/assets/Datasheets/AP2112.pdf"
+			(at 243.84 138.43 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "600mA low dropout linear regulator, with enable pin, 3.8V-6V input voltage range, 3.3V fixed positive output, SOT-23-5"
+			(at 243.84 140.97 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
+			(at 243.84 140.97 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "AP2112K-3.3TRG1"
+			(at 243.84 140.97 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "5"
+			(uuid "11e15c91-cdb7-4732-bed7-d0d1afba902c")
+		)
+		(pin "4"
+			(uuid "42c1820b-0856-45c4-b1e4-cac314a0165e")
+		)
+		(pin "3"
+			(uuid "0f53334c-8dae-426c-b6d1-d1555016cf18")
+		)
+		(pin "2"
+			(uuid "bca98195-9695-4f52-b699-2f5a9b0b4a3a")
+		)
+		(pin "1"
+			(uuid "c478c0fd-f39c-4641-8194-94e2097b0bb3")
+		)
+		(instances
+			(project "link"
+				(path "/e6a73b1b-9233-47b9-8d6b-253608bed688/dab49fcf-3c96-4274-9192-150c01f7c53c"
+					(reference "U10")
 					(unit 1)
 				)
 			)
@@ -7725,6 +8066,17 @@
 			)
 		)
 		(property "MPN" " 61300311121"
+			(at 55.88 71.12 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 55.88 71.12 0)
 			(hide yes)
 			(show_name no)
@@ -7911,145 +8263,6 @@
 		)
 	)
 	(symbol
-		(lib_id "Regulator_Linear:TC1262-33")
-		(at 242.57 140.97 0)
-		(unit 1)
-		(body_style 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(fields_autoplaced yes)
-		(uuid "5ed7e942-87bd-496b-99c2-6c84a98c2cc6")
-		(property "Reference" "U3"
-			(at 242.57 134.62 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "TC1262-33"
-			(at 242.57 137.16 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" "Link_Footprints:TC1262"
-			(at 242.57 135.255 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-					(italic yes)
-				)
-			)
-		)
-		(property "Datasheet" "http://ww1.microchip.com/downloads/en/DeviceDoc/21373C.pdf"
-			(at 242.57 148.59 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" "500mA Low Dropout CMOS Voltage Regulator, Fixed Output 3.3V, TO-220/SOT-223/TO-263"
-			(at 242.57 140.97 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "FT Rotation Offset" "-90"
-			(at 242.57 140.97 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "LCSC" "C638655 "
-			(at 242.57 140.97 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Sim.Library" ""
-			(at 242.57 140.97 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Sim.Name" ""
-			(at 242.57 140.97 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "MPN" "TC1262-3.3VDBTR"
-			(at 242.57 140.97 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(pin "2"
-			(uuid "a55cac62-fb64-44cb-b6fb-4893e30fe0dd")
-		)
-		(pin "1"
-			(uuid "5b70f3c0-f850-4aea-9d4c-90ba8dcdd5aa")
-		)
-		(pin "3"
-			(uuid "84663e4a-0ccd-446c-8981-a8d96f0e0818")
-		)
-		(instances
-			(project "link"
-				(path "/e6a73b1b-9233-47b9-8d6b-253608bed688/dab49fcf-3c96-4274-9192-150c01f7c53c"
-					(reference "U3")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
 		(lib_id "Device:Fuse")
 		(at 229.87 45.72 90)
 		(unit 1)
@@ -8125,7 +8338,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C206917 "
+		(property "LCSC" ""
 			(at 229.87 45.72 90)
 			(hide yes)
 			(show_name no)
@@ -8159,6 +8372,17 @@
 			)
 		)
 		(property "MPN" "0154.750DR"
+			(at 229.87 45.72 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 229.87 45.72 90)
 			(hide yes)
 			(show_name no)
@@ -8343,7 +8567,7 @@
 	)
 	(symbol
 		(lib_id "power:+3V3")
-		(at 252.73 139.7 0)
+		(at 252.73 135.89 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -8353,7 +8577,7 @@
 		(dnp no)
 		(uuid "8480d8c6-3c31-483d-975b-4dc2dd4662d7")
 		(property "Reference" "#PWR041"
-			(at 252.73 143.51 0)
+			(at 252.73 139.7 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -8364,7 +8588,7 @@
 			)
 		)
 		(property "Value" "+3V3D"
-			(at 252.73 135.89 0)
+			(at 252.73 132.08 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -8374,7 +8598,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 252.73 139.7 0)
+			(at 252.73 135.89 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -8385,7 +8609,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 252.73 139.7 0)
+			(at 252.73 135.89 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -8396,7 +8620,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"+3V3\""
-			(at 252.73 139.7 0)
+			(at 252.73 135.89 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -8495,7 +8719,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C49326649 "
+		(property "LCSC" ""
 			(at 148.59 55.88 0)
 			(hide yes)
 			(show_name no)
@@ -8529,6 +8753,17 @@
 			)
 		)
 		(property "MPN" "GRM188Z71C475KE21D"
+			(at 148.59 55.88 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 148.59 55.88 0)
 			(hide yes)
 			(show_name no)
@@ -8748,18 +8983,6 @@
 				(justify left top)
 			)
 		)
-		(property "Manufacturer_Part_Number" "R-78CK3.3-0.5"
-			(at 252.73 891.44 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left top)
-			)
-		)
 		(property "FT Rotation Offset" ""
 			(at 231.14 96.52 0)
 			(hide yes)
@@ -8771,7 +8994,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C28216137"
+		(property "LCSC" ""
 			(at 231.14 96.52 0)
 			(hide yes)
 			(show_name no)
@@ -8805,6 +9028,17 @@
 			)
 		)
 		(property "MPN" "R-78CK5.0-0.5"
+			(at 231.14 96.52 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 231.14 96.52 0)
 			(hide yes)
 			(show_name no)
@@ -8944,6 +9178,17 @@
 			)
 		)
 		(property "MPN" "N/A"
+			(at 130.81 49.53 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 130.81 49.53 0)
 			(hide yes)
 			(show_name no)
@@ -9164,6 +9409,17 @@
 				)
 			)
 		)
+		(property "Field10" ""
+			(at 180.34 40.64 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "1"
 			(uuid "a5eda660-2394-4e34-9300-5b97742de5dc")
 		)
@@ -9297,6 +9553,17 @@
 				)
 			)
 		)
+		(property "Field10" ""
+			(at 180.34 33.02 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "1"
 			(uuid "45ba3dce-fcda-4a49-9ae2-99c7bd1f8b0f")
 		)
@@ -9311,7 +9578,7 @@
 	)
 	(symbol
 		(lib_id "power:+5V")
-		(at 233.68 139.7 0)
+		(at 233.68 135.89 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -9322,7 +9589,7 @@
 		(fields_autoplaced yes)
 		(uuid "99c98d13-fcc5-4db8-a84c-6208bccb803c")
 		(property "Reference" "#PWR040"
-			(at 233.68 143.51 0)
+			(at 233.68 139.7 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -9333,7 +9600,7 @@
 			)
 		)
 		(property "Value" "+5V"
-			(at 233.68 134.62 0)
+			(at 233.68 130.81 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -9343,7 +9610,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 233.68 139.7 0)
+			(at 233.68 135.89 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -9354,7 +9621,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 233.68 139.7 0)
+			(at 233.68 135.89 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -9365,7 +9632,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"+5V\""
-			(at 233.68 139.7 0)
+			(at 233.68 135.89 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -9542,7 +9809,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C165558 "
+		(property "LCSC" ""
 			(at 250.19 48.26 0)
 			(hide yes)
 			(show_name no)
@@ -9576,6 +9843,17 @@
 			)
 		)
 		(property "MPN" "UUD1E101MCL1GS"
+			(at 250.19 48.26 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 250.19 48.26 0)
 			(hide yes)
 			(show_name no)
@@ -9703,7 +9981,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "470"
+		(property "Value" "2.2k"
 			(at 185.42 92.7099 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -9769,7 +10047,18 @@
 				)
 			)
 		)
-		(property "MPN" "RC0603FR-07470RL"
+		(property "MPN" ""
+			(at 182.88 91.44 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 182.88 91.44 0)
 			(hide yes)
 			(show_name no)
@@ -9872,7 +10161,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C49326649 "
+		(property "LCSC" ""
 			(at 152.4 76.2 0)
 			(hide yes)
 			(show_name no)
@@ -9906,6 +10195,17 @@
 			)
 		)
 		(property "MPN" "GRM188Z71C475KE21D"
+			(at 152.4 76.2 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 152.4 76.2 0)
 			(hide yes)
 			(show_name no)
@@ -9964,7 +10264,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
 			(at 111.76 74.93 0)
 			(hide yes)
 			(show_name no)
@@ -10008,7 +10308,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C49326649 "
+		(property "LCSC" ""
 			(at 111.76 74.93 0)
 			(hide yes)
 			(show_name no)
@@ -10041,7 +10341,18 @@
 				)
 			)
 		)
-		(property "MPN" "GRM155R60G475ME47J"
+		(property "MPN" "GRM188Z71C475KE21D"
+			(at 111.76 74.93 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 111.76 74.93 0)
 			(hide yes)
 			(show_name no)
@@ -10221,7 +10532,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C103107 "
+		(property "LCSC" ""
 			(at 123.19 63.5 0)
 			(hide yes)
 			(show_name no)
@@ -10255,6 +10566,17 @@
 			)
 		)
 		(property "MPN" "RT0402BRD07100KL"
+			(at 123.19 63.5 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 123.19 63.5 0)
 			(hide yes)
 			(show_name no)
@@ -10357,7 +10679,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C326595 "
+		(property "LCSC" ""
 			(at 82.55 67.31 0)
 			(hide yes)
 			(show_name no)
@@ -10390,7 +10712,18 @@
 				)
 			)
 		)
-		(property "MPN" "GCM21BR71A106KE22L"
+		(property "MPN" "GRM21BR61E106MA73L"
+			(at 82.55 67.31 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 82.55 67.31 0)
 			(hide yes)
 			(show_name no)
@@ -10572,7 +10905,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 242.57 151.13 0)
+		(at 243.84 151.13 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -10582,7 +10915,7 @@
 		(dnp no)
 		(uuid "d4685c8e-0836-4e24-9f96-b1be7624d773")
 		(property "Reference" "#PWR042"
-			(at 242.57 157.48 0)
+			(at 243.84 157.48 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10593,7 +10926,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 242.57 155.194 0)
+			(at 243.84 155.194 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10604,7 +10937,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 242.57 151.13 0)
+			(at 243.84 151.13 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10615,7 +10948,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 242.57 151.13 0)
+			(at 243.84 151.13 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10626,7 +10959,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
-			(at 242.57 151.13 0)
+			(at 243.84 151.13 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10702,7 +11035,7 @@
 				)
 			)
 		)
-		(property "Description" "Regulated 7W DC/DC PoE converter IEEE 802.3af, 36V-57V input, +5V Output Voltage, LP-DIL-8"
+		(property "Description" "Regulated 7W DC/DC PoE converter IEEE 802.3af, 36V-57V input, +12V Output Voltage, LP-DIL-8"
 			(at 198.628 23.114 0)
 			(hide yes)
 			(show_name no)
@@ -10758,6 +11091,17 @@
 			)
 		)
 		(property "MPN" "AG9912LP"
+			(at 198.12 36.83 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 198.12 36.83 0)
 			(hide yes)
 			(show_name no)
@@ -10878,7 +11222,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C473398 "
+		(property "LCSC" ""
 			(at 97.79 54.61 0)
 			(hide yes)
 			(show_name no)
@@ -10912,6 +11256,17 @@
 			)
 		)
 		(property "MPN" "LM27762DSSR"
+			(at 97.79 54.61 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 97.79 54.61 0)
 			(hide yes)
 			(show_name no)
@@ -11047,7 +11402,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C25741 "
+		(property "LCSC" ""
 			(at 113.03 62.23 0)
 			(hide yes)
 			(show_name no)
@@ -11081,6 +11436,17 @@
 			)
 		)
 		(property "MPN" "RT0402BRD0733KL"
+			(at 113.03 62.23 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 113.03 62.23 0)
 			(hide yes)
 			(show_name no)
@@ -11263,7 +11629,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C89120 "
+		(property "LCSC" ""
 			(at 204.47 60.96 0)
 			(hide yes)
 			(show_name no)
@@ -11297,6 +11663,17 @@
 			)
 		)
 		(property "MPN" "1711725"
+			(at 204.47 60.96 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 204.47 60.96 0)
 			(hide yes)
 			(show_name no)
@@ -11434,6 +11811,17 @@
 			)
 		)
 		(property "MPN" "N/A"
+			(at 257.81 97.79 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 257.81 97.79 0)
 			(hide yes)
 			(show_name no)
@@ -11725,6 +12113,17 @@
 			)
 		)
 		(property "MPN" "150060BS75020"
+			(at 182.88 100.33 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 182.88 100.33 90)
 			(hide yes)
 			(show_name no)

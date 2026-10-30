@@ -5547,7 +5547,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C57112 "
+		(property "LCSC" ""
 			(at 102.87 137.16 0)
 			(hide yes)
 			(show_name no)
@@ -5581,6 +5581,17 @@
 			)
 		)
 		(property "MPN" "GRM155R71H103KA88D"
+			(at 102.87 137.16 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 102.87 137.16 0)
 			(hide yes)
 			(show_name no)
@@ -5682,7 +5693,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C19078060 "
+		(property "LCSC" ""
 			(at 86.36 154.94 0)
 			(hide yes)
 			(show_name no)
@@ -5716,6 +5727,17 @@
 			)
 		)
 		(property "MPN" "ABS10"
+			(at 86.36 154.94 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 86.36 154.94 0)
 			(hide yes)
 			(show_name no)
@@ -6296,7 +6318,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C21122 "
+		(property "LCSC" ""
 			(at 119.38 120.65 0)
 			(hide yes)
 			(show_name no)
@@ -6330,6 +6352,17 @@
 			)
 		)
 		(property "MPN" "GRM155R71H223JA12D"
+			(at 119.38 120.65 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 119.38 120.65 0)
 			(hide yes)
 			(show_name no)
@@ -6439,7 +6472,7 @@
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
-		(in_bom no)
+		(in_bom yes)
 		(on_board yes)
 		(in_pos_files yes)
 		(dnp no)
@@ -6638,6 +6671,17 @@
 				)
 			)
 		)
+		(property "Field10" ""
+			(at 165.1 134.62 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "3"
 			(uuid "51e7ee4d-b7a0-4705-9f3f-eb53dbb03e7c")
 		)
@@ -6742,7 +6786,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C22859 "
+		(property "LCSC" ""
 			(at 102.87 129.54 0)
 			(hide yes)
 			(show_name no)
@@ -6776,6 +6820,17 @@
 			)
 		)
 		(property "MPN" "RC0402FR-0749R9L"
+			(at 102.87 129.54 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 102.87 129.54 0)
 			(hide yes)
 			(show_name no)
@@ -6878,7 +6933,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C22859 "
+		(property "LCSC" ""
 			(at 106.68 111.76 0)
 			(hide yes)
 			(show_name no)
@@ -6912,6 +6967,17 @@
 			)
 		)
 		(property "MPN" "RC0402FR-0749R9L"
+			(at 106.68 111.76 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 106.68 111.76 0)
 			(hide yes)
 			(show_name no)
@@ -7013,7 +7079,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C19078060 "
+		(property "LCSC" ""
 			(at 86.36 175.26 0)
 			(hide yes)
 			(show_name no)
@@ -7047,6 +7113,17 @@
 			)
 		)
 		(property "MPN" "ABS10"
+			(at 86.36 175.26 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 86.36 175.26 0)
 			(hide yes)
 			(show_name no)
@@ -7478,6 +7555,17 @@
 				)
 			)
 		)
+		(property "Field10" ""
+			(at 207.01 134.62 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "1"
 			(uuid "9df861ae-406b-48e6-a170-82e82532a210")
 		)
@@ -7575,7 +7663,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C6578967 "
+		(property "LCSC" ""
 			(at 60.96 124.46 0)
 			(hide yes)
 			(show_name no)
@@ -7609,6 +7697,17 @@
 			)
 		)
 		(property "MPN" "ARJM11C7-114-BA-EW2"
+			(at 60.96 124.46 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 60.96 124.46 0)
 			(hide yes)
 			(show_name no)
@@ -8066,7 +8165,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C155248 "
+		(property "LCSC" ""
 			(at 257.81 114.3 0)
 			(hide yes)
 			(show_name no)
@@ -8110,6 +8209,17 @@
 				)
 			)
 		)
+		(property "Field10" ""
+			(at 257.81 114.3 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "2"
 			(uuid "00f0ca0b-451f-40d8-9d16-216045e0776b")
 		)
@@ -8134,7 +8244,7 @@
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
-		(in_bom no)
+		(in_bom yes)
 		(on_board yes)
 		(in_pos_files yes)
 		(dnp no)
@@ -8323,6 +8433,17 @@
 			)
 		)
 		(property "MPN" "1053866"
+			(at 165.1 113.03 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 165.1 113.03 0)
 			(hide yes)
 			(show_name no)
@@ -8593,7 +8714,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C22859 "
+		(property "LCSC" ""
 			(at 93.98 110.49 0)
 			(hide yes)
 			(show_name no)
@@ -8627,6 +8748,17 @@
 			)
 		)
 		(property "MPN" "RC0402FR-0749R9L"
+			(at 93.98 110.49 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 93.98 110.49 0)
 			(hide yes)
 			(show_name no)
@@ -8752,7 +8884,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "ESD7381MUT5G"
+		(property "Value" "ESD50VD5"
 			(at 198.882 116.84 90)
 			(show_name no)
 			(do_not_autoplace no)
@@ -8774,7 +8906,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://www.onsemi.com/pdf/datasheet/esd7381-d.pdf"
+		(property "Datasheet" "https://www.onsemi.com/pdf/datasheet/esd5z2.5t1-d.pdf"
 			(at 201.93 118.11 0)
 			(hide yes)
 			(show_name no)
@@ -8807,7 +8939,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C2987139 "
+		(property "LCSC" ""
 			(at 201.93 118.11 90)
 			(hide yes)
 			(show_name no)
@@ -8840,7 +8972,18 @@
 				)
 			)
 		)
-		(property "MPN" "ESD7381MUT5G"
+		(property "MPN" "ESD5V0D5-TP"
+			(at 201.93 118.11 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 201.93 118.11 90)
 			(hide yes)
 			(show_name no)
@@ -8942,7 +9085,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C155248 "
+		(property "LCSC" ""
 			(at 257.81 99.06 0)
 			(hide yes)
 			(show_name no)
@@ -8976,6 +9119,17 @@
 			)
 		)
 		(property "MPN" "BAV99"
+			(at 257.81 99.06 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 257.81 99.06 0)
 			(hide yes)
 			(show_name no)
@@ -9079,7 +9233,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C57112 "
+		(property "LCSC" ""
 			(at 90.17 127 0)
 			(hide yes)
 			(show_name no)
@@ -9113,6 +9267,17 @@
 			)
 		)
 		(property "MPN" "GRM155R71E682KA01D"
+			(at 90.17 127 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 90.17 127 90)
 			(hide yes)
 			(show_name no)
@@ -9293,7 +9458,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C22859 "
+		(property "LCSC" ""
 			(at 119.38 111.76 0)
 			(hide yes)
 			(show_name no)
@@ -9327,6 +9492,17 @@
 			)
 		)
 		(property "MPN" "RC0402FR-0710RL"
+			(at 119.38 111.76 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 119.38 111.76 0)
 			(hide yes)
 			(show_name no)
@@ -9587,7 +9763,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C22859 "
+		(property "LCSC" ""
 			(at 110.49 127 0)
 			(hide yes)
 			(show_name no)
@@ -9621,6 +9797,17 @@
 			)
 		)
 		(property "MPN" "RC0402FR-0749R9L"
+			(at 110.49 127 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 110.49 127 0)
 			(hide yes)
 			(show_name no)
@@ -9722,7 +9909,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C155248"
+		(property "LCSC" ""
 			(at 257.81 128.27 0)
 			(hide yes)
 			(show_name no)
@@ -9756,6 +9943,17 @@
 			)
 		)
 		(property "MPN" "BAV99"
+			(at 257.81 128.27 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 257.81 128.27 0)
 			(hide yes)
 			(show_name no)
@@ -9806,7 +10004,7 @@
 				)
 			)
 		)
-		(property "Value" "+3V3A"
+		(property "Value" "+3V3A1"
 			(at 119.38 101.346 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -9867,7 +10065,7 @@
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
-		(in_bom no)
+		(in_bom yes)
 		(on_board yes)
 		(in_pos_files yes)
 		(dnp no)
@@ -10066,6 +10264,17 @@
 				)
 			)
 		)
+		(property "Field10" ""
+			(at 217.17 113.03 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "3"
 			(uuid "254feb9d-7f3f-4509-9b4c-e8344b3193c7")
 		)
@@ -10168,7 +10377,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C57112 "
+		(property "LCSC" ""
 			(at 90.17 121.92 0)
 			(hide yes)
 			(show_name no)
@@ -10202,6 +10411,17 @@
 			)
 		)
 		(property "MPN" "GRM155R71E682KA01D"
+			(at 90.17 121.92 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 90.17 121.92 90)
 			(hide yes)
 			(show_name no)
@@ -10303,7 +10523,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C155248 "
+		(property "LCSC" ""
 			(at 257.81 142.24 0)
 			(hide yes)
 			(show_name no)
@@ -10337,6 +10557,17 @@
 			)
 		)
 		(property "MPN" "BAV99"
+			(at 257.81 142.24 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Field10" ""
 			(at 257.81 142.24 0)
 			(hide yes)
 			(show_name no)
