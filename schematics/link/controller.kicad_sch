@@ -8779,7 +8779,7 @@
 				)
 			)
 		)
-		(property "Value" "0.1uF"
+		(property "Value" "220nF"
 			(at 74.93 57.15 90)
 			(show_name no)
 			(do_not_autoplace no)
@@ -8855,7 +8855,7 @@
 				)
 			)
 		)
-		(property "MPN" "GCM155R71H104KE02D"
+		(property "MPN" "GCM155R71C224KE02D"
 			(at 74.93 52.07 90)
 			(hide yes)
 			(show_name no)

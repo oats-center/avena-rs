@@ -5,7 +5,7 @@
 	(uuid "ea983014-da29-487b-ba2d-7117889b9d95")
 	(paper "A4")
 	(lib_symbols
-		(symbol "Amplifier_Instrumentation:AD8422ARMZ"
+		(symbol "Amplifier_Instrumentation:AD8422ARZ"
 			(pin_names
 				(offset 0.127)
 			)
@@ -24,7 +24,7 @@
 					)
 				)
 			)
-			(property "Value" "AD8422ARMZ"
+			(property "Value" "AD8422ARZ"
 				(at 7.366 5.334 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -35,7 +35,7 @@
 				)
 			)
 			(property "Footprint" ""
-				(at -5.08 0 0)
+				(at -2.54 0 0)
 				(show_name no)
 				(do_not_autoplace no)
 				(hide yes)
@@ -46,7 +46,7 @@
 				)
 			)
 			(property "Datasheet" "https://www.analog.com/media/en/technical-documentation/data-sheets/AD8422.pdf"
-				(at 8.89 -10.16 0)
+				(at 11.43 -10.16 0)
 				(show_name no)
 				(do_not_autoplace no)
 				(hide yes)
@@ -56,7 +56,7 @@
 					)
 				)
 			)
-			(property "Description" "Low Power, Rail to Rail, Instumentation Amplifier, MSOP-8"
+			(property "Description" "Low Power, Rail to Rail, Instumentation Amplifier, SOIC-8"
 				(at 0 0 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -67,7 +67,7 @@
 					)
 				)
 			)
-			(property "ki_keywords" "ad8422 instumentation amplifier msop-8"
+			(property "ki_keywords" "ad8422 instumentation amplifier soic-8"
 				(at 0 0 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -78,7 +78,7 @@
 					)
 				)
 			)
-			(property "ki_fp_filters" "MSOP-8*"
+			(property "ki_fp_filters" "SOIC-8*"
 				(at 0 0 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -89,7 +89,7 @@
 					)
 				)
 			)
-			(symbol "AD8422ARMZ_0_1"
+			(symbol "AD8422ARZ_0_1"
 				(polyline
 					(pts
 						(xy -5.08 7.62) (xy -5.08 -7.62) (xy 10.16 0) (xy -5.08 7.62)
@@ -103,7 +103,7 @@
 					)
 				)
 			)
-			(symbol "AD8422ARMZ_1_1"
+			(symbol "AD8422ARZ_1_1"
 				(pin input line
 					(at -7.62 5.08 0)
 					(length 2.54)
@@ -11326,7 +11326,7 @@
 		)
 	)
 	(symbol
-		(lib_id "Amplifier_Instrumentation:AD8422ARMZ")
+		(lib_id "Amplifier_Instrumentation:AD8422ARZ")
 		(at 99.06 121.92 0)
 		(unit 1)
 		(body_style 1)
@@ -11346,7 +11346,7 @@
 				)
 			)
 		)
-		(property "Value" "AD8422ARMZ"
+		(property "Value" "AD8422ARZ"
 			(at 106.68 115.062 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11356,8 +11356,8 @@
 				)
 			)
 		)
-		(property "Footprint" "Package_SO:MSOP-8_3x3mm_P0.65mm"
-			(at 93.98 121.92 0)
+		(property "Footprint" "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
+			(at 96.52 121.92 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11368,7 +11368,7 @@
 			)
 		)
 		(property "Datasheet" "https://www.analog.com/media/en/technical-documentation/data-sheets/AD8422.pdf"
-			(at 107.95 132.08 0)
+			(at 110.49 132.08 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11378,7 +11378,7 @@
 				)
 			)
 		)
-		(property "Description" "Low Power, Rail to Rail, Instumentation Amplifier, MSOP-8"
+		(property "Description" "Low Power, Rail to Rail, Instumentation Amplifier, SOIC-8"
 			(at 99.06 121.92 0)
 			(hide yes)
 			(show_name no)
@@ -11411,7 +11411,7 @@
 				)
 			)
 		)
-		(property "LCSC Part #" "C668395 "
+		(property "LCSC Part #" ""
 			(at 99.06 121.92 0)
 			(hide yes)
 			(show_name no)
@@ -11444,7 +11444,7 @@
 				)
 			)
 		)
-		(property "MPN" "AD8422ARMZ"
+		(property "MPN" "AD8422ARZ"
 			(at 99.06 121.92 0)
 			(hide yes)
 			(show_name no)
@@ -14754,7 +14754,7 @@
 		)
 	)
 	(symbol
-		(lib_id "Amplifier_Instrumentation:AD8422ARMZ")
+		(lib_id "Amplifier_Instrumentation:AD8422ARZ")
 		(at 99.06 58.42 0)
 		(unit 1)
 		(body_style 1)
@@ -14774,7 +14774,7 @@
 				)
 			)
 		)
-		(property "Value" "AD8422ARMZ"
+		(property "Value" "AD8422ARZ"
 			(at 106.68 51.562 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14784,8 +14784,8 @@
 				)
 			)
 		)
-		(property "Footprint" "Package_SO:MSOP-8_3x3mm_P0.65mm"
-			(at 93.98 58.42 0)
+		(property "Footprint" "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
+			(at 96.52 58.42 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14796,7 +14796,7 @@
 			)
 		)
 		(property "Datasheet" "https://www.analog.com/media/en/technical-documentation/data-sheets/AD8422.pdf"
-			(at 107.95 68.58 0)
+			(at 110.49 68.58 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14806,7 +14806,7 @@
 				)
 			)
 		)
-		(property "Description" "Low Power, Rail to Rail, Instumentation Amplifier, MSOP-8"
+		(property "Description" "Low Power, Rail to Rail, Instumentation Amplifier, SOIC-8"
 			(at 99.06 58.42 0)
 			(hide yes)
 			(show_name no)
@@ -14839,7 +14839,7 @@
 				)
 			)
 		)
-		(property "LCSC Part #" "C668395 "
+		(property "LCSC Part #" ""
 			(at 99.06 58.42 0)
 			(hide yes)
 			(show_name no)
@@ -14872,7 +14872,7 @@
 				)
 			)
 		)
-		(property "MPN" "AD8422ARMZ"
+		(property "MPN" "AD8422ARZ"
 			(at 99.06 58.42 0)
 			(hide yes)
 			(show_name no)

@@ -10624,7 +10624,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "10uF"
+		(property "Value" "1uF"
 			(at 75.438 68.326 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10712,7 +10712,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM21BR61E106MA73L"
+		(property "MPN" "GRM21BR71A105KA01L"
 			(at 82.55 67.31 0)
 			(hide yes)
 			(show_name no)
