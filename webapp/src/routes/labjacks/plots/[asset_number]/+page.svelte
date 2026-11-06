@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy, untrack } from "svelte";
     import { page } from "$app/stores";
+    import { env } from "$env/dynamic/public";
     import {
         connect,
         getKeyValue,
@@ -176,6 +177,10 @@
     let scanQueue = new ScanMessageQueue(MAX_QUEUED_MESSAGES_PER_CHANNEL);
     /** Channels chosen for plotting, at most two. Only these are decoded. */
     let selectedPlotChannels = $state<Set<number>>(new Set());
+    /** True when the server relays a camera (`PUBLIC_CAMERA=1`, see `routes/camera`). */
+    const cameraAvailable = env.PUBLIC_CAMERA === "1";
+    /** Whether the camera column is shown; it streams only while shown. */
+    let showCamera = $state<boolean>(false);
     /** True when buffers changed since the last {@link flushUiSnapshots}. */
     let uiSnapshotDirty = false;
 
@@ -1030,6 +1035,10 @@ to a rolling buffer sorted by sample time (NaN and missing time become gaps; dup
 are skipped), runs the trigger logic and, at most about 30 times a second, copies the buffers into
 reactive state. Each channel can run in Free Run, Trigger Normal or Trigger Single.
 
+Camera: when the server sets `PUBLIC_CAMERA=1`, a camera chip follows the channel chips.
+Turning it on shows `CameraView` (loaded on demand) in a column beside the plots that
+stays in view while scrolling, or above them on narrow screens; it streams `/camera`
+only while shown and the tab is visible.
 Hands off to one `RealTimePlot` per selected channel, passing the live snapshot, the
 frozen trigger capture, axis settings and trigger state.
 
@@ -1096,7 +1105,7 @@ subscription is released and nothing is saved.
     </div>
 
     <!-- Main Content -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="{showCamera ? 'max-w-screen-2xl' : 'max-w-7xl'} mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <!-- Error Message -->
         {#if error}
             <div class="alert alert-error mb-6">
@@ -1153,18 +1162,7 @@ subscription is released and nothing is saved.
 
             <div class="card bg-base-100 shadow-xl mb-6">
                 <div class="card-body">
-                    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                        <div>
-                            <h4 class="card-title text-base-content">Visible Plot Channels</h4>
-                            <p class="text-sm text-base-content/70">
-                                Select up to 2 channels. Only selected channels are received, parsed and rendered in the browser; a newly selected channel starts with an empty plot.
-                            </p>
-                        </div>
-                        <span class="badge badge-info badge-sm">
-                            {selectedPlotChannels.size} / 2 selected
-                        </span>
-                    </div>
-                    <div class="flex flex-wrap gap-3 mt-2">
+                    <div class="flex flex-wrap gap-3">
                         {#each labjackConfig.sensor_settings.channels_enabled as channel}
                             {@const isSelected = selectedPlotChannels.has(channel)}
                             {@const disableUnchecked = !isSelected && selectedPlotChannels.size >= 2}
@@ -1183,24 +1181,46 @@ subscription is released and nothing is saved.
                                 <span class="label-text">Channel {channel}</span>
                             </label>
                         {/each}
+                        {#if cameraAvailable}
+                            <label class="label cursor-pointer gap-2 border border-base-300 rounded-lg px-3 py-2" title="Camera">
+                                <input
+                                    type="checkbox"
+                                    class="checkbox checkbox-primary checkbox-sm"
+                                    aria-label="Camera"
+                                    bind:checked={showCamera}
+                                />
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/>
+                                </svg>
+                            </label>
+                        {/if}
                     </div>
                 </div>
             </div>
 
 
-            <!-- Channel Sections: Combined Trigger Settings + Plots -->
-            <div class="space-y-6">
-                {#each renderableChannels as channel (channel)}
-                    {@const view = channelViews.get(channel)}
-                    {#if view}
-                        <ChannelCard
-                            {view}
-                            dataFormat={labjackConfig.sensor_settings.data_formats[labjackConfig.sensor_settings.channels_enabled.indexOf(channel)]}
-                            unitInfo={channelUnitInfo(labjackConfig.sensor_settings, channel)}
-                            onchange={markUiSnapshotDirty}
-                        />
-                    {/if}
-                {/each}
+            <div class={showCamera ? "grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]" : ""}>
+                <!-- Channel Sections: Combined Trigger Settings + Plots -->
+                <div class="space-y-6">
+                    {#each renderableChannels as channel (channel)}
+                        {@const view = channelViews.get(channel)}
+                        {#if view}
+                            <ChannelCard
+                                {view}
+                                dataFormat={labjackConfig.sensor_settings.data_formats[labjackConfig.sensor_settings.channels_enabled.indexOf(channel)]}
+                                unitInfo={channelUnitInfo(labjackConfig.sensor_settings, channel)}
+                                onchange={markUiSnapshotDirty}
+                            />
+                        {/if}
+                    {/each}
+                </div>
+                {#if showCamera}
+                    <div class="order-first lg:order-none lg:sticky lg:top-6">
+                        {#await import("$lib/components/CameraView.svelte") then { default: CameraView }}
+                            <CameraView src="/camera" />
+                        {/await}
+                    </div>
+                {/if}
             </div>
         {/if}
     </div>

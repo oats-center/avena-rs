@@ -958,21 +958,26 @@
     }
     
     /**
-     * Sizes the canvas, draws the first frame, and redraws on window resize. The
-     * cleanup removes the listener and cancels any queued frame.
+     * Sizes the canvas, draws the first frame, and redraws whenever the canvas changes
+     * size (layout changes such as the camera column opening) or the window resizes
+     * (which also covers zoom changing the device pixel ratio). The cleanup stops both
+     * and cancels any queued frame.
      */
     onMount(() => {
         resizeCanvas();
         scheduleRender();
-        
+
         const handleResize = () => {
             resizeCanvas();
             scheduleRender();
         };
-        
+
+        const observer = new ResizeObserver(handleResize);
+        observer.observe(canvas);
         window.addEventListener('resize', handleResize);
-        
+
         return () => {
+            observer.disconnect();
             window.removeEventListener('resize', handleResize);
             if (animationFrame) cancelAnimationFrame(animationFrame);
         };
