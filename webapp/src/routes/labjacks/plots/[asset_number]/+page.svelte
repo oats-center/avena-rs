@@ -1,7 +1,14 @@
 <script lang="ts">
     import { onMount, onDestroy, untrack } from "svelte";
     import { page } from "$app/stores";
-    import { connect, getKeyValue, getKeys, type NatsService } from "$lib/nats.svelte";
+    import {
+        connect,
+        getKeyValue,
+        getKeyValues,
+        getKeys,
+        KV_READ_CONCURRENCY,
+        type NatsService
+    } from "$lib/nats.svelte";
     import { isExportCancelled } from "$lib/exporter";
     import { runExportOnOwnConnection } from "$lib/plot/export-run";
     import {
@@ -81,7 +88,11 @@
      * any other value with a 404 before the page loads.
      */
     let assetNumber = $state<number>(0);
-    let labjackConfig = $state<LabJackConfig | null>(null);
+    /**
+     * Config of the plotted LabJack. Replaced on each load, never mutated, so it is not
+     * deep-proxied: the decode loop reads it every frame.
+     */
+    let labjackConfig = $state.raw<LabJackConfig | null>(null);
     let loading = $state<boolean>(true);
     let error = $state<string>("");
     /**
@@ -389,14 +400,17 @@
      *
      * Steps: closes the old connection; reads `serverName` and `credentialsContent` from
      * sessionStorage and opens a new connection; reads the `key` query parameter from bucket
-     * `avenabox` and uses it if its `asset_number` matches; otherwise reads every
-     * `*.*.*.config` key in turn and takes the first match. Then resets channel state,
+     * `avenabox` and uses it if its `asset_number` matches; otherwise lists every
+     * `*.*.*.config` key and reads them in key order, {@link KV_READ_CONCURRENCY} at a
+     * time, taking the first match (no later batch is read once one matches). Then
+     * resets channel state,
      * pushes a first snapshot and calls {@link startDataSubscription}. Sets `error` on
      * missing login data, connection failure or no match; the promise does not reject.
      *
      * @remarks
-     * Also used by the Retry button and when the URL changes. It lists all config keys
-     * even when the `key` config matches. Each call first closes the previous connection
+     * Also used by the Retry button and when the URL changes. It lists the config keys
+     * only when the `key` config is missing or does not match. Each call first closes
+     * the previous connection
      * and its subscriptions. If a newer call starts, or the page is destroyed, while this
      * one is waiting, this one closes the connection it opened and changes nothing.
      */
@@ -454,17 +468,26 @@
             if (!foundConfig) {
                 const keys = await getKeys(service, "avenabox", "*.*.*.config");
                 if (superseded()) return;
-                for (const key of keys) {
-                    try {
-                        const configStr = await getKeyValue(service, "avenabox", key);
-                        const config = normalizeLabJackConfig(JSON.parse(configStr));
-                        if (!config) continue;
-                        if (config.asset_number === assetNumber) {
-                            foundConfig = config;
-                            break;
+                // Read a batch concurrently, then check it in key order, so the first
+                // match in key order wins as before.
+                for (let start = 0; start < keys.length && !foundConfig; start += KV_READ_CONCURRENCY) {
+                    const batch = keys.slice(start, start + KV_READ_CONCURRENCY);
+                    const values = await getKeyValues(service, "avenabox", batch);
+                    if (superseded()) return;
+                    for (let i = 0; i < batch.length; i++) {
+                        const key = batch[i];
+                        const result = values[i];
+                        try {
+                            if (result.status === "rejected") throw result.reason;
+                            const config = normalizeLabJackConfig(JSON.parse(result.value));
+                            if (!config) continue;
+                            if (config.asset_number === assetNumber) {
+                                foundConfig = config;
+                                break;
+                            }
+                        } catch (err) {
+                            console.error(`Failed to parse config for key ${key}:`, err);
                         }
-                    } catch (err) {
-                        console.error(`Failed to parse config for key ${key}:`, err);
                     }
                 }
             }
@@ -985,8 +1008,8 @@ URL: `/labjacks/plots/[asset_number]?key=<kv key>`
   `+page.ts` answers 404 and SvelteKit shows the shared error page.
 - `key` (optional): KV key of the config in bucket `avenabox`, such as
   `<site>.<box>.<source>.config`. It is used only when that config's `asset_number`
-  matches. Otherwise the page reads every `*.*.*.config` key and takes the first config
-  with a matching `asset_number`. The page writes nothing to KV.
+  matches. Otherwise the page lists the `*.*.*.config` keys, reads them in key order a
+  batch at a time, and takes the first config with a matching `asset_number`. The page writes nothing to KV.
 
 Reads `serverName` and `credentialsContent` from sessionStorage (written by the login
 page) and opens its own connection to central NATS. Shows an error if either is missing.

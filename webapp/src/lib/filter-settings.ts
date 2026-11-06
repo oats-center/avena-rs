@@ -66,6 +66,9 @@ export function normalizeChannelFilters(raw: unknown): ChannelFilterSettings | u
     return Object.keys(settings).length > 0 ? settings : undefined;
 }
 
+/** Matches a channel-number key: decimal digits only. */
+const CHANNEL_KEY_PATTERN = /^\d+$/;
+
 /**
  * Cleans a whole `filters` map: keeps keys that are channel numbers (non-negative
  * integers) whose settings have at least one active filter.
@@ -77,7 +80,7 @@ export function normalizeFilterMap(raw: unknown): ChannelFilterMap {
     const map: ChannelFilterMap = {};
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return map;
     for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-        if (!/^\d+$/.test(key)) continue;
+        if (!CHANNEL_KEY_PATTERN.test(key)) continue;
         const settings = normalizeChannelFilters(value);
         if (settings) map[String(Number(key))] = settings;
     }

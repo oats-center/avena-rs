@@ -27,6 +27,46 @@ export interface ScanData {
 }
 
 /**
+ * vtable slot of the `values` field of `Scan` (fifth field: `4 + 2 * 4`), as used by
+ * the generated `values()` and `valuesArray()` accessors.
+ */
+const SCAN_VALUES_VTABLE_OFFSET = 12;
+
+/**
+ * `true` on little-endian hosts (every current browser platform). FlatBuffers stores
+ * floats little-endian, so the `values` vector can then be copied byte for byte.
+ */
+const HOST_IS_LITTLE_ENDIAN = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
+
+/**
+ * Copies the `values` vector of a `Scan` into a new array.
+ *
+ * On a little-endian host the vector's bytes are copied in one go, whatever the
+ * payload's alignment; otherwise each value is read with the generated scalar
+ * accessor. Both give the same numbers.
+ *
+ * @param scan - Root `Scan` of `bb`.
+ * @param bb - Buffer holding the payload.
+ * @param length - `scan.valuesLength()`, greater than 0.
+ * @returns The values, in order.
+ */
+function copyValues(scan: Scan, bb: flatbuffers.ByteBuffer, length: number): Float64Array {
+    const values = new Float64Array(length);
+    if (HOST_IS_LITTLE_ENDIAN) {
+        const start = bb.__vector(scan.bb_pos + bb.__offset(scan.bb_pos, SCAN_VALUES_VTABLE_OFFSET));
+        const bytes = bb.bytes();
+        if (start >= 0 && start + length * 8 <= bytes.length) {
+            new Uint8Array(values.buffer).set(bytes.subarray(start, start + length * 8));
+            return values;
+        }
+    }
+    for (let i = 0; i < length; i++) {
+        values[i] = scan.values(i) ?? Number.NaN;
+    }
+    return values;
+}
+
+/**
  * Converts a Unix nanosecond timestamp to JavaScript milliseconds.
  *
  * @param timestampNs - Unix epoch time in nanoseconds.
@@ -43,10 +83,10 @@ export class FlatBufferParser {
     /**
      * Decodes a FlatBuffer `Scan` payload.
      *
-     * When the input is a view onto part of a larger buffer, as NATS WebSocket
-     * payloads can be, the bytes are copied first so the decoder gets a buffer that
-     * starts at offset 0. Values are read one at a time with the scalar accessor,
-     * not the generated `Float64Array` view, and a missing value becomes `NaN`.
+     * The input may be a view onto part of a larger buffer, as NATS WebSocket payloads
+     * are; it is decoded in place, without copying the payload. The values are copied
+     * out in one block (see `copyValues`) instead of through the generated
+     * `Float64Array` view, which fails on payloads that are not 8-byte aligned.
      *
      * The payload is not verified against the schema. Errors are logged to the
      * console.
@@ -63,11 +103,9 @@ export class FlatBufferParser {
      */
     parse(buffer: ArrayBuffer | Uint8Array): ScanData | null {
         try {
-            const input = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-            const bytes =
-                input.byteOffset === 0 && input.byteLength === input.buffer.byteLength
-                    ? input
-                    : new Uint8Array(input);
+            // ByteBuffer offsets are relative to the view, so a slice of a larger
+            // buffer decodes in place.
+            const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
             const bb = new flatbuffers.ByteBuffer(bytes);
             const scan = Scan.getRootAsScan(bb);
 
@@ -76,10 +114,7 @@ export class FlatBufferParser {
                 console.warn('No values found in FlatBuffer');
                 return null;
             }
-            const values = new Float64Array(valuesLength);
-            for (let i = 0; i < valuesLength; i++) {
-                values[i] = scan.values(i) ?? Number.NaN;
-            }
+            const values = copyValues(scan, bb, valuesLength);
 
             return {
                 firstSampleUnixNs: scan.firstSampleUnixNs(),

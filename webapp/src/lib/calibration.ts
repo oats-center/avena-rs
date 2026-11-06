@@ -284,8 +284,13 @@ export function applyCalibration(spec: CalibrationSpec, raw: number): number {
   }
 
   if (spec.type === "polynomial") {
-    // Rust's float `sum()` starts from -0.0, so an empty polynomial gives -0.
-    return spec.coeffs.reduce((acc, coeff, idx) => acc + coeff * raw ** idx, -0);
+    // Rust's float `sum()` starts from -0.0, so an empty polynomial gives -0. A plain
+    // loop does the same additions in the same order as `reduce`, without a callback
+    // per coefficient (this runs for every sample).
+    const coeffs = spec.coeffs;
+    let acc = -0;
+    for (let idx = 0; idx < coeffs.length; idx++) acc = acc + coeffs[idx] * raw ** idx;
+    return acc;
   }
 
   return raw;
