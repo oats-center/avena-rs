@@ -145,9 +145,10 @@ cannot set headers). Empty acks are never mistaken for a cancel.
 The exporter reads its ack subject before publishing each chunk and while it
 waits for acks, so it stops before the next chunk: chunks it had already
 published may still arrive, and nothing is sent after it has read the cancel,
-not even an `error` or `complete` frame. It then closes the ack subscription,
-drops its file readers and logs
-`[exporter] export cancelled by the client after N chunk(s), M bytes`.
+not even an `error` or `complete` frame. It then closes the ack subscription
+and logs `[exporter] export cancelled by the client after N chunk(s), M bytes`.
+Its background reader stops once it finishes the slice it is decoding, usually
+within milliseconds and at most about a second for a large merged slice.
 
 The webapp sends a cancel when the user cancels an export, and also when it
 gives up for another reason after sending the request (idle timeout, a frame it

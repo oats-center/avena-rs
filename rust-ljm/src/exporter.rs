@@ -77,10 +77,19 @@
 //!   and each exact `(timestamp, raw value)` pair is sent once ([`read_merged_rows`]);
 //!   a clean file in time order comes out exactly as stored. Rows with the same
 //!   timestamp but different values are all kept.
-//! * Rows are sent in time order, so [`Rfc3339Formatter`] builds the date
-//!   and time up to the second with chrono once per second and appends only the
-//!   fractional part per row. This is faster than a full chrono format per row and
-//!   produces identical text to chrono's `to_rfc3339`.
+//! * Each export runs as a three-stage pipeline ([`spawn_csv`]): a reader thread
+//!   lists and decodes the files (and runs the filters) one merge slice ahead, a CSV
+//!   thread formats the rows into chunks, and the request's async task sends the
+//!   chunks and handles acks. Decoding, formatting and sending overlap, and no file
+//!   reading or formatting blocks the async runtime; the bytes and their order are
+//!   the same as reading, formatting and sending one after another.
+//! * Formatting a row is the main CPU cost of an export, so [`CsvRowWriter`] avoids
+//!   most of it while writing the same bytes as `writeln!`: rows are sent in time
+//!   order, so [`Rfc3339Formatter`] builds the date and time up to the second with
+//!   chrono once per second and writes only the fractional digits per row (identical
+//!   text to chrono's `to_rfc3339`), and [`ValueTextCache`] reuses the
+//!   `raw,calibrated` text of raw values seen before, which with a 16-bit converter
+//!   is nearly every row.
 
 use std::{
     fs,
@@ -370,14 +379,16 @@ impl ExportFilters {
     }
 }
 
-/// Calibration of a row in a filtered export, shared by the rows of one file.
-type SharedCalibration = Arc<(CalibrationSpec, String)>;
+/// Calibrations and CSV calibration ids of a filtered channel, each once, in the
+/// order first seen. Shared with the CSV thread, which reads a batch's rows with it.
+type CalibrationTable = Arc<Vec<(CalibrationSpec, String)>>;
 
 /// One row of a filtered export.
 struct FilterInputRow {
     timestamp_unix_ns: i64,
     raw_value: f64,
-    calibration: SharedCalibration,
+    /// Index of the row's calibration in the channel's [`CalibrationTable`].
+    calibration: usize,
 }
 
 /// Seconds read before the export range so the templates have learnt the
@@ -389,12 +400,17 @@ const FILTER_LEAD_IN_S: f64 = filters::TEMPLATE_MEMORY_S;
 ///
 /// Rows come out in time order through [`Self::next_batch`], only those inside the
 /// export range, each with its filtered calibrated value. Memory stays bounded by
-/// one slice plus the filter's backward-pass block (see [`filters::ExportFilter`]).
+/// one slice plus the filter's backward-pass block (see [`filters::ExportFilter`]),
+/// and the batch handed back.
 struct FilteredChannelRows {
     /// File groups of the channel's day folders, in time order.
     groups: Vec<Vec<FileSpan>>,
     /// `(group index, from_ns, to_ns)` slices still to read.
     slices: std::collections::VecDeque<(usize, i64, i64)>,
+    /// Calibrations of the rows read so far. Rows refer to them by index rather
+    /// than each holding a reference count, which the reader and CSV threads would
+    /// otherwise update for every row.
+    calibrations: CalibrationTable,
     filter: ExportFilter<FilterInputRow>,
     start_ns: i64,
     end_ns: i64,
@@ -443,6 +459,7 @@ impl FilteredChannelRows {
         Ok(Self {
             groups,
             slices,
+            calibrations: Arc::new(Vec::new()),
             filter: ExportFilter::new(settings.clone()),
             start_ns,
             end_ns,
@@ -451,31 +468,56 @@ impl FilteredChannelRows {
     }
 
     /// Reads the next slice and returns the rows it completes; `None` when done.
-    fn next_batch(&mut self) -> Option<Vec<filters::FilteredRow<FilterInputRow>>> {
-        let calibrate = |row: &FilterInputRow, value: f64| row.calibration.0.apply(value);
+    ///
+    /// # Returns
+    ///
+    /// The rows, and the table their calibration indices refer to.
+    fn next_batch(
+        &mut self,
+    ) -> Option<(Vec<filters::FilteredRow<FilterInputRow>>, CalibrationTable)> {
         let mut out = Vec::new();
         if let Some((group, from_ns, to_ns)) = self.slices.pop_front() {
             let merged = read_merged_rows(&self.groups[group], from_ns, to_ns);
-            let calibrations: Vec<SharedCalibration> =
-                merged.calibrations.into_iter().map(Arc::new).collect();
+            // Index in the channel's table of each of the slice's calibrations. Only
+            // the formula (bit for bit) and the id reach the CSV.
+            let indices: Vec<usize> = merged
+                .calibrations
+                .into_iter()
+                .map(|entry| {
+                    let known = self.calibrations.iter().position(|(spec, id)| {
+                        *id == entry.1 && same_formula(&spec.formula, &entry.0.formula)
+                    });
+                    known.unwrap_or_else(|| {
+                        let table = Arc::make_mut(&mut self.calibrations);
+                        table.push(entry);
+                        table.len() - 1
+                    })
+                })
+                .collect();
+            let table = &self.calibrations;
+            let calibrate =
+                |row: &FilterInputRow, value: f64| table[row.calibration].0.apply(value);
             for (timestamp_unix_ns, raw_value, calibration) in merged.rows {
                 let row = FilterInputRow {
                     timestamp_unix_ns,
                     raw_value,
-                    calibration: calibrations[calibration].clone(),
+                    calibration: indices[calibration],
                 };
                 self.filter
                     .push(timestamp_unix_ns, raw_value, row, &calibrate, &mut out);
             }
         } else if !self.finished {
             self.finished = true;
+            let table = &self.calibrations;
+            let calibrate =
+                |row: &FilterInputRow, value: f64| table[row.calibration].0.apply(value);
             self.filter.finish(&calibrate, &mut out);
         } else {
             return None;
         }
         let (start_ns, end_ns) = (self.start_ns, self.end_ns);
         out.retain(|r| (start_ns..=end_ns).contains(&r.row.timestamp_unix_ns));
-        Some(out)
+        Some((out, Arc::clone(&self.calibrations)))
     }
 }
 
@@ -1100,16 +1142,300 @@ impl ExportSink for WebSocketSink {
     }
 }
 
-/// CSV stream builder for direct WebSocket exports.
+/// Bytes reserved in a chunk buffer beyond its chunk size, so the row that crosses
+/// the size normally fits without the buffer being reallocated and copied.
+const CHUNK_SLACK: usize = 4096;
+/// Finished chunks the CSV thread may hold ready while the previous ones are sent.
+const CSV_CHUNKS_AHEAD: usize = 2;
+
+/// What an export reads, handed to its CSV thread ([`spawn_csv`]).
+struct CsvJob {
+    /// Root of the Parquet archive.
+    root: PathBuf,
+    /// Asset number used to locate the Parquet partitions.
+    asset: u32,
+    /// Inclusive start of the export range.
+    start: DateTime<Utc>,
+    /// Inclusive end of the export range.
+    end: DateTime<Utc>,
+    /// Filters asked for; `None` for a plain export.
+    filters: Option<ExportFilters>,
+    /// Channels to export, in order.
+    channels: Vec<u8>,
+}
+
+/// Starts building an export's CSV on a blocking thread.
 ///
-/// Buffers CSV rows and hands them to an [`ExportSink`] in chunks of about
-/// [`Self::CHUNK_SIZE`] bytes. There is no ack protocol; backpressure comes from
-/// awaiting each send on the sink.
+/// The CSV thread formats the rows that a reader thread ([`read_rows`]) reads one
+/// merge slice ahead, so decoding the next file overlaps formatting the current
+/// one, also across channels. The channels come one after another, in the given
+/// order, and the CSV is cut into chunks: the first starts with the header line,
+/// and every chunk except the last is at least `chunk_size` bytes, exceeding it by
+/// less than one row. The chunks are sent in order on the returned receiver, up to
+/// [`CSV_CHUNKS_AHEAD`] ahead of the caller, so building the next chunks overlaps
+/// sending the current one and waiting for acks, and none of it blocks the async
+/// runtime. Memory stays bounded by two merge slices (one being formatted, one read
+/// ahead) and, besides the chunk being sent, [`CSV_CHUNKS_AHEAD`] ready chunks and
+/// the one being built. The caller stops both threads by dropping the receiver:
+/// each ends at its next hand-over, the reader after the slice it is reading.
+///
+/// # Returns
+///
+/// The chunk receiver, and the CSV thread's handle, which yields the channels that
+/// produced no rows in the range, in request order, once every chunk is sent. On
+/// the first error from listing a channel's day folder, the handle yields it,
+/// prefixed with `channel NN:`, after the chunks completed before it.
+fn spawn_csv(
+    job: CsvJob,
+    chunk_size: usize,
+) -> (
+    tokio::sync::mpsc::Receiver<Vec<u8>>,
+    tokio::task::JoinHandle<Result<Vec<u8>>>,
+) {
+    let (tx, rx) = tokio::sync::mpsc::channel(CSV_CHUNKS_AHEAD);
+    let handle = tokio::task::spawn_blocking(move || {
+        let filtered = job.filters.is_some();
+        let (read_tx, read_rx) = std::sync::mpsc::sync_channel(0);
+        std::thread::Builder::new()
+            .name("export-reader".into())
+            .spawn(move || read_rows(&job, &read_tx))
+            .context("failed to start the export reader thread")?;
+        CsvBuilder::new(filtered, chunk_size, tx).run(read_rx)
+    });
+    (rx, handle)
+}
+
+/// Rows of an export in CSV order, from [`read_rows`] to [`CsvBuilder`].
+enum ReadItem {
+    /// The following rows belong to this channel.
+    Channel(u8),
+    /// Rows of one merge slice of a channel without filters.
+    Plain(MergedRows),
+    /// Rows of a channel with filters, with their filtered values, and the table
+    /// their calibration indices refer to.
+    Filtered(Vec<filters::FilteredRow<FilterInputRow>>, CalibrationTable),
+    /// The current channel's day folders could not be listed; nothing follows.
+    Failed(anyhow::Error),
+    /// Every channel was read.
+    Done,
+}
+
+/// Reads the rows of every channel of an export, in order, and hands them over.
+///
+/// A channel with filters goes through [`FilteredChannelRows`]. Otherwise, for each
+/// UTC date from the start date to the end date inclusive, groups the `.parquet`
+/// files in `<root>/assetNNN/YYYY-MM-DD/chNN/` (skipping days whose directory does
+/// not exist) with [`overlapping_file_groups`], and hands over each group's rows,
+/// one merge slice at a time, in time order with every exact duplicate sample once
+/// (see [`read_merged_rows`]). For an archive without overlapping files this is the
+/// same as each file's rows in turn. A file that fails to read is logged and
+/// skipped, and the export continues; a day folder that cannot be listed ends it
+/// with [`ReadItem::Failed`].
+///
+/// `tx` is a rendezvous channel, so this runs one item ahead of the formatter and
+/// returns as soon as the formatter has gone.
+fn read_rows(job: &CsvJob, tx: &std::sync::mpsc::SyncSender<ReadItem>) {
+    let start_ns = datetime_to_unix_ns(job.start);
+    let end_ns = datetime_to_unix_ns(job.end);
+    let send = |item| tx.send(item).is_ok();
+    for &channel in &job.channels {
+        if !send(ReadItem::Channel(channel)) {
+            return;
+        }
+        if let Some(settings) = job.filters.as_ref().and_then(|f| f.for_channel(channel)) {
+            let mut rows = match FilteredChannelRows::new(
+                &job.root, job.asset, channel, job.start, job.end, settings,
+            ) {
+                Ok(rows) => rows,
+                Err(err) => {
+                    send(ReadItem::Failed(err));
+                    return;
+                }
+            };
+            while let Some((batch, calibrations)) = rows.next_batch() {
+                if !send(ReadItem::Filtered(batch, calibrations)) {
+                    return;
+                }
+            }
+            continue;
+        }
+        for day in date_range(job.start.date_naive(), job.end.date_naive()) {
+            let day_dir = job
+                .root
+                .join(format!("asset{:03}", job.asset))
+                .join(day.format("%Y-%m-%d").to_string())
+                .join(format!("ch{channel:02}"));
+            if !day_dir.exists() {
+                continue;
+            }
+            let groups = match overlapping_file_groups(&day_dir, start_ns, end_ns) {
+                Ok(groups) => groups,
+                Err(err) => {
+                    send(ReadItem::Failed(err));
+                    return;
+                }
+            };
+            for group in groups {
+                for (from_ns, to_ns) in merge_slices(&group, start_ns, end_ns) {
+                    if !send(ReadItem::Plain(read_merged_rows(&group, from_ns, to_ns))) {
+                        return;
+                    }
+                }
+            }
+        }
+    }
+    send(ReadItem::Done);
+}
+
+/// Formats an export's rows into CSV chunks on its CSV thread; see [`spawn_csv`].
+struct CsvBuilder {
+    /// Whether the export has a `filtered_value` column.
+    filtered: bool,
+    /// Buffer size in bytes at which a chunk is sent.
+    chunk_size: usize,
+    /// CSV bytes not yet sent; starts with the header line.
+    chunk: Vec<u8>,
+    /// Row formatter.
+    rows: CsvRowWriter,
+    /// Where finished chunks go.
+    tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+}
+
+impl CsvBuilder {
+    /// Creates a builder and writes the CSV header (with `filtered_value` when
+    /// `filtered`) into the first chunk.
+    fn new(filtered: bool, chunk_size: usize, tx: tokio::sync::mpsc::Sender<Vec<u8>>) -> Self {
+        let mut chunk = Vec::with_capacity(chunk_size + CHUNK_SLACK);
+        chunk.extend_from_slice(if filtered {
+            CSV_HEADER_FILTERED
+        } else {
+            CSV_HEADER
+        });
+        Self {
+            filtered,
+            chunk_size,
+            chunk,
+            rows: CsvRowWriter::new(),
+            tx,
+        }
+    }
+
+    /// Writes every row from the reader, sends the last chunk and returns the
+    /// channels without rows.
+    ///
+    /// Each row's calibration is applied to its raw value. In a filtered export, a
+    /// channel without filters gets its calibrated value as its filtered value.
+    ///
+    /// # Errors
+    ///
+    /// Returns the reader's channel error, prefixed with `channel NN:`, an error if
+    /// the reader stopped early, or an error if the chunk receiver was dropped.
+    fn run(mut self, items: std::sync::mpsc::Receiver<ReadItem>) -> Result<Vec<u8>> {
+        let plain = if self.filtered {
+            FilteredColumn::Calibrated
+        } else {
+            FilteredColumn::Absent
+        };
+        let mut missing = Vec::new();
+        let mut current: Option<(u8, bool)> = None;
+        loop {
+            let item = items
+                .recv()
+                .map_err(|_| anyhow!("export reader stopped unexpectedly"))?;
+            match item {
+                ReadItem::Channel(channel) => {
+                    if let Some((previous, false)) = current {
+                        missing.push(previous);
+                    }
+                    current = Some((channel, false));
+                    self.rows.set_channel(channel);
+                }
+                ReadItem::Plain(merged) => {
+                    if let Some((_, found)) = current.as_mut() {
+                        *found |= !merged.rows.is_empty();
+                    }
+                    for &(timestamp_unix_ns, raw_value, calibration) in &merged.rows {
+                        let (spec, calibration_id) = &merged.calibrations[calibration];
+                        self.rows.write_row(
+                            &mut self.chunk,
+                            timestamp_unix_ns,
+                            raw_value,
+                            spec,
+                            calibration_id,
+                            plain,
+                        );
+                        self.end_row()?;
+                    }
+                }
+                ReadItem::Filtered(batch, calibrations) => {
+                    if let Some((_, found)) = current.as_mut() {
+                        *found |= !batch.is_empty();
+                    }
+                    for filtered in batch {
+                        let row = filtered.row;
+                        let (spec, calibration_id) = &calibrations[row.calibration];
+                        self.rows.write_row(
+                            &mut self.chunk,
+                            row.timestamp_unix_ns,
+                            row.raw_value,
+                            spec,
+                            calibration_id,
+                            FilteredColumn::Value(filtered.filtered),
+                        );
+                        self.end_row()?;
+                    }
+                }
+                ReadItem::Failed(err) => {
+                    let channel = current.map_or(0, |(channel, _)| channel);
+                    return Err(anyhow!("channel {channel:02}: {err}"));
+                }
+                ReadItem::Done => break,
+            }
+        }
+        if let Some((previous, false)) = current {
+            missing.push(previous);
+        }
+        self.send_chunk()?;
+        Ok(missing)
+    }
+
+    /// Sends the current buffer as one chunk, unless it is empty.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the receiver was dropped.
+    fn send_chunk(&mut self) -> Result<()> {
+        if self.chunk.is_empty() {
+            return Ok(());
+        }
+        let next = Vec::with_capacity(self.chunk_size + CHUNK_SLACK);
+        let data = std::mem::replace(&mut self.chunk, next);
+        self.tx
+            .blocking_send(data)
+            .map_err(|_| anyhow!("export stopped"))
+    }
+
+    /// Sends the buffer once it has reached the chunk size.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the receiver was dropped.
+    fn end_row(&mut self) -> Result<()> {
+        if self.chunk.len() >= self.chunk_size {
+            self.send_chunk()?;
+        }
+        Ok(())
+    }
+}
+
+/// CSV streamer for direct WebSocket exports.
+///
+/// Builds the CSV on a CSV thread ([`spawn_csv`]) and hands it to an
+/// [`ExportSink`] in chunks of about [`Self::CHUNK_SIZE`] bytes. There is no ack
+/// protocol; backpressure comes from awaiting each send on the sink.
 struct CsvStreamer<'a, S: ExportSink + Send> {
     /// Transport that receives the frames.
     sink: &'a mut S,
-    /// CSV bytes not yet sent; starts with the header line.
-    chunk: Vec<u8>,
     /// CSV bytes handed to the sink so far.
     bytes_sent: usize,
     /// Asset number used to locate the Parquet partitions.
@@ -1122,20 +1448,20 @@ struct CsvStreamer<'a, S: ExportSink + Send> {
     filters: Option<ExportFilters>,
 }
 
-/// CSV stream builder for NATS worker exports.
+/// CSV streamer for NATS worker exports.
 ///
-/// Buffers CSV rows and publishes them as `chunk` frames (raw bytes with the header
-/// `Avena-Export-Frame: chunk`) to the reply subject once the buffer reaches
-/// [`Self::CHUNK_SIZE`] (512 KiB), so every chunk except the last is at least that
-/// size, exceeding it by less than one row. After every
-/// [`Self::FLUSH_EVERY_CHUNKS`] (8) chunks it flushes the NATS client and, when
-/// the request named an `ack_subject`, waits until the client has published one
-/// ack message per chunk sent, allowing [`Self::ACK_TIMEOUT_SECS`] (30 s) for
-/// each. The content of ack messages is ignored, except that a cancel message
-/// (see [`is_cancel_message`]) stops the export: messages already on the ack
-/// subject are read before every chunk, so at most the chunk being published when
-/// the cancel arrives still goes out. Without an ack subject the worker only
-/// flushes, and nothing stops it from outrunning a slow client.
+/// Builds the CSV on a CSV thread ([`spawn_csv`]) and publishes it as `chunk`
+/// frames (raw bytes with the header `Avena-Export-Frame: chunk`) to the reply
+/// subject, each at least [`Self::CHUNK_SIZE`] (512 KiB) except the last,
+/// exceeding it by less than one row. After every [`Self::FLUSH_EVERY_CHUNKS`] (8)
+/// chunks it flushes the NATS client and, when the request named an
+/// `ack_subject`, waits until the client has published one ack message per chunk
+/// sent, allowing [`Self::ACK_TIMEOUT_SECS`] (30 s) for each. The content of ack
+/// messages is ignored, except that a cancel message (see [`is_cancel_message`])
+/// stops the export: messages already on the ack subject are read before every
+/// chunk, so at most the chunk being published when the cancel arrives still goes
+/// out. Without an ack subject the worker only flushes, and nothing stops it from
+/// outrunning a slow client.
 struct NatsCsvStreamer {
     /// Connected NATS client.
     client: async_nats::Client,
@@ -1143,8 +1469,6 @@ struct NatsCsvStreamer {
     reply: async_nats::Subject,
     /// Subscription to the request's `ack_subject`, if one was given.
     ack_sub: Option<async_nats::Subscriber>,
-    /// CSV bytes not yet published; starts with the header line.
-    chunk: Vec<u8>,
     /// Chunks published since the last forced client flush.
     chunks_since_flush: usize,
     /// Chunks published and not yet acknowledged by the client.
@@ -1172,7 +1496,7 @@ impl NatsCsvStreamer {
     /// Maximum time to wait for each client chunk acknowledgement, in seconds.
     const ACK_TIMEOUT_SECS: u64 = 30;
 
-    /// Creates a NATS CSV streamer and writes the CSV header into the buffer.
+    /// Creates a NATS CSV streamer.
     ///
     /// # Arguments
     ///
@@ -1191,13 +1515,10 @@ impl NatsCsvStreamer {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Self {
-        let mut chunk = Vec::with_capacity(Self::CHUNK_SIZE);
-        chunk.extend_from_slice(CSV_HEADER);
         Self {
             client,
             reply,
             ack_sub,
-            chunk,
             chunks_since_flush: 0,
             unacked: 0,
             chunks_sent: 0,
@@ -1212,84 +1533,14 @@ impl NatsCsvStreamer {
     /// Sets the filters of the export. With `Some`, the header gets a
     /// `filtered_value` column and every row a value for it.
     fn with_filters(mut self, filters: Option<ExportFilters>) -> Self {
-        if filters.is_some() {
-            self.chunk.clear();
-            self.chunk.extend_from_slice(CSV_HEADER_FILTERED);
-        }
         self.filters = filters;
         self
     }
 
-    /// Appends one row of a filtered export: the plain columns, then the filtered
-    /// value (empty when it is not finite).
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the resulting flush fails.
-    async fn push_filtered_record(
-        &mut self,
-        timestamp: &str,
-        channel: u8,
-        raw_value: f64,
-        calibrated_value: f64,
-        calibration_id: &str,
-        filtered_value: f64,
-    ) -> Result<()> {
-        write!(
-            self.chunk,
-            "{timestamp},ch{channel:02},{raw_value},{calibrated_value},{calibration_id},"
-        )?;
-        if filtered_value.is_finite() {
-            write!(self.chunk, "{filtered_value}")?;
-        }
-        self.chunk.push(b'\n');
-        if self.chunk.len() >= Self::CHUNK_SIZE {
-            self.flush().await?;
-        }
-        Ok(())
-    }
-
-    /// Streams one channel through its filters (see [`FilteredChannelRows`]).
-    ///
-    /// # Returns
-    ///
-    /// `true` if at least one row in the range was emitted.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if a day folder cannot be listed or a row cannot be sent.
-    async fn stream_channel_filtered(
-        &mut self,
-        root: &Path,
-        channel: u8,
-        settings: &ChannelFilterSettings,
-    ) -> Result<bool> {
-        let mut rows =
-            FilteredChannelRows::new(root, self.asset, channel, self.start, self.end, settings)?;
-        let mut formatter = Rfc3339Formatter::new();
-        let mut found = false;
-        while let Some(batch) = rows.next_batch() {
-            for filtered in batch {
-                let row = filtered.row;
-                let (spec, calibration_id) = &*row.calibration;
-                let ts = formatter.format(row.timestamp_unix_ns);
-                let calibrated_value = spec.apply(row.raw_value);
-                found = true;
-                self.push_filtered_record(
-                    ts,
-                    channel,
-                    row.raw_value,
-                    calibrated_value,
-                    calibration_id,
-                    filtered.filtered,
-                )
-                .await?;
-            }
-        }
-        Ok(found)
-    }
-
     /// Streams all requested channels, one after another, in the given order.
+    ///
+    /// The CSV is built by [`spawn_csv`] and every chunk is published with
+    /// [`Self::publish_chunk`] as soon as it is ready.
     ///
     /// # Arguments
     ///
@@ -1302,46 +1553,41 @@ impl NatsCsvStreamer {
     ///
     /// # Errors
     ///
-    /// Returns the first error from [`Self::stream_channel`], prefixed with
-    /// `channel NN:`.
+    /// Returns [`ExportCancelled`] if the client cancelled, an error if a publish,
+    /// flush or ack wait fails, or the first channel error from [`spawn_csv`],
+    /// prefixed with `channel NN:`, after the chunks completed before it.
     async fn stream_channels(&mut self, parquet_root: &Path, channels: &[u8]) -> Result<Vec<u8>> {
-        let mut missing = Vec::new();
-        for &channel in channels {
-            let found = self
-                .stream_channel(parquet_root, channel)
-                .await
-                .map_err(|e| {
-                    if e.is::<ExportCancelled>() {
-                        e
-                    } else {
-                        anyhow!("channel {channel:02}: {e}")
-                    }
-                })?;
-            if !found {
-                missing.push(channel);
-            }
+        let (mut chunks, csv) = spawn_csv(
+            CsvJob {
+                root: parquet_root.to_path_buf(),
+                asset: self.asset,
+                start: self.start,
+                end: self.end,
+                filters: self.filters.clone(),
+                channels: channels.to_vec(),
+            },
+            Self::CHUNK_SIZE,
+        );
+        while let Some(data) = chunks.recv().await {
+            self.publish_chunk(data).await?;
         }
-        Ok(missing)
+        csv.await.map_err(|e| anyhow!("CSV thread failed: {e}"))?
     }
 
-    /// Publishes the current CSV buffer as one `chunk` frame.
+    /// Publishes one `chunk` frame.
     ///
-    /// Does nothing if the buffer is empty. First reads what has arrived on the ack
-    /// subject ([`Self::poll_ack_subject`]), so a cancel stops the export before the
-    /// next chunk. Adds the chunk to `bytes_sent`, flushes the NATS client every
-    /// [`Self::FLUSH_EVERY_CHUNKS`] chunks, and calls [`Self::wait_for_acks`] once
-    /// that many chunks are unacknowledged.
+    /// First reads what has arrived on the ack subject ([`Self::poll_ack_subject`]),
+    /// so a cancel stops the export before the next chunk. Adds the chunk to
+    /// `bytes_sent`, flushes the NATS client every [`Self::FLUSH_EVERY_CHUNKS`]
+    /// chunks, and calls [`Self::wait_for_acks`] once that many chunks are
+    /// unacknowledged.
     ///
     /// # Errors
     ///
     /// Returns [`ExportCancelled`] if the client cancelled, or an error if the
     /// publish or flush fails, or if [`Self::wait_for_acks`] fails.
-    async fn flush(&mut self) -> Result<()> {
-        if self.chunk.is_empty() {
-            return Ok(());
-        }
+    async fn publish_chunk(&mut self, data: Vec<u8>) -> Result<()> {
         self.poll_ack_subject()?;
-        let data = std::mem::take(&mut self.chunk);
         let len = data.len();
         let mut headers = HeaderMap::new();
         headers.insert(EXPORT_FRAME_HEADER, EXPORT_FRAME_CHUNK);
@@ -1361,7 +1607,6 @@ impl NatsCsvStreamer {
         if self.unacked >= Self::FLUSH_EVERY_CHUNKS {
             self.wait_for_acks().await?;
         }
-        self.chunk = Vec::with_capacity(Self::CHUNK_SIZE);
         Ok(())
     }
 
@@ -1438,47 +1683,13 @@ impl NatsCsvStreamer {
         Ok(())
     }
 
-    /// Appends one CSV row to the current chunk.
+    /// Waits for outstanding acks and sends summary and completion frames.
     ///
-    /// The row is `<timestamp>,chNN,<raw_value>,<calibrated_value>,<calibration_id>`,
-    /// with the floats in Rust's default `Display` format. When the buffer reaches
-    /// [`Self::CHUNK_SIZE`] it is sent with [`Self::flush`].
-    ///
-    /// # Arguments
-    ///
-    /// * `timestamp` - RFC 3339 timestamp text.
-    /// * `channel` - LabJack channel number, written as `chNN`.
-    /// * `raw_value` - Value stored in the Parquet file.
-    /// * `calibrated_value` - `raw_value` after the file's calibration.
-    /// * `calibration_id` - Calibration id written in the last column.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the resulting flush fails.
-    async fn push_record(
-        &mut self,
-        timestamp: &str,
-        channel: u8,
-        raw_value: f64,
-        calibrated_value: f64,
-        calibration_id: &str,
-    ) -> Result<()> {
-        writeln!(
-            self.chunk,
-            "{timestamp},ch{channel:02},{raw_value},{calibrated_value},{calibration_id}"
-        )?;
-        if self.chunk.len() >= Self::CHUNK_SIZE {
-            self.flush().await?;
-        }
-        Ok(())
-    }
-
-    /// Flushes data and sends summary and completion frames.
-    ///
-    /// Publishes the remaining buffer, waits for all outstanding acks, then
-    /// publishes `summary` (`{"type":"summary","bytesSent":N,"missingChannels":[...]}`
-    /// with the channels sorted and deduplicated) and `complete`
-    /// (`{"type":"complete"}`), and flushes the client.
+    /// Call after [`Self::stream_channels`], which publishes every chunk. Waits for
+    /// all outstanding acks, then publishes `summary`
+    /// (`{"type":"summary","bytesSent":N,"missingChannels":[...]}` with the channels
+    /// sorted and deduplicated) and `complete` (`{"type":"complete"}`), and flushes
+    /// the client.
     ///
     /// # Arguments
     ///
@@ -1488,7 +1699,6 @@ impl NatsCsvStreamer {
     ///
     /// Returns an error if a publish, flush or ack wait fails.
     async fn finish(mut self, mut missing_channels: Vec<u8>) -> Result<()> {
-        self.flush().await?;
         self.wait_for_acks().await?;
         missing_channels.sort_unstable();
         missing_channels.dedup();
@@ -1513,113 +1723,13 @@ impl NatsCsvStreamer {
         self.client.flush().await?;
         Ok(())
     }
-
-    /// Streams all Parquet files for one asset/channel over the requested date range.
-    ///
-    /// For each UTC date from the start date to the end date inclusive, groups the
-    /// `.parquet` files in `<root>/assetNNN/YYYY-MM-DD/chNN/` (skipping days whose
-    /// directory does not exist) with [`overlapping_file_groups`], and sends each
-    /// group's rows in time order with every exact duplicate sample sent once (see
-    /// [`read_merged_rows`]). For an archive without overlapping files this is the
-    /// same output as sending each file's rows in turn. A file that fails to read is
-    /// logged and skipped, and the export continues.
-    ///
-    /// # Arguments
-    ///
-    /// * `root` - Root of the Parquet archive.
-    /// * `channel` - LabJack channel number.
-    ///
-    /// # Returns
-    ///
-    /// `true` if at least one row in the range was emitted for this channel.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if an existing day directory cannot be listed or a row cannot
-    /// be sent.
-    async fn stream_channel(&mut self, root: &Path, channel: u8) -> Result<bool> {
-        if let Some(settings) = self
-            .filters
-            .as_ref()
-            .and_then(|f| f.for_channel(channel))
-            .cloned()
-        {
-            return self.stream_channel_filtered(root, channel, &settings).await;
-        }
-        let start_ns = datetime_to_unix_ns(self.start);
-        let end_ns = datetime_to_unix_ns(self.end);
-        let mut found = false;
-        for day in date_range(self.start.date_naive(), self.end.date_naive()) {
-            let day_dir = root
-                .join(format!("asset{:03}", self.asset))
-                .join(day.format("%Y-%m-%d").to_string())
-                .join(format!("ch{:02}", channel));
-            if !day_dir.exists() {
-                continue;
-            }
-
-            for group in overlapping_file_groups(&day_dir, start_ns, end_ns)? {
-                for (from_ns, to_ns) in merge_slices(&group, start_ns, end_ns) {
-                    let merged = read_merged_rows(&group, from_ns, to_ns);
-                    self.stream_rows(merged, channel, &mut found).await?;
-                }
-            }
-        }
-        Ok(found)
-    }
-
-    /// Emits merged rows as CSV records.
-    ///
-    /// Applies each row's calibration to its raw value and formats timestamps with a
-    /// fresh [`Rfc3339Formatter`].
-    ///
-    /// # Arguments
-    ///
-    /// * `merged` - Rows from [`read_merged_rows`].
-    /// * `channel` - LabJack channel number written in each row.
-    /// * `found` - Set to `true` when at least one row is emitted; never reset.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if a row cannot be sent.
-    async fn stream_rows(
-        &mut self,
-        merged: MergedRows,
-        channel: u8,
-        found: &mut bool,
-    ) -> Result<()> {
-        let mut formatter = Rfc3339Formatter::new();
-        for (timestamp_unix_ns, raw_value, calibration) in merged.rows {
-            let (spec, calibration_id) = &merged.calibrations[calibration];
-            let ts = formatter.format(timestamp_unix_ns);
-            let calibrated_value = spec.apply(raw_value);
-            *found = true;
-            if self.filters.is_some() {
-                // A channel without filters in a filtered export: its filtered value is
-                // its calibrated value.
-                self.push_filtered_record(
-                    ts,
-                    channel,
-                    raw_value,
-                    calibrated_value,
-                    calibration_id,
-                    calibrated_value,
-                )
-                .await?;
-            } else {
-                self.push_record(ts, channel, raw_value, calibrated_value, calibration_id)
-                    .await?;
-            }
-        }
-        Ok(())
-    }
 }
 
 impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
     /// Buffer size in bytes at which a chunk is sent to the sink (128 KiB).
     const CHUNK_SIZE: usize = 128 * 1024;
 
-    /// Creates a direct CSV streamer and writes the CSV header into the buffer.
+    /// Creates a direct CSV streamer.
     ///
     /// # Arguments
     ///
@@ -1628,11 +1738,8 @@ impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
     /// * `start` - Inclusive start of the export range.
     /// * `end` - Inclusive end of the export range.
     fn new(sink: &'a mut S, asset: u32, start: DateTime<Utc>, end: DateTime<Utc>) -> Self {
-        let mut chunk = Vec::with_capacity(Self::CHUNK_SIZE);
-        chunk.extend_from_slice(CSV_HEADER);
         Self {
             sink,
-            chunk,
             bytes_sent: 0,
             asset,
             start,
@@ -1644,84 +1751,14 @@ impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
     /// Sets the filters of the export. With `Some`, the header gets a
     /// `filtered_value` column and every row a value for it.
     fn with_filters(mut self, filters: Option<ExportFilters>) -> Self {
-        if filters.is_some() {
-            self.chunk.clear();
-            self.chunk.extend_from_slice(CSV_HEADER_FILTERED);
-        }
         self.filters = filters;
         self
     }
 
-    /// Appends one row of a filtered export: the plain columns, then the filtered
-    /// value (empty when it is not finite).
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the resulting flush fails.
-    async fn push_filtered_record(
-        &mut self,
-        timestamp: &str,
-        channel: u8,
-        raw_value: f64,
-        calibrated_value: f64,
-        calibration_id: &str,
-        filtered_value: f64,
-    ) -> Result<()> {
-        write!(
-            self.chunk,
-            "{timestamp},ch{channel:02},{raw_value},{calibrated_value},{calibration_id},"
-        )?;
-        if filtered_value.is_finite() {
-            write!(self.chunk, "{filtered_value}")?;
-        }
-        self.chunk.push(b'\n');
-        if self.chunk.len() >= Self::CHUNK_SIZE {
-            self.flush().await?;
-        }
-        Ok(())
-    }
-
-    /// Streams one channel through its filters (see [`FilteredChannelRows`]).
-    ///
-    /// # Returns
-    ///
-    /// `true` if at least one row in the range was emitted.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if a day folder cannot be listed or a row cannot be sent.
-    async fn stream_channel_filtered(
-        &mut self,
-        root: &Path,
-        channel: u8,
-        settings: &ChannelFilterSettings,
-    ) -> Result<bool> {
-        let mut rows =
-            FilteredChannelRows::new(root, self.asset, channel, self.start, self.end, settings)?;
-        let mut formatter = Rfc3339Formatter::new();
-        let mut found = false;
-        while let Some(batch) = rows.next_batch() {
-            for filtered in batch {
-                let row = filtered.row;
-                let (spec, calibration_id) = &*row.calibration;
-                let ts = formatter.format(row.timestamp_unix_ns);
-                let calibrated_value = spec.apply(row.raw_value);
-                found = true;
-                self.push_filtered_record(
-                    ts,
-                    channel,
-                    row.raw_value,
-                    calibrated_value,
-                    calibration_id,
-                    filtered.filtered,
-                )
-                .await?;
-            }
-        }
-        Ok(found)
-    }
-
     /// Streams all requested channels, one after another, in the given order.
+    ///
+    /// The CSV is built by [`spawn_csv`] and every chunk is sent as soon as it is
+    /// ready.
     ///
     /// # Arguments
     ///
@@ -1734,79 +1771,32 @@ impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
     ///
     /// # Errors
     ///
-    /// Returns the first error from [`Self::stream_channel`], prefixed with
-    /// `channel NN:`.
+    /// Returns an error if the sink fails to send, or the first channel error from
+    /// [`spawn_csv`], prefixed with `channel NN:`, after the chunks completed
+    /// before it.
     async fn stream_channels(&mut self, parquet_root: &Path, channels: &[u8]) -> Result<Vec<u8>> {
-        let mut missing = Vec::new();
-        for &channel in channels {
-            let found = self
-                .stream_channel(parquet_root, channel)
-                .await
-                .map_err(|e| anyhow!("channel {channel:02}: {e}"))?;
-            if !found {
-                missing.push(channel);
-            }
+        let (mut chunks, csv) = spawn_csv(
+            CsvJob {
+                root: parquet_root.to_path_buf(),
+                asset: self.asset,
+                start: self.start,
+                end: self.end,
+                filters: self.filters.clone(),
+                channels: channels.to_vec(),
+            },
+            Self::CHUNK_SIZE,
+        );
+        while let Some(data) = chunks.recv().await {
+            self.bytes_sent += data.len();
+            self.sink.send_chunk(data).await?;
         }
-        Ok(missing)
+        csv.await.map_err(|e| anyhow!("CSV thread failed: {e}"))?
     }
 
-    /// Sends the current CSV buffer through the sink as one chunk.
+    /// Sends the summary and completion frames.
     ///
-    /// Does nothing if the buffer is empty.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the sink fails to send.
-    async fn flush(&mut self) -> Result<()> {
-        if self.chunk.is_empty() {
-            return Ok(());
-        }
-        let data = std::mem::take(&mut self.chunk);
-        self.bytes_sent += data.len();
-        self.sink.send_chunk(data).await?;
-        self.chunk = Vec::with_capacity(Self::CHUNK_SIZE);
-        Ok(())
-    }
-
-    /// Appends one CSV row to the current chunk.
-    ///
-    /// The row is `<timestamp>,chNN,<raw_value>,<calibrated_value>,<calibration_id>`,
-    /// with the floats in Rust's default `Display` format. When the buffer reaches
-    /// [`Self::CHUNK_SIZE`] it is sent with [`Self::flush`].
-    ///
-    /// # Arguments
-    ///
-    /// * `timestamp` - RFC 3339 timestamp text.
-    /// * `channel` - LabJack channel number, written as `chNN`.
-    /// * `raw_value` - Value stored in the Parquet file.
-    /// * `calibrated_value` - `raw_value` after the file's calibration.
-    /// * `calibration_id` - Calibration id written in the last column.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the resulting flush fails.
-    async fn push_record(
-        &mut self,
-        timestamp: &str,
-        channel: u8,
-        raw_value: f64,
-        calibrated_value: f64,
-        calibration_id: &str,
-    ) -> Result<()> {
-        writeln!(
-            self.chunk,
-            "{timestamp},ch{channel:02},{raw_value},{calibrated_value},{calibration_id}"
-        )?;
-        if self.chunk.len() >= Self::CHUNK_SIZE {
-            self.flush().await?;
-        }
-        Ok(())
-    }
-
-    /// Flushes data and sends summary and completion frames.
-    ///
-    /// Sends the remaining buffer, then the summary (with the missing channels
-    /// sorted and deduplicated) and the completion frame.
+    /// Call after [`Self::stream_channels`], which sends every chunk. The missing
+    /// channels are sorted and deduplicated.
     ///
     /// # Arguments
     ///
@@ -1815,114 +1805,13 @@ impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
     /// # Errors
     ///
     /// Returns an error if the sink fails to send.
-    async fn finish(mut self, mut missing_channels: Vec<u8>) -> Result<()> {
-        self.flush().await?;
+    async fn finish(self, mut missing_channels: Vec<u8>) -> Result<()> {
         missing_channels.sort_unstable();
         missing_channels.dedup();
         self.sink
             .send_summary(self.bytes_sent, &missing_channels)
             .await?;
         self.sink.send_complete().await?;
-        Ok(())
-    }
-
-    /// Streams all Parquet files for one asset/channel over the requested date range.
-    ///
-    /// For each UTC date from the start date to the end date inclusive, groups the
-    /// `.parquet` files in `<root>/assetNNN/YYYY-MM-DD/chNN/` (skipping days whose
-    /// directory does not exist) with [`overlapping_file_groups`], and sends each
-    /// group's rows in time order with every exact duplicate sample sent once (see
-    /// [`read_merged_rows`]). For an archive without overlapping files this is the
-    /// same output as sending each file's rows in turn. A file that fails to read is
-    /// logged and skipped, and the export continues.
-    ///
-    /// # Arguments
-    ///
-    /// * `root` - Root of the Parquet archive.
-    /// * `channel` - LabJack channel number.
-    ///
-    /// # Returns
-    ///
-    /// `true` if at least one row in the range was emitted for this channel.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if an existing day directory cannot be listed or a row cannot
-    /// be sent.
-    async fn stream_channel(&mut self, root: &Path, channel: u8) -> Result<bool> {
-        if let Some(settings) = self
-            .filters
-            .as_ref()
-            .and_then(|f| f.for_channel(channel))
-            .cloned()
-        {
-            return self.stream_channel_filtered(root, channel, &settings).await;
-        }
-        let start_ns = datetime_to_unix_ns(self.start);
-        let end_ns = datetime_to_unix_ns(self.end);
-        let mut found = false;
-        for day in date_range(self.start.date_naive(), self.end.date_naive()) {
-            let day_dir = root
-                .join(format!("asset{:03}", self.asset))
-                .join(day.format("%Y-%m-%d").to_string())
-                .join(format!("ch{:02}", channel));
-            if !day_dir.exists() {
-                continue;
-            }
-
-            for group in overlapping_file_groups(&day_dir, start_ns, end_ns)? {
-                for (from_ns, to_ns) in merge_slices(&group, start_ns, end_ns) {
-                    let merged = read_merged_rows(&group, from_ns, to_ns);
-                    self.stream_rows(merged, channel, &mut found).await?;
-                }
-            }
-        }
-        Ok(found)
-    }
-
-    /// Emits merged rows as CSV records.
-    ///
-    /// Applies each row's calibration to its raw value and formats timestamps with a
-    /// fresh [`Rfc3339Formatter`].
-    ///
-    /// # Arguments
-    ///
-    /// * `merged` - Rows from [`read_merged_rows`].
-    /// * `channel` - LabJack channel number written in each row.
-    /// * `found` - Set to `true` when at least one row is emitted; never reset.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if a row cannot be sent.
-    async fn stream_rows(
-        &mut self,
-        merged: MergedRows,
-        channel: u8,
-        found: &mut bool,
-    ) -> Result<()> {
-        let mut formatter = Rfc3339Formatter::new();
-        for (timestamp_unix_ns, raw_value, calibration) in merged.rows {
-            let (spec, calibration_id) = &merged.calibrations[calibration];
-            let ts = formatter.format(timestamp_unix_ns);
-            let calibrated_value = spec.apply(raw_value);
-            *found = true;
-            if self.filters.is_some() {
-                // A channel without filters in a filtered export: its filtered value is
-                // its calibrated value.
-                self.push_filtered_record(
-                    ts,
-                    channel,
-                    raw_value,
-                    calibrated_value,
-                    calibration_id,
-                    calibrated_value,
-                )
-                .await?;
-            } else {
-                self.push_record(ts, channel, raw_value, calibrated_value, calibration_id)
-                    .await?;
-            }
-        }
         Ok(())
     }
 }
@@ -1943,6 +1832,7 @@ impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
 /// timestamp_unix_ns_to_rfc3339(1_790_000_000_008_000_000)
 ///     == "2026-09-21T14:13:20.008+00:00"
 /// ```
+#[cfg(test)]
 fn timestamp_unix_ns_to_rfc3339(timestamp_unix_ns: i64) -> String {
     DateTime::<Utc>::from_timestamp_nanos(timestamp_unix_ns).to_rfc3339()
 }
@@ -1951,9 +1841,10 @@ fn timestamp_unix_ns_to_rfc3339(timestamp_unix_ns: i64) -> String {
 ///
 /// Archived rows arrive in time order, so the date and time up to the second
 /// changes only once per 100-2,000 rows. That part is built once per second
-/// with chrono; only the fractional part is formatted per row, following
-/// chrono's `to_rfc3339` rule: no fraction for whole seconds, otherwise 3, 6
-/// or 9 digits for millisecond, microsecond or nanosecond precision.
+/// with chrono; only the fractional part is written per row, digit by digit,
+/// following chrono's `to_rfc3339` rule: no fraction for whole seconds,
+/// otherwise 3, 6 or 9 digits for millisecond, microsecond or nanosecond
+/// precision.
 ///
 /// Correctness does not depend on order: out-of-order timestamps only make the
 /// prefix rebuild more often.
@@ -1962,8 +1853,9 @@ struct Rfc3339Formatter {
     second: Option<i64>,
     /// `YYYY-MM-DDTHH:MM:SS` text for the cached `second`.
     prefix: String,
-    /// Output buffer reused across calls; holds the last formatted timestamp.
-    buf: String,
+    /// Output buffer of [`Self::format`]; holds the last formatted timestamp.
+    #[cfg(test)]
+    buf: Vec<u8>,
 }
 
 impl Rfc3339Formatter {
@@ -1972,31 +1864,28 @@ impl Rfc3339Formatter {
         Self {
             second: None,
             prefix: String::new(),
-            buf: String::with_capacity(40),
+            #[cfg(test)]
+            buf: Vec::with_capacity(40),
         }
     }
 
-    /// Formats one timestamp, reusing the date and time prefix if the second is
-    /// unchanged since the previous call.
+    /// Appends one timestamp to `out`, reusing the date and time prefix if the
+    /// second is unchanged since the previous call.
     ///
     /// # Arguments
     ///
+    /// * `out` - Buffer the text is appended to.
     /// * `timestamp_unix_ns` - Nanoseconds since the Unix epoch; any `i64`,
     ///   including negative values.
-    ///
-    /// # Returns
-    ///
-    /// The RFC 3339 text, borrowed from the internal buffer until the next call.
     ///
     /// # Examples
     ///
     /// ```text
-    /// format(1_790_000_000_008_000_000) == "2026-09-21T14:13:20.008+00:00"
-    /// format(1_790_000_000_008_123_000) == "2026-09-21T14:13:20.008123+00:00"
-    /// format(1_790_000_000_000_000_000) == "2026-09-21T14:13:20+00:00"
+    /// 1_790_000_000_008_000_000 -> "2026-09-21T14:13:20.008+00:00"
+    /// 1_790_000_000_008_123_000 -> "2026-09-21T14:13:20.008123+00:00"
+    /// 1_790_000_000_000_000_000 -> "2026-09-21T14:13:20+00:00"
     /// ```
-    fn format(&mut self, timestamp_unix_ns: i64) -> &str {
-        use std::fmt::Write as _;
+    fn write(&mut self, out: &mut Vec<u8>, timestamp_unix_ns: i64) {
         let second = timestamp_unix_ns.div_euclid(1_000_000_000);
         let nanos = timestamp_unix_ns.rem_euclid(1_000_000_000) as u32;
         if self.second != Some(second) {
@@ -2008,19 +1897,295 @@ impl Rfc3339Formatter {
             self.prefix = text.trim_end_matches("+00:00").to_string();
             self.second = Some(second);
         }
-        self.buf.clear();
-        self.buf.push_str(&self.prefix);
-        let _ = if nanos == 0 {
-            Ok(())
-        } else if nanos % 1_000_000 == 0 {
-            write!(self.buf, ".{:03}", nanos / 1_000_000)
-        } else if nanos % 1_000 == 0 {
-            write!(self.buf, ".{:06}", nanos / 1_000)
+        out.extend_from_slice(self.prefix.as_bytes());
+        if nanos == 0 {
+        } else if nanos.is_multiple_of(1_000_000) {
+            push_fraction(out, nanos / 1_000_000, 3);
+        } else if nanos.is_multiple_of(1_000) {
+            push_fraction(out, nanos / 1_000, 6);
         } else {
-            write!(self.buf, ".{nanos:09}")
-        };
-        self.buf.push_str("+00:00");
-        &self.buf
+            push_fraction(out, nanos, 9);
+        }
+        out.extend_from_slice(b"+00:00");
+    }
+
+    /// Formats one timestamp with [`Self::write`] into an internal buffer.
+    ///
+    /// # Returns
+    ///
+    /// The RFC 3339 text, borrowed from the internal buffer until the next call.
+    #[cfg(test)]
+    fn format(&mut self, timestamp_unix_ns: i64) -> &str {
+        let mut buf = std::mem::take(&mut self.buf);
+        buf.clear();
+        self.write(&mut buf, timestamp_unix_ns);
+        self.buf = buf;
+        std::str::from_utf8(&self.buf).expect("timestamps are ASCII")
+    }
+}
+
+/// Appends `.` and `value` as exactly `width` decimal digits, zero-padded, like
+/// `write!(out, ".{value:0width$}")` for a `value` below `10^width`.
+///
+/// # Arguments
+///
+/// * `out` - Buffer the text is appended to.
+/// * `value` - Fraction of a second in units of `10^-width` s.
+/// * `width` - Number of digits, at most 9.
+fn push_fraction(out: &mut Vec<u8>, mut value: u32, width: usize) {
+    let mut text = *b".000000000";
+    for digit in text[1..=width].iter_mut().rev() {
+        *digit = b'0' + (value % 10) as u8;
+        value /= 10;
+    }
+    out.extend_from_slice(&text[..=width]);
+}
+
+/// Value column of a CSV row after `calibration_id`, if the export has one.
+#[derive(Clone, Copy)]
+enum FilteredColumn {
+    /// Plain export: no `filtered_value` column.
+    Absent,
+    /// Channel without filters in a filtered export: the calibrated value again.
+    Calibrated,
+    /// Filtered value of the row.
+    Value(f64),
+}
+
+/// Number of slots in [`ValueTextCache`]; a power of two.
+const VALUE_CACHE_SLOTS: usize = 4096;
+/// Longest `raw,calibrated` text a [`ValueTextCache`] slot holds, bytes.
+const VALUE_CACHE_TEXT: usize = 48;
+/// Lookups over which [`ValueTextCache`] measures its hit rate.
+const VALUE_CACHE_WINDOW: u32 = 1024;
+/// Rows a [`ValueTextCache`] formats directly after a window with fewer than one hit
+/// in four, before it tries the table again.
+const VALUE_CACHE_BYPASS: u32 = 64 * 1024;
+
+/// One cached `raw,calibrated` text of [`ValueTextCache`].
+#[derive(Clone, Copy)]
+struct ValueSlot {
+    /// `f64::to_bits` of the raw value.
+    bits: u64,
+    /// Formula generation the text belongs to; 0 for an empty slot.
+    generation: u32,
+    /// Length of the raw part of `text`, before the comma.
+    raw_len: u8,
+    /// Length of `text`.
+    len: u8,
+    /// `{raw},{calibrated}` as written by `write!`.
+    text: [u8; VALUE_CACHE_TEXT],
+}
+
+/// Remembers the `raw_value,calibrated_value` text of recently written raw values.
+///
+/// Values come from a 16-bit converter and repeat heavily (the archive stores them
+/// dictionary-encoded), while formatting two `f64` with `Display` is the largest
+/// cost of a CSV row. This direct-mapped table, keyed by the raw value's bits under
+/// the current calibration formula, lets a repeated value be copied instead. The
+/// text is exactly what `write!(out, "{raw},{calibrated}")` produces, because a
+/// cached entry is that output, and a calibrated value is a pure function of the
+/// raw bits and the formula's coefficients (compared bit for bit, so `-0.0` and
+/// `0.0` coefficients are different formulas). A different formula starts a new
+/// generation, which empties the table without touching it. Data with few repeats
+/// (a wide-ranging signal) would only pay for the lookups, so after a window of
+/// [`VALUE_CACHE_WINDOW`] lookups with fewer than a quarter hits the table is
+/// bypassed for [`VALUE_CACHE_BYPASS`] rows.
+struct ValueTextCache {
+    /// Slots, allocated on first use.
+    slots: Vec<ValueSlot>,
+    /// Formula the current generation's texts were calibrated with.
+    formula: CalibrationFormula,
+    /// Current generation, never 0.
+    generation: u32,
+    /// Lookups in the current window.
+    lookups: u32,
+    /// Hits in the current window.
+    hits: u32,
+    /// Rows still to format without the table.
+    bypass: u32,
+}
+
+impl ValueTextCache {
+    /// Creates an empty cache.
+    fn new() -> Self {
+        Self {
+            slots: Vec::new(),
+            formula: CalibrationFormula::Identity,
+            generation: 1,
+            lookups: 0,
+            hits: 0,
+            bypass: 0,
+        }
+    }
+
+    /// Appends `{raw},{calibrated}` to `out`, `calibrated` being `formula` applied
+    /// to `raw`.
+    ///
+    /// # Returns
+    ///
+    /// Where the calibrated text starts in `out`; it runs to the end of `out`.
+    fn write(&mut self, out: &mut Vec<u8>, raw: f64, spec: &CalibrationSpec) -> usize {
+        let start = out.len();
+        if self.bypass > 0 {
+            self.bypass -= 1;
+            return start + write_values(out, raw, spec) + 1;
+        }
+        self.lookups += 1;
+        if self.lookups == VALUE_CACHE_WINDOW {
+            if self.hits < VALUE_CACHE_WINDOW / 4 {
+                self.bypass = VALUE_CACHE_BYPASS;
+            }
+            self.lookups = 0;
+            self.hits = 0;
+        }
+        if !same_formula(&self.formula, &spec.formula) {
+            self.formula = spec.formula.clone();
+            self.generation = self.generation.wrapping_add(1);
+            if self.generation == 0 {
+                self.slots.clear();
+                self.generation = 1;
+            }
+        }
+        if self.slots.is_empty() {
+            self.slots = vec![
+                ValueSlot {
+                    bits: 0,
+                    generation: 0,
+                    raw_len: 0,
+                    len: 0,
+                    text: [0; VALUE_CACHE_TEXT],
+                };
+                VALUE_CACHE_SLOTS
+            ];
+        }
+        let bits = raw.to_bits();
+        let index =
+            (bits.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> (64 - VALUE_CACHE_SLOTS.ilog2())) as usize;
+        let slot = &mut self.slots[index];
+        if slot.generation == self.generation && slot.bits == bits {
+            self.hits += 1;
+            out.extend_from_slice(&slot.text[..usize::from(slot.len)]);
+            return start + usize::from(slot.raw_len) + 1;
+        }
+        let raw_len = write_values(out, raw, spec);
+        let text = &out[start..];
+        if text.len() <= VALUE_CACHE_TEXT {
+            slot.bits = bits;
+            slot.generation = self.generation;
+            slot.raw_len = raw_len as u8;
+            slot.len = text.len() as u8;
+            slot.text[..text.len()].copy_from_slice(text);
+        }
+        start + raw_len + 1
+    }
+}
+
+/// Appends `{raw},{calibrated}` to `out`, `calibrated` being `spec` applied to `raw`.
+///
+/// # Returns
+///
+/// The length of the raw part, before the comma.
+fn write_values(out: &mut Vec<u8>, raw: f64, spec: &CalibrationSpec) -> usize {
+    let start = out.len();
+    let _ = write!(out, "{raw},{}", spec.apply(raw));
+    // `Display` of a float has no comma, so the first one ends the raw value.
+    out[start..].iter().position(|b| *b == b',').unwrap_or(0)
+}
+
+/// Tells whether two formulas give the same result for every input: same kind and
+/// coefficients with the same bits.
+fn same_formula(a: &CalibrationFormula, b: &CalibrationFormula) -> bool {
+    let same = |x: &f64, y: &f64| x.to_bits() == y.to_bits();
+    match (a, b) {
+        (CalibrationFormula::Identity, CalibrationFormula::Identity) => true,
+        (
+            CalibrationFormula::Linear { a: a1, b: b1 },
+            CalibrationFormula::Linear { a: a2, b: b2 },
+        ) => same(a1, a2) && same(b1, b2),
+        (
+            CalibrationFormula::Polynomial { coeffs: c1 },
+            CalibrationFormula::Polynomial { coeffs: c2 },
+        ) => c1.len() == c2.len() && c1.iter().zip(c2).all(|(x, y)| same(x, y)),
+        _ => false,
+    }
+}
+
+/// Writes export CSV rows into a chunk buffer.
+///
+/// A row is `<timestamp>,chNN,<raw_value>,<calibrated_value>,<calibration_id>`, plus
+/// `,<filtered_value>` in a filtered export, then `\n`: byte for byte what
+/// `writeln!` with `{}` for every field gives (floats in Rust's default `Display`
+/// format, the filtered value empty when it is not finite). It formats the
+/// timestamp with [`Rfc3339Formatter`] and the values through [`ValueTextCache`],
+/// and builds `,chNN,` once per channel, so a row normally costs no allocation and
+/// at most one float formatting (the filtered value).
+struct CsvRowWriter {
+    /// Timestamp formatter, shared by every row of the export.
+    timestamps: Rfc3339Formatter,
+    /// Recent `raw,calibrated` texts.
+    values: ValueTextCache,
+    /// `,chNN,` of the channel being written.
+    channel_field: Vec<u8>,
+}
+
+impl CsvRowWriter {
+    /// Creates a writer; call [`Self::set_channel`] before the first row.
+    fn new() -> Self {
+        Self {
+            timestamps: Rfc3339Formatter::new(),
+            values: ValueTextCache::new(),
+            channel_field: Vec::new(),
+        }
+    }
+
+    /// Sets the channel written in the following rows.
+    fn set_channel(&mut self, channel: u8) {
+        self.channel_field.clear();
+        let _ = write!(self.channel_field, ",ch{channel:02},");
+    }
+
+    /// Appends one row to `out`.
+    ///
+    /// # Arguments
+    ///
+    /// * `out` - Chunk buffer.
+    /// * `timestamp_unix_ns` - Sample time.
+    /// * `raw_value` - Value stored in the Parquet file.
+    /// * `spec` - Calibration of the row's file.
+    /// * `calibration_id` - Calibration id written in the fifth column.
+    /// * `filtered` - The `filtered_value` column, if any.
+    fn write_row(
+        &mut self,
+        out: &mut Vec<u8>,
+        timestamp_unix_ns: i64,
+        raw_value: f64,
+        spec: &CalibrationSpec,
+        calibration_id: &str,
+        filtered: FilteredColumn,
+    ) {
+        self.timestamps.write(out, timestamp_unix_ns);
+        out.extend_from_slice(&self.channel_field);
+        let calibrated_start = self.values.write(out, raw_value, spec);
+        let calibrated_end = out.len();
+        out.push(b',');
+        out.extend_from_slice(calibration_id.as_bytes());
+        match filtered {
+            FilteredColumn::Absent => {}
+            FilteredColumn::Calibrated => {
+                out.push(b',');
+                if spec.apply(raw_value).is_finite() {
+                    out.extend_from_within(calibrated_start..calibrated_end);
+                }
+            }
+            FilteredColumn::Value(value) => {
+                out.push(b',');
+                if value.is_finite() {
+                    let _ = write!(out, "{value}");
+                }
+            }
+        }
+        out.push(b'\n');
     }
 }
 
@@ -2795,8 +2960,7 @@ mod tests {
     fn reference_rows(path: &Path, start: DateTime<Utc>, end: DateTime<Utc>) -> Vec<(i64, f64)> {
         let reader = SerializedFileReader::new(fs::File::open(path).unwrap()).unwrap();
         let mut out = Vec::new();
-        let mut iter = reader.get_row_iter(None).unwrap();
-        while let Some(row) = iter.next() {
+        for row in reader.get_row_iter(None).unwrap() {
             let row = row.unwrap();
             let ts_ns = row.get_long(0).unwrap();
             let text = DateTime::<Utc>::from_timestamp_nanos(ts_ns).to_rfc3339();
@@ -3035,6 +3199,37 @@ mod tests {
                 expected_sizes.push(pending);
             }
             assert_eq!(sizes, expected_sizes);
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    /// A day folder that cannot be listed fails the export with `channel NN:` after
+    /// the chunks completed before it; the partial chunk is not sent.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn unreadable_day_folder_fails_after_the_completed_chunks() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let root = std::env::temp_dir().join(format!("exporter-unread-{}", uuid::Uuid::new_v4()));
+        let day = root
+            .join("asset1001")
+            .join(at(DAY_START).date_naive().format("%Y-%m-%d").to_string());
+        write_part(&day.join("ch08"), 1, &samples(0, 3_000), IDENTITY);
+        fs::create_dir_all(day.join("ch09")).unwrap();
+        fs::set_permissions(day.join("ch09"), fs::Permissions::from_mode(0o000)).unwrap();
+        let listable = fs::read_dir(day.join("ch09")).is_ok(); // true when run as root
+        let (start, end) = (DAY_START, DAY_START + 3_000 * STEP);
+        let mut sink = CollectingSink::default();
+        let mut streamer = CsvStreamer::new(&mut sink, 1001, at(start), at(end));
+        let result = streamer.stream_channels(&root, &[8, 9]).await;
+        fs::set_permissions(day.join("ch09"), fs::Permissions::from_mode(0o755)).unwrap();
+        if !listable {
+            let err = result.expect_err("listing ch09 fails");
+            assert!(err.to_string().starts_with("channel 09: "), "{err}");
+            let want = export_without_merging(&root, 1001, &[8], start, end);
+            let full = want.len() / CsvStreamer::<CollectingSink>::CHUNK_SIZE;
+            assert!(full >= 1);
+            assert_eq!(sink.chunks.len(), full);
+            assert!(want.starts_with(&sink.chunks.concat()));
         }
         fs::remove_dir_all(root).unwrap();
     }
@@ -3295,6 +3490,93 @@ mod tests {
         assert_eq!(ts, "2026-09-21T14:13:20.008+00:00");
     }
 
+    /// [`CsvRowWriter`] writes exactly the rows of the earlier `writeln!` code,
+    /// through cache hits, misses, formula changes, long texts and the bypass.
+    #[test]
+    fn row_writer_matches_writeln_byte_for_byte() {
+        let specs: Vec<CalibrationSpec> = [
+            IDENTITY,
+            LINEAR,
+            r#"{"id":"z","type":"linear","a":0.0,"b":-0.0}"#,
+            r#"{"id":"z","type":"linear","a":-0.0,"b":-0.0}"#,
+            r#"{"type":"polynomial","coeffs":[0.1,2.0,0.03]}"#,
+            r#"{"type":"linear","a":1e300,"b":0.0}"#,
+        ]
+        .iter()
+        .map(|json| serde_json::from_str(json).unwrap())
+        .collect();
+        let mut raws = vec![
+            0.0,
+            -0.0,
+            1.0,
+            -1.5,
+            3.7215,
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::MIN_POSITIVE,
+            1e-300,
+            1e300,
+            f64::MAX,
+        ];
+        // Repeating 16-bit codes, then values that never repeat (cache bypass).
+        let mut x: u64 = 0x9E37_79B9_7F4A_7C15;
+        for i in 0..200_000u64 {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            raws.push(if i < 100_000 {
+                0.4 + (x % 300) as f64 * (20.0 / 65_536.0)
+            } else {
+                f64::from_bits(x >> 2)
+            });
+        }
+        let mut writer = CsvRowWriter::new();
+        let mut got = Vec::new();
+        let mut want = Vec::new();
+        for (i, &raw) in raws.iter().enumerate() {
+            let channel = (i / 50_000) as u8 * 7;
+            let spec = &specs[(i / 997) % specs.len()];
+            let id = spec.id_or_default();
+            let ts = 1_790_000_000_000_000_000 + i as i64 * 499_999;
+            let cal = spec.apply(raw);
+            let filtered = match i % 4 {
+                0 => FilteredColumn::Absent,
+                1 => FilteredColumn::Calibrated,
+                2 => FilteredColumn::Value(raw * 0.5),
+                _ => FilteredColumn::Value(f64::NAN),
+            };
+            writer.set_channel(channel);
+            writer.write_row(&mut got, ts, raw, spec, id, filtered);
+            let ts = timestamp_unix_ns_to_rfc3339(ts);
+            match filtered {
+                FilteredColumn::Absent => {
+                    writeln!(want, "{ts},ch{channel:02},{raw},{cal},{id}").unwrap();
+                }
+                FilteredColumn::Calibrated | FilteredColumn::Value(_) => {
+                    let value = match filtered {
+                        FilteredColumn::Value(value) => value,
+                        _ => cal,
+                    };
+                    write!(want, "{ts},ch{channel:02},{raw},{cal},{id},").unwrap();
+                    if value.is_finite() {
+                        write!(want, "{value}").unwrap();
+                    }
+                    want.push(b'\n');
+                }
+            }
+            if got != want {
+                panic!(
+                    "row {i} differs:\n got {}\nwant {}",
+                    String::from_utf8_lossy(&got),
+                    String::from_utf8_lossy(&want)
+                );
+            }
+            got.clear();
+            want.clear();
+        }
+    }
+
     /// Checks [`Rfc3339Formatter`] against chrono on edge cases and random values.
     #[test]
     fn fast_formatter_matches_chrono_exactly() {
@@ -3426,6 +3708,140 @@ mod tests {
             "end to end CSV: reference {e_old:.3} s, new {e_new:.3} s ({:.1}x)",
             e_old / e_new
         );
+    }
+
+    /// Export sink that only counts CSV bytes.
+    #[derive(Default)]
+    struct CountingSink {
+        bytes: usize,
+    }
+
+    #[async_trait]
+    impl ExportSink for CountingSink {
+        async fn send_meta(&mut self, _file_name: &str, _content_type: &str) -> Result<()> {
+            Ok(())
+        }
+        async fn send_chunk(&mut self, data: Vec<u8>) -> Result<()> {
+            self.bytes += data.len();
+            Ok(())
+        }
+        async fn send_summary(&mut self, _bytes_sent: usize, _missing: &[u8]) -> Result<()> {
+            Ok(())
+        }
+        async fn send_complete(&mut self) -> Result<()> {
+            Ok(())
+        }
+        async fn send_error(&mut self, _message: &str) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Times plain and filtered exports of four synthetic five-minute 2 kHz files
+    /// written like the archiver's, with `BENCH_DISTINCT` (default 81) distinct raw
+    /// values. Run with `cargo test --release --bin exporter
+    /// benchmark_export_pipeline -- --ignored --nocapture`.
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore = "benchmark"]
+    async fn benchmark_export_pipeline() {
+        use parquet::basic::{Compression, Encoding, ZstdLevel};
+        use parquet::schema::types::ColumnPath;
+        let root = std::env::temp_dir().join(format!("exporter-bench-{}", uuid::Uuid::new_v4()));
+        let dir = root
+            .join("asset1001")
+            .join(at(DAY_START).date_naive().format("%Y-%m-%d").to_string())
+            .join("ch08");
+        fs::create_dir_all(&dir).unwrap();
+        let step = 500_000; // 2 kHz
+        let per_file = 600_000i64;
+        let files = 4;
+        let lsb = 20.0 / 65_536.0;
+        let mut seed = 0x2545_f491_4f6c_dd1du64;
+        for part in 0..files {
+            let mut ts = Vec::new();
+            let mut vs = Vec::new();
+            for i in 0..per_file {
+                seed ^= seed << 13;
+                seed ^= seed >> 7;
+                seed ^= seed << 17;
+                let distinct = std::env::var("BENCH_DISTINCT")
+                    .ok()
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .unwrap_or(81);
+                let noise = (seed % distinct) as f64 - (distinct / 2) as f64;
+                ts.push(DAY_START + (part * per_file + i) * step);
+                vs.push(0.4 + noise * lsb);
+            }
+            let timestamp = ColumnPath::from("timestamp_unix_ns");
+            let props = Arc::new(
+                WriterProperties::builder()
+                    .set_compression(Compression::ZSTD(ZstdLevel::default()))
+                    .set_column_dictionary_enabled(timestamp.clone(), false)
+                    .set_column_encoding(timestamp, Encoding::DELTA_BINARY_PACKED)
+                    .set_key_value_metadata(Some(vec![KeyValue::new(
+                        "calibration".to_string(),
+                        LINEAR.to_string(),
+                    )]))
+                    .build(),
+            );
+            let schema = Arc::new(
+                parse_message_type(
+                    "message schema { REQUIRED INT64 timestamp_unix_ns; REQUIRED DOUBLE value; }",
+                )
+                .unwrap(),
+            );
+            let path = dir.join(format!("part-{part:04}.parquet"));
+            let mut writer =
+                SerializedFileWriter::new(fs::File::create(path).unwrap(), schema, props).unwrap();
+            let mut rg = writer.next_row_group().unwrap();
+            let mut col = rg.next_column().unwrap().unwrap();
+            if let ColumnWriter::Int64ColumnWriter(w) = col.untyped() {
+                w.write_batch(&ts, None, None).unwrap();
+            }
+            col.close().unwrap();
+            let mut col = rg.next_column().unwrap().unwrap();
+            if let ColumnWriter::DoubleColumnWriter(w) = col.untyped() {
+                w.write_batch(&vs, None, None).unwrap();
+            }
+            col.close().unwrap();
+            rg.close().unwrap();
+            writer.close().unwrap();
+        }
+        let (start, end) = (DAY_START, DAY_START + files * per_file * step);
+        let rows = (files * per_file) as f64;
+        let t = Instant::now();
+        let mut sink = CountingSink::default();
+        let mut streamer = CsvStreamer::new(&mut sink, 1001, at(start), at(end));
+        let missing = streamer.stream_channels(&root, &[8]).await.unwrap();
+        streamer.finish(missing).await.unwrap();
+        let plain = t.elapsed().as_secs_f64();
+        println!(
+            "plain export: {plain:.3} s ({:.0} ns/row), {} MB CSV",
+            plain * 1e9 / rows,
+            sink.bytes / 1_000_000
+        );
+        let req = ExportRequest {
+            asset: 1001,
+            channels: vec![8],
+            start: at(start).to_rfc3339(),
+            end: at(end).to_rfc3339(),
+            format: ExportFormat::Csv,
+            download_name: None,
+            ack_subject: None,
+            filters: Some(
+                serde_json::json!({"8": {"despike": true, "remove_10hz": true,
+                "remove_11_9hz": true, "highpass_hz": 1.0, "lowpass_hz": 100.0}}),
+            ),
+        };
+        let t = Instant::now();
+        let mut sink = CountingSink::default();
+        serve_export_request(&root, &mut sink, &req).await.unwrap();
+        let filtered = t.elapsed().as_secs_f64();
+        println!(
+            "filtered export: {filtered:.3} s ({:.0} ns/row), {} MB CSV",
+            filtered * 1e9 / rows,
+            sink.bytes / 1_000_000
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 
     /// Runs a direct-mode export with a `filters` field and returns the CSV.
