@@ -51,5 +51,9 @@ for key in sorted(env):
     sys.stdout.buffer.write(b"\0")
 PY
 )
+# Reap the reader before exec: the binary never waits on children it did not
+# start, so an unreaped reader stays a zombie for the service's lifetime. This
+# also stops here if the reader failed instead of starting with no environment.
+wait "$!"
 
 exec env "${env_values[@]}" "$BIN_PATH"
