@@ -148,7 +148,7 @@ component only edits it.
 
         <div class="mb-6 p-4 bg-base-200 rounded-lg">
             <h4 class="text-md font-medium text-base-content mb-4">Mode & Axis</h4>
-            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-4">
+            <div class="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-4">
                 <div class="form-control">
                     <label class="label" for="plot-mode-{channel}">
                         <span class="label-text">Plot Mode</span>
@@ -289,7 +289,7 @@ component only edits it.
                     is in the channel's unit, not always volts.
                 -->
                 <h4 class="text-md font-medium text-base-content mb-4">Trigger Settings</h4>
-                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+                <div class="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-4">
                     <div class="form-control">
                         <label class="label" for="trigger-type-{channel}">
                             <span class="label-text">Trigger Edge</span>
