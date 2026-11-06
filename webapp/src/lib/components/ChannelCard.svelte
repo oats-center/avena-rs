@@ -210,7 +210,7 @@ component only edits it.
                         id="y-min-{channel}"
                         type="number"
                         step="0.01"
-                        class="input input-bordered w-full"
+                        class="input input-bordered w-full disabled:border-base-300 disabled:bg-transparent"
                         value={view.axis.autoY ? "" : view.axis.yMin}
                         placeholder={view.axis.autoY ? "auto" : undefined}
                         disabled={view.axis.autoY}
@@ -227,7 +227,7 @@ component only edits it.
                         id="y-max-{channel}"
                         type="number"
                         step="0.01"
-                        class="input input-bordered w-full"
+                        class="input input-bordered w-full disabled:border-base-300 disabled:bg-transparent"
                         value={view.axis.autoY ? "" : view.axis.yMax}
                         placeholder={view.axis.autoY ? "auto" : undefined}
                         disabled={view.axis.autoY}

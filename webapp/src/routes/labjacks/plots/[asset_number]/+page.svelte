@@ -1037,7 +1037,8 @@ reactive state. Each channel can run in Free Run, Trigger Normal or Trigger Sing
 
 Camera: when the server sets `PUBLIC_CAMERA=1`, a camera chip follows the channel chips.
 Turning it on shows `CameraView` (loaded on demand) in a column beside the plots that
-stays in view while scrolling, or above them on narrow screens; it streams `/camera`
+stays in view while scrolling, above them on narrow screens, or centred on its own when
+no channel is selected; it streams `/camera`
 only while shown and the tab is visible.
 Hands off to one `RealTimePlot` per selected channel, passing the live snapshot, the
 frozen trigger capture, axis settings and trigger state.
@@ -1142,27 +1143,9 @@ subscription is released and nothing is saved.
                 <span class="ml-4 text-lg text-base-content">Loading LabJack configuration...</span>
             </div>
         {:else if labjackConfig}
-            <StatsPanel
-                config={labjackConfig}
-                {assetNumber}
-                channels={renderableChannels}
-                views={channelViews}
-                {connectionState}
-            />
-
-            <div class="flex justify-end mb-6">
-                <button
-                    class="btn btn-warning"
-                    onclick={openExportModal}
-                    disabled={!isConnected || exporting}
-                >
-                    Download Historical Data
-                </button>
-            </div>
-
             <div class="card bg-base-100 shadow-xl mb-6">
-                <div class="card-body">
-                    <div class="flex flex-wrap gap-3">
+                <div class="card-body gap-4 md:flex-row md:items-start">
+                    <div class="flex min-w-0 flex-1 flex-wrap gap-3">
                         {#each labjackConfig.sensor_settings.channels_enabled as channel}
                             {@const isSelected = selectedPlotChannels.has(channel)}
                             {@const disableUnchecked = !isSelected && selectedPlotChannels.size >= 2}
@@ -1195,11 +1178,18 @@ subscription is released and nothing is saved.
                             </label>
                         {/if}
                     </div>
+                    <button
+                        class="btn btn-warning shrink-0 self-start"
+                        onclick={openExportModal}
+                        disabled={!isConnected || exporting}
+                    >
+                        Download Historical Data
+                    </button>
                 </div>
             </div>
 
 
-            <div class={showCamera ? "grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]" : ""}>
+            <div class={showCamera && renderableChannels.length ? "grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]" : ""}>
                 <!-- Channel cards: controls and plot for each selected channel -->
                 <div class="space-y-6">
                     {#each renderableChannels as channel (channel)}
@@ -1215,12 +1205,22 @@ subscription is released and nothing is saved.
                     {/each}
                 </div>
                 {#if showCamera}
-                    <div class="order-first lg:order-none lg:sticky lg:top-6">
+                    <div class={renderableChannels.length ? "order-first lg:order-none lg:sticky lg:top-6" : "mx-auto max-w-4xl"}>
                         {#await import("$lib/components/CameraView.svelte") then { default: CameraView }}
                             <CameraView src="/camera" />
                         {/await}
                     </div>
                 {/if}
+            </div>
+
+            <div class="mt-6">
+                <StatsPanel
+                    config={labjackConfig}
+                    {assetNumber}
+                    channels={renderableChannels}
+                    views={channelViews}
+                    {connectionState}
+                />
             </div>
         {/if}
     </div>
