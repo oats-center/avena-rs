@@ -779,15 +779,6 @@ impl ParquetLogger {
         }
     }
 
-    /// Buffers one timestamped value and flushes when the row group is full.
-    ///
-    /// Same as [`Self::write_run`] with a single sample.
-    #[cfg(test)]
-    fn write_row(&mut self, timestamp_unix_ns: i64, val: f64) -> Result<(), DynError> {
-        self.write_run(timestamp_unix_ns, 0, 1, std::iter::once(val))
-            .map(|_| ())
-    }
-
     /// Buffers the leading samples of a run that belong in this file.
     ///
     /// The run's samples are at `first_timestamp_unix_ns`, `first_timestamp_unix_ns +
@@ -2396,6 +2387,15 @@ mod tests {
     use crate::test_nats::TestNats;
     use parquet::file::reader::{FileReader, SerializedFileReader};
     use uuid::Uuid;
+
+    impl ParquetLogger {
+        /// Buffers one timestamped value and flushes when the row group is full:
+        /// [`ParquetLogger::write_run`] with a single sample.
+        fn write_row(&mut self, timestamp_unix_ns: i64, val: f64) -> Result<(), DynError> {
+            self.write_run(timestamp_unix_ns, 0, 1, std::iter::once(val))
+                .map(|_| ())
+        }
+    }
 
     /// Returns a unique, not yet created directory under the system temp directory.
     fn temporary_parquet_root(name: &str) -> PathBuf {

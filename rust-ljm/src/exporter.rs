@@ -1816,28 +1816,7 @@ impl<'a, S: ExportSink + Send> CsvStreamer<'a, S> {
     }
 }
 
-/// Converts a Unix nanosecond timestamp into RFC 3339 text.
-///
-/// Uses chrono's `to_rfc3339`, which writes a `+00:00` offset and the fraction as
-/// 0, 3, 6 or 9 digits. Only the tests call it; the export path uses
-/// [`Rfc3339Formatter`], which must produce the same text.
-///
-/// # Arguments
-///
-/// * `timestamp_unix_ns` - Nanoseconds since the Unix epoch.
-///
-/// # Examples
-///
-/// ```text
-/// timestamp_unix_ns_to_rfc3339(1_790_000_000_008_000_000)
-///     == "2026-09-21T14:13:20.008+00:00"
-/// ```
-#[cfg(test)]
-fn timestamp_unix_ns_to_rfc3339(timestamp_unix_ns: i64) -> String {
-    DateTime::<Utc>::from_timestamp_nanos(timestamp_unix_ns).to_rfc3339()
-}
-
-/// Formats timestamps exactly like [`timestamp_unix_ns_to_rfc3339`], faster.
+/// Formats timestamps exactly like chrono's `to_rfc3339`, faster.
 ///
 /// Archived rows arrive in time order, so the date and time up to the second
 /// changes only once per 100-2,000 rows. That part is built once per second
@@ -1853,9 +1832,6 @@ struct Rfc3339Formatter {
     second: Option<i64>,
     /// `YYYY-MM-DDTHH:MM:SS` text for the cached `second`.
     prefix: String,
-    /// Output buffer of [`Self::format`]; holds the last formatted timestamp.
-    #[cfg(test)]
-    buf: Vec<u8>,
 }
 
 impl Rfc3339Formatter {
@@ -1864,8 +1840,6 @@ impl Rfc3339Formatter {
         Self {
             second: None,
             prefix: String::new(),
-            #[cfg(test)]
-            buf: Vec::with_capacity(40),
         }
     }
 
@@ -1907,20 +1881,6 @@ impl Rfc3339Formatter {
             push_fraction(out, nanos, 9);
         }
         out.extend_from_slice(b"+00:00");
-    }
-
-    /// Formats one timestamp with [`Self::write`] into an internal buffer.
-    ///
-    /// # Returns
-    ///
-    /// The RFC 3339 text, borrowed from the internal buffer until the next call.
-    #[cfg(test)]
-    fn format(&mut self, timestamp_unix_ns: i64) -> &str {
-        let mut buf = std::mem::take(&mut self.buf);
-        buf.clear();
-        self.write(&mut buf, timestamp_unix_ns);
-        self.buf = buf;
-        std::str::from_utf8(&self.buf).expect("timestamps are ASCII")
     }
 }
 
@@ -3086,7 +3046,7 @@ mod tests {
                         writeln!(
                             csv,
                             "{},ch{channel:02},{raw},{cal},{id}",
-                            formatter.format(ts)
+                            format_ts(&mut formatter, ts)
                         )
                         .unwrap();
                     }
@@ -3291,7 +3251,7 @@ mod tests {
             let spec: CalibrationSpec = serde_json::from_str(calibration).unwrap();
             let want = format!(
                 "{},ch08,{raw},{},{}",
-                formatter.format(*ts),
+                format_ts(&mut formatter, *ts),
                 spec.apply(*raw),
                 spec.id_or_default()
             );
@@ -3473,23 +3433,6 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 
-    /// Checks that `writeln!` rows match the earlier `format!` rows byte for byte.
-    #[test]
-    fn csv_lines_are_byte_identical_to_the_previous_format() {
-        let ts = timestamp_unix_ns_to_rfc3339(1_790_000_000_008_000_000);
-        for (raw, cal, id) in [
-            (3.7215, 252.1, "tp3505"),
-            (-0.0546, f64::NAN, "default"),
-            (0.0, -8.3148, ""),
-        ] {
-            let old = format!("{ts},ch{:02},{raw},{cal},{id}\n", 8);
-            let mut new = Vec::new();
-            writeln!(new, "{ts},ch{:02},{raw},{cal},{id}", 8).unwrap();
-            assert_eq!(new, old.as_bytes());
-        }
-        assert_eq!(ts, "2026-09-21T14:13:20.008+00:00");
-    }
-
     /// [`CsvRowWriter`] writes exactly the rows of the earlier `writeln!` code,
     /// through cache hits, misses, formula changes, long texts and the bypass.
     #[test]
@@ -3577,12 +3520,33 @@ mod tests {
         }
     }
 
+    /// chrono's RFC 3339 text, the reference [`Rfc3339Formatter`] must match.
+    fn timestamp_unix_ns_to_rfc3339(timestamp_unix_ns: i64) -> String {
+        DateTime::<Utc>::from_timestamp_nanos(timestamp_unix_ns).to_rfc3339()
+    }
+
+    /// Formats one timestamp with `formatter` into a new string.
+    fn format_ts(formatter: &mut Rfc3339Formatter, timestamp_unix_ns: i64) -> String {
+        let mut out = Vec::new();
+        formatter.write(&mut out, timestamp_unix_ns);
+        String::from_utf8(out).expect("timestamps are ASCII")
+    }
+
     /// Checks [`Rfc3339Formatter`] against chrono on edge cases and random values.
     #[test]
     fn fast_formatter_matches_chrono_exactly() {
         let mut f = Rfc3339Formatter::new();
-        let mut check =
-            |ns: i64| assert_eq!(f.format(ns), timestamp_unix_ns_to_rfc3339(ns), "ns={ns}");
+        assert_eq!(
+            format_ts(&mut f, 1_790_000_000_008_000_000),
+            "2026-09-21T14:13:20.008+00:00"
+        );
+        let mut check = |ns: i64| {
+            assert_eq!(
+                format_ts(&mut f, ns),
+                timestamp_unix_ns_to_rfc3339(ns),
+                "ns={ns}"
+            )
+        };
         for ns in [
             0,
             1,
@@ -3640,77 +3604,6 @@ mod tests {
         assert_eq!(datetime_to_unix_ns(early), i64::MIN);
     }
 
-    /// Compares old and new readers on real archive files for speed and exact
-    /// equality. Run with `AVENA_EXPORT_BENCH_DIR=<dir of .parquet files>`.
-    #[test]
-    #[ignore = "benchmark on real files; set AVENA_EXPORT_BENCH_DIR"]
-    fn benchmark_against_reference_on_real_files() {
-        let Ok(dir) = std::env::var("AVENA_EXPORT_BENCH_DIR") else {
-            return;
-        };
-        let mut files: Vec<PathBuf> = fs::read_dir(&dir)
-            .unwrap()
-            .map(|e| e.unwrap().path())
-            .filter(|p| p.extension().is_some_and(|x| x == "parquet"))
-            .collect();
-        files.sort();
-        let (start, end) = (at(i64::MIN / 2), at(i64::MAX / 2));
-        let (mut t_old, mut t_new, mut rows) = (0.0, 0.0, 0usize);
-        for path in &files {
-            let t = Instant::now();
-            let want = reference_rows(path, start, end);
-            t_old += t.elapsed().as_secs_f64();
-            let t = Instant::now();
-            let got =
-                read_matching_rows(path, datetime_to_unix_ns(start), datetime_to_unix_ns(end))
-                    .unwrap()
-                    .rows;
-            t_new += t.elapsed().as_secs_f64();
-            assert_eq!(got.len(), want.len(), "{}", path.display());
-            assert!(
-                got.iter()
-                    .zip(&want)
-                    .all(|(g, w)| g.0 == w.0 && (g.1 == w.1 || (g.1.is_nan() && w.1.is_nan())))
-            );
-            rows += got.len();
-        }
-        println!(
-            "{} files, {rows} rows: reading: reference {t_old:.3} s, new {t_new:.3} s ({:.1}x)",
-            files.len(),
-            t_old / t_new
-        );
-
-        // End to end: rows to CSV bytes, the old way and the new way.
-        let (mut e_old, mut e_new) = (0.0, 0.0);
-        for path in &files {
-            let t = Instant::now();
-            let mut old_csv = Vec::new();
-            for (ts_ns, raw) in reference_rows(path, start, end) {
-                let ts = DateTime::<Utc>::from_timestamp_nanos(ts_ns).to_rfc3339();
-                let line = format!("{ts},ch{:02},{raw},{raw},id\n", 8);
-                old_csv.extend_from_slice(line.as_bytes());
-            }
-            e_old += t.elapsed().as_secs_f64();
-            let t = Instant::now();
-            let mut new_csv = Vec::new();
-            let matched =
-                read_matching_rows(path, datetime_to_unix_ns(start), datetime_to_unix_ns(end))
-                    .unwrap();
-            let mut formatter = Rfc3339Formatter::new();
-            for (ts_ns, raw) in matched.rows {
-                let ts = formatter.format(ts_ns);
-                writeln!(new_csv, "{ts},ch{:02},{raw},{raw},id", 8).unwrap();
-            }
-            e_new += t.elapsed().as_secs_f64();
-            assert_eq!(old_csv, new_csv, "CSV differs for {}", path.display());
-        }
-        println!(
-            "end to end CSV: reference {e_old:.3} s, new {e_new:.3} s ({:.1}x)",
-            e_old / e_new
-        );
-    }
-
-    /// Export sink that only counts CSV bytes.
     #[derive(Default)]
     struct CountingSink {
         bytes: usize,
