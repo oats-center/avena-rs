@@ -1200,7 +1200,7 @@ subscription is released and nothing is saved.
 
 
             <div class={showCamera ? "grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]" : ""}>
-                <!-- Channel Sections: Combined Trigger Settings + Plots -->
+                <!-- Channel cards: controls and plot for each selected channel -->
                 <div class="space-y-6">
                     {#each renderableChannels as channel (channel)}
                         {@const view = channelViews.get(channel)}

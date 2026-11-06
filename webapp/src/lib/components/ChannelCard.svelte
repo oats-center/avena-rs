@@ -29,6 +29,11 @@
     const plotConfig = $derived(plotConfigFor(view.mode, view.liveData, view.capture, view.trigger));
     const triggerMode = $derived(isTriggerMode(view.mode));
 
+    /** Caption above a field. */
+    const fieldLabel = "text-sm text-base-content/70";
+    /** A checkbox styled as a chip, the height of the inputs it sits beside. */
+    const chip = "flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-base-300 px-3 text-sm";
+
     /**
      * Applies a typed axis limit; a rejected value is put back into the input.
      *
@@ -82,8 +87,8 @@
 <!--
 @component
 One plotted channel on the plot page: a header with the data format, unit tag and
-trigger state, the Mode & Axis panel, the Trigger Settings panel (trigger modes
-only), and the `RealTimePlot`. All state lives in the `ChannelView` passed in; this
+trigger state, a toolbar with the plot mode and the X and Y axis controls, a trigger
+toolbar (trigger modes only), and the `RealTimePlot`. All state lives in the `ChannelView` passed in; this
 component only edits it.
 -->
 <div class="card bg-base-100 shadow-xl border border-base-200">
@@ -146,38 +151,34 @@ component only edits it.
             </p>
         {/if}
 
-        <div class="mb-6 p-4 bg-base-200 rounded-lg">
-            <h4 class="text-md font-medium text-base-content mb-4">Mode & Axis</h4>
-            <div class="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-4">
-                <div class="form-control">
-                    <label class="label" for="plot-mode-{channel}">
-                        <span class="label-text">Plot Mode</span>
-                    </label>
-                    <select
-                        id="plot-mode-{channel}"
-                        value={view.mode}
-                        onchange={(e) => {
-                            if (e.target instanceof HTMLSelectElement && view.setMode(e.target.value as ChannelPlotMode)) {
-                                onchange();
-                            }
-                        }}
-                        class="select select-bordered"
-                    >
-                        <option value="free_run">Free Run</option>
-                        <option value="trigger_normal">Trigger Normal</option>
-                        <option value="trigger_single">Trigger Single</option>
-                    </select>
-                </div>
+        <!-- Mode, then the X and Y axis groups; the gaps between groups separate them. -->
+        <div class="mb-4 flex flex-wrap items-end gap-x-6 gap-y-3 rounded-lg bg-base-200 p-4">
+            <label class="flex w-44 flex-col gap-1">
+                <span class={fieldLabel}>Plot Mode</span>
+                <select
+                    id="plot-mode-{channel}"
+                    value={view.mode}
+                    onchange={(e) => {
+                        if (e.target instanceof HTMLSelectElement && view.setMode(e.target.value as ChannelPlotMode)) {
+                            onchange();
+                        }
+                    }}
+                    class="select select-bordered w-full"
+                >
+                    <option value="free_run">Free Run</option>
+                    <option value="trigger_normal">Trigger Normal</option>
+                    <option value="trigger_single">Trigger Single</option>
+                </select>
+            </label>
 
-                <div class="form-control">
-                    <label class="label" for="x-window-{channel}">
-                        <span class="label-text">X Window (s)</span>
-                    </label>
+            <div class="flex flex-wrap items-end gap-2">
+                <label class="flex w-24 flex-col gap-1">
+                    <span class={fieldLabel}>X Window (s)</span>
                     <input
                         id="x-window-{channel}"
                         type="number"
                         step="0.1"
-                        class="input input-bordered"
+                        class="input input-bordered w-full"
                         value={view.axis.xWindowSec}
                         onchange={(e) => {
                             if (e.target instanceof HTMLInputElement) {
@@ -185,33 +186,31 @@ component only edits it.
                             }
                         }}
                     />
-                </div>
+                </label>
+                <label class={chip}>
+                    <input
+                        type="checkbox"
+                        class="checkbox checkbox-primary checkbox-sm"
+                        checked={view.axis.invertX}
+                        onchange={(e) => {
+                            if (e.target instanceof HTMLInputElement) {
+                                view.updateAxis({ invertX: e.target.checked });
+                                onchange();
+                            }
+                        }}
+                    />
+                    Invert X
+                </label>
+            </div>
 
-                <div class="form-control">
-                    <label class="label cursor-pointer">
-                        <span class="label-text">Auto Y-Scale</span>
-                        <input
-                            type="checkbox"
-                            class="checkbox checkbox-primary"
-                            checked={view.axis.autoY}
-                            onchange={(e) => {
-                                if (e.target instanceof HTMLInputElement) {
-                                    setAutoY(e.target.checked);
-                                }
-                            }}
-                        />
-                    </label>
-                </div>
-
-                <div class="form-control">
-                    <label class="label" for="y-min-{channel}">
-                        <span class="label-text">Y Min ({unitInfo.unit})</span>
-                    </label>
+            <div class="flex flex-wrap items-end gap-2">
+                <label class="flex w-28 flex-col gap-1">
+                    <span class={fieldLabel}>Y Min ({unitInfo.unit})</span>
                     <input
                         id="y-min-{channel}"
                         type="number"
                         step="0.01"
-                        class="input input-bordered"
+                        class="input input-bordered w-full"
                         value={view.axis.autoY ? "" : view.axis.yMin}
                         placeholder={view.axis.autoY ? "auto" : undefined}
                         disabled={view.axis.autoY}
@@ -221,17 +220,14 @@ component only edits it.
                             }
                         }}
                     />
-                </div>
-
-                <div class="form-control">
-                    <label class="label" for="y-max-{channel}">
-                        <span class="label-text">Y Max ({unitInfo.unit})</span>
-                    </label>
+                </label>
+                <label class="flex w-28 flex-col gap-1">
+                    <span class={fieldLabel}>Y Max ({unitInfo.unit})</span>
                     <input
                         id="y-max-{channel}"
                         type="number"
                         step="0.01"
-                        class="input input-bordered"
+                        class="input input-bordered w-full"
                         value={view.axis.autoY ? "" : view.axis.yMax}
                         placeholder={view.axis.autoY ? "auto" : undefined}
                         disabled={view.axis.autoY}
@@ -241,144 +237,124 @@ component only edits it.
                             }
                         }}
                     />
-                </div>
-
-                <div class="form-control">
-                    <label class="label cursor-pointer">
-                        <span class="label-text">Invert X</span>
-                        <input
-                            type="checkbox"
-                            class="checkbox checkbox-primary"
-                            checked={view.axis.invertX}
-                            onchange={(e) => {
-                                if (e.target instanceof HTMLInputElement) {
-                                    view.updateAxis({ invertX: e.target.checked });
-                                    onchange();
-                                }
-                            }}
-                        />
-                    </label>
-                </div>
-
-                <div class="form-control">
-                    <label class="label cursor-pointer">
-                        <span class="label-text">Invert Y</span>
-                        <input
-                            type="checkbox"
-                            class="checkbox checkbox-primary"
-                            checked={view.axis.invertY}
-                            onchange={(e) => {
-                                if (e.target instanceof HTMLInputElement) {
-                                    view.updateAxis({ invertY: e.target.checked });
-                                    onchange();
-                                }
-                            }}
-                        />
-                    </label>
-                </div>
+                </label>
+                <label class={chip}>
+                    <input
+                        type="checkbox"
+                        class="checkbox checkbox-primary checkbox-sm"
+                        checked={view.axis.autoY}
+                        onchange={(e) => {
+                            if (e.target instanceof HTMLInputElement) {
+                                setAutoY(e.target.checked);
+                            }
+                        }}
+                    />
+                    Auto
+                </label>
+                <label class={chip}>
+                    <input
+                        type="checkbox"
+                        class="checkbox checkbox-primary checkbox-sm"
+                        checked={view.axis.invertY}
+                        onchange={(e) => {
+                            if (e.target instanceof HTMLInputElement) {
+                                view.updateAxis({ invertY: e.target.checked });
+                                onchange();
+                            }
+                        }}
+                    />
+                    Invert Y
+                </label>
             </div>
+
             {#if view.axisError}
-                <p class="text-sm text-error mt-2">{view.axisError}</p>
+                <p class="basis-full text-sm text-error">{view.axisError}</p>
             {/if}
         </div>
 
         {#if triggerMode}
-            <div class="mb-6 p-4 bg-base-200 rounded-lg">
-                <!--
-                    The threshold is compared with the plotted (calibrated) values, so it
-                    is in the channel's unit, not always volts.
-                -->
-                <h4 class="text-md font-medium text-base-content mb-4">Trigger Settings</h4>
-                <div class="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-4">
-                    <div class="form-control">
-                        <label class="label" for="trigger-type-{channel}">
-                            <span class="label-text">Trigger Edge</span>
-                        </label>
-                        <select
-                            id="trigger-type-{channel}"
-                            value={view.trigger.type || 'rising'}
-                            onchange={(e) => {
-                                if (e.target instanceof HTMLSelectElement) {
-                                    view.setTriggerEdge(e.target.value as 'rising' | 'falling');
-                                }
-                            }}
-                            class="select select-bordered select-warning"
-                        >
-                            <option value="rising">Rising Edge</option>
-                            <option value="falling">Falling Edge</option>
-                        </select>
-                    </div>
-                    <div class="form-control">
-                        <label class="label" for="trigger-threshold-{channel}">
-                            <span class="label-text">Threshold ({unitInfo.unit})</span>
-                        </label>
-                        <input
-                            id="trigger-threshold-{channel}"
-                            type="number"
-                            step="0.01"
-                            value={view.trigger.threshold}
-                            onchange={(e) => {
-                                if (e.target instanceof HTMLInputElement) {
-                                    commitTriggerNumber("threshold", e.target);
-                                }
-                            }}
-                            class="input input-bordered input-warning"
-                        />
-                    </div>
-                    <div class="form-control">
-                        <label class="label" for="trigger-pre-{channel}">
-                            <span class="label-text">Pre Trigger (%)</span>
-                        </label>
-                        <input
-                            id="trigger-pre-{channel}"
-                            type="number"
-                            min="0"
-                            max="95"
-                            step="1"
-                            value={view.trigger.preTriggerPercent || 0}
-                            onchange={(e) => {
-                                if (e.target instanceof HTMLInputElement) {
-                                    view.setPreTriggerPercent(e.target.value);
-                                }
-                            }}
-                            class="input input-bordered input-warning"
-                        />
-                    </div>
-                    <div class="form-control">
-                        <label class="label" for="trigger-post-{channel}">
-                            <span class="label-text">Post Window (s)</span>
-                        </label>
-                        <input
-                            id="trigger-post-{channel}"
-                            type="number"
-                            min="0.01"
-                            step="0.1"
-                            value={view.trigger.postTriggerWindowSec}
-                            onchange={(e) => {
-                                if (e.target instanceof HTMLInputElement) {
-                                    commitTriggerNumber("postTriggerWindowSec", e.target);
-                                }
-                            }}
-                            class="input input-bordered input-warning"
-                        />
-                    </div>
-                    <div class="form-control justify-end">
-                        <button
-                            class="btn btn-outline btn-warning mt-8"
-                            onclick={() => {
-                                view.clearTrigger();
-                                onchange();
-                            }}
-                        >
-                            Re-arm Trigger
-                        </button>
-                    </div>
-                </div>
+            <!--
+                Trigger controls, shown only in trigger modes. The threshold is compared with
+                the plotted (calibrated) values, so it is in the channel's unit, not always volts.
+            -->
+            <div class="mb-4 flex flex-wrap items-end gap-x-6 gap-y-3 rounded-lg bg-base-200 p-4">
+                <label class="flex w-36 flex-col gap-1">
+                    <span class={fieldLabel}>Edge</span>
+                    <select
+                        id="trigger-type-{channel}"
+                        value={view.trigger.type || 'rising'}
+                        onchange={(e) => {
+                            if (e.target instanceof HTMLSelectElement) {
+                                view.setTriggerEdge(e.target.value as 'rising' | 'falling');
+                            }
+                        }}
+                        class="select select-bordered select-warning w-full"
+                    >
+                        <option value="rising">Rising</option>
+                        <option value="falling">Falling</option>
+                    </select>
+                </label>
+                <label class="flex w-28 flex-col gap-1">
+                    <span class={fieldLabel}>Threshold ({unitInfo.unit})</span>
+                    <input
+                        id="trigger-threshold-{channel}"
+                        type="number"
+                        step="0.01"
+                        value={view.trigger.threshold}
+                        onchange={(e) => {
+                            if (e.target instanceof HTMLInputElement) {
+                                commitTriggerNumber("threshold", e.target);
+                            }
+                        }}
+                        class="input input-bordered input-warning w-full"
+                    />
+                </label>
+                <label class="flex w-32 flex-col gap-1">
+                    <span class={fieldLabel}>Pre-Trigger (%)</span>
+                    <input
+                        id="trigger-pre-{channel}"
+                        type="number"
+                        min="0"
+                        max="95"
+                        step="1"
+                        value={view.trigger.preTriggerPercent || 0}
+                        onchange={(e) => {
+                            if (e.target instanceof HTMLInputElement) {
+                                view.setPreTriggerPercent(e.target.value);
+                            }
+                        }}
+                        class="input input-bordered input-warning w-full"
+                    />
+                </label>
+                <label class="flex w-32 flex-col gap-1">
+                    <span class={fieldLabel}>Post Window (s)</span>
+                    <input
+                        id="trigger-post-{channel}"
+                        type="number"
+                        min="0.01"
+                        step="0.1"
+                        value={view.trigger.postTriggerWindowSec}
+                        onchange={(e) => {
+                            if (e.target instanceof HTMLInputElement) {
+                                commitTriggerNumber("postTriggerWindowSec", e.target);
+                            }
+                        }}
+                        class="input input-bordered input-warning w-full"
+                    />
+                </label>
+                <button
+                    class="btn btn-outline btn-warning"
+                    onclick={() => {
+                        view.clearTrigger();
+                        onchange();
+                    }}
+                >
+                    Re-arm
+                </button>
             </div>
         {/if}
 
         <div>
-            <h4 class="text-md font-medium text-base-content mb-4">Data Plot</h4>
             <RealTimePlot
                 bind:this={plot}
                 data={plotConfig.data}
