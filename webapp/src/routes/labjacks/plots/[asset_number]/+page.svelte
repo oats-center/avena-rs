@@ -1,7 +1,15 @@
 <script lang="ts">
     import { onMount, onDestroy, untrack } from "svelte";
     import { page } from "$app/stores";
-    import { connect, getKeyValue, getKeys, type NatsService } from "$lib/nats.svelte";
+    import { env } from "$env/dynamic/public";
+    import {
+        connect,
+        getKeyValue,
+        getKeyValues,
+        getKeys,
+        KV_READ_CONCURRENCY,
+        type NatsService
+    } from "$lib/nats.svelte";
     import { isExportCancelled } from "$lib/exporter";
     import { runExportOnOwnConnection } from "$lib/plot/export-run";
     import {
@@ -81,7 +89,11 @@
      * any other value with a 404 before the page loads.
      */
     let assetNumber = $state<number>(0);
-    let labjackConfig = $state<LabJackConfig | null>(null);
+    /**
+     * Config of the plotted LabJack. Replaced on each load, never mutated, so it is not
+     * deep-proxied: the decode loop reads it every frame.
+     */
+    let labjackConfig = $state.raw<LabJackConfig | null>(null);
     let loading = $state<boolean>(true);
     let error = $state<string>("");
     /**
@@ -165,6 +177,10 @@
     let scanQueue = new ScanMessageQueue(MAX_QUEUED_MESSAGES_PER_CHANNEL);
     /** Channels chosen for plotting, at most two. Only these are decoded. */
     let selectedPlotChannels = $state<Set<number>>(new Set());
+    /** True when the server relays a camera (`PUBLIC_CAMERA=1`, see `routes/camera`). */
+    const cameraAvailable = env.PUBLIC_CAMERA === "1";
+    /** Whether the camera column is shown; it streams only while shown. */
+    let showCamera = $state<boolean>(false);
     /** True when buffers changed since the last {@link flushUiSnapshots}. */
     let uiSnapshotDirty = false;
 
@@ -389,14 +405,17 @@
      *
      * Steps: closes the old connection; reads `serverName` and `credentialsContent` from
      * sessionStorage and opens a new connection; reads the `key` query parameter from bucket
-     * `avenabox` and uses it if its `asset_number` matches; otherwise reads every
-     * `*.*.*.config` key in turn and takes the first match. Then resets channel state,
+     * `avenabox` and uses it if its `asset_number` matches; otherwise lists every
+     * `*.*.*.config` key and reads them in key order, {@link KV_READ_CONCURRENCY} at a
+     * time, taking the first match (no later batch is read once one matches). Then
+     * resets channel state,
      * pushes a first snapshot and calls {@link startDataSubscription}. Sets `error` on
      * missing login data, connection failure or no match; the promise does not reject.
      *
      * @remarks
-     * Also used by the Retry button and when the URL changes. It lists all config keys
-     * even when the `key` config matches. Each call first closes the previous connection
+     * Also used by the Retry button and when the URL changes. It lists the config keys
+     * only when the `key` config is missing or does not match. Each call first closes
+     * the previous connection
      * and its subscriptions. If a newer call starts, or the page is destroyed, while this
      * one is waiting, this one closes the connection it opened and changes nothing.
      */
@@ -454,17 +473,26 @@
             if (!foundConfig) {
                 const keys = await getKeys(service, "avenabox", "*.*.*.config");
                 if (superseded()) return;
-                for (const key of keys) {
-                    try {
-                        const configStr = await getKeyValue(service, "avenabox", key);
-                        const config = normalizeLabJackConfig(JSON.parse(configStr));
-                        if (!config) continue;
-                        if (config.asset_number === assetNumber) {
-                            foundConfig = config;
-                            break;
+                // Read a batch concurrently, then check it in key order, so the first
+                // match in key order wins as before.
+                for (let start = 0; start < keys.length && !foundConfig; start += KV_READ_CONCURRENCY) {
+                    const batch = keys.slice(start, start + KV_READ_CONCURRENCY);
+                    const values = await getKeyValues(service, "avenabox", batch);
+                    if (superseded()) return;
+                    for (let i = 0; i < batch.length; i++) {
+                        const key = batch[i];
+                        const result = values[i];
+                        try {
+                            if (result.status === "rejected") throw result.reason;
+                            const config = normalizeLabJackConfig(JSON.parse(result.value));
+                            if (!config) continue;
+                            if (config.asset_number === assetNumber) {
+                                foundConfig = config;
+                                break;
+                            }
+                        } catch (err) {
+                            console.error(`Failed to parse config for key ${key}:`, err);
                         }
-                    } catch (err) {
-                        console.error(`Failed to parse config for key ${key}:`, err);
                     }
                 }
             }
@@ -985,8 +1013,8 @@ URL: `/labjacks/plots/[asset_number]?key=<kv key>`
   `+page.ts` answers 404 and SvelteKit shows the shared error page.
 - `key` (optional): KV key of the config in bucket `avenabox`, such as
   `<site>.<box>.<source>.config`. It is used only when that config's `asset_number`
-  matches. Otherwise the page reads every `*.*.*.config` key and takes the first config
-  with a matching `asset_number`. The page writes nothing to KV.
+  matches. Otherwise the page lists the `*.*.*.config` keys, reads them in key order a
+  batch at a time, and takes the first config with a matching `asset_number`. The page writes nothing to KV.
 
 Reads `serverName` and `credentialsContent` from sessionStorage (written by the login
 page) and opens its own connection to central NATS. Shows an error if either is missing.
@@ -1007,6 +1035,11 @@ to a rolling buffer sorted by sample time (NaN and missing time become gaps; dup
 are skipped), runs the trigger logic and, at most about 30 times a second, copies the buffers into
 reactive state. Each channel can run in Free Run, Trigger Normal or Trigger Single.
 
+Camera: when the server sets `PUBLIC_CAMERA=1`, a camera chip follows the channel chips.
+Turning it on shows `CameraView` (loaded on demand) in a column beside the plots that
+stays in view while scrolling, above them on narrow screens, or centred on its own when
+no channel is selected; it streams `/camera`
+only while shown and the tab is visible.
 Hands off to one `RealTimePlot` per selected channel, passing the live snapshot, the
 frozen trigger capture, axis settings and trigger state.
 
@@ -1073,7 +1106,7 @@ subscription is released and nothing is saved.
     </div>
 
     <!-- Main Content -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="{showCamera ? 'max-w-screen-2xl' : 'max-w-7xl'} mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <!-- Error Message -->
         {#if error}
             <div class="alert alert-error mb-6">
@@ -1110,38 +1143,9 @@ subscription is released and nothing is saved.
                 <span class="ml-4 text-lg text-base-content">Loading LabJack configuration...</span>
             </div>
         {:else if labjackConfig}
-            <StatsPanel
-                config={labjackConfig}
-                {assetNumber}
-                channels={renderableChannels}
-                views={channelViews}
-                {connectionState}
-            />
-
-            <div class="flex justify-end mb-6">
-                <button
-                    class="btn btn-warning"
-                    onclick={openExportModal}
-                    disabled={!isConnected || exporting}
-                >
-                    Download Historical Data
-                </button>
-            </div>
-
             <div class="card bg-base-100 shadow-xl mb-6">
-                <div class="card-body">
-                    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                        <div>
-                            <h4 class="card-title text-base-content">Visible Plot Channels</h4>
-                            <p class="text-sm text-base-content/70">
-                                Select up to 2 channels. Only selected channels are received, parsed and rendered in the browser; a newly selected channel starts with an empty plot.
-                            </p>
-                        </div>
-                        <span class="badge badge-info badge-sm">
-                            {selectedPlotChannels.size} / 2 selected
-                        </span>
-                    </div>
-                    <div class="flex flex-wrap gap-3 mt-2">
+                <div class="card-body gap-4 md:flex-row md:items-start">
+                    <div class="flex min-w-0 flex-1 flex-wrap gap-3">
                         {#each labjackConfig.sensor_settings.channels_enabled as channel}
                             {@const isSelected = selectedPlotChannels.has(channel)}
                             {@const disableUnchecked = !isSelected && selectedPlotChannels.size >= 2}
@@ -1160,24 +1164,63 @@ subscription is released and nothing is saved.
                                 <span class="label-text">Channel {channel}</span>
                             </label>
                         {/each}
+                        {#if cameraAvailable}
+                            <label class="label cursor-pointer gap-2 border border-base-300 rounded-lg px-3 py-2" title="Camera">
+                                <input
+                                    type="checkbox"
+                                    class="checkbox checkbox-primary checkbox-sm"
+                                    aria-label="Camera"
+                                    bind:checked={showCamera}
+                                />
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/>
+                                </svg>
+                            </label>
+                        {/if}
                     </div>
+                    <button
+                        class="btn btn-warning shrink-0 self-start"
+                        onclick={openExportModal}
+                        disabled={!isConnected || exporting}
+                    >
+                        Download Historical Data
+                    </button>
                 </div>
             </div>
 
 
-            <!-- Channel Sections: Combined Trigger Settings + Plots -->
-            <div class="space-y-6">
-                {#each renderableChannels as channel (channel)}
-                    {@const view = channelViews.get(channel)}
-                    {#if view}
-                        <ChannelCard
-                            {view}
-                            dataFormat={labjackConfig.sensor_settings.data_formats[labjackConfig.sensor_settings.channels_enabled.indexOf(channel)]}
-                            unitInfo={channelUnitInfo(labjackConfig.sensor_settings, channel)}
-                            onchange={markUiSnapshotDirty}
-                        />
-                    {/if}
-                {/each}
+            <div class={showCamera && renderableChannels.length ? "grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]" : ""}>
+                <!-- Channel cards: controls and plot for each selected channel -->
+                <div class="space-y-6">
+                    {#each renderableChannels as channel (channel)}
+                        {@const view = channelViews.get(channel)}
+                        {#if view}
+                            <ChannelCard
+                                {view}
+                                dataFormat={labjackConfig.sensor_settings.data_formats[labjackConfig.sensor_settings.channels_enabled.indexOf(channel)]}
+                                unitInfo={channelUnitInfo(labjackConfig.sensor_settings, channel)}
+                                onchange={markUiSnapshotDirty}
+                            />
+                        {/if}
+                    {/each}
+                </div>
+                {#if showCamera}
+                    <div class={renderableChannels.length ? "order-first lg:order-none lg:sticky lg:top-6" : "mx-auto max-w-4xl"}>
+                        {#await import("$lib/components/CameraView.svelte") then { default: CameraView }}
+                            <CameraView src="/camera" />
+                        {/await}
+                    </div>
+                {/if}
+            </div>
+
+            <div class="mt-6">
+                <StatsPanel
+                    config={labjackConfig}
+                    {assetNumber}
+                    channels={renderableChannels}
+                    views={channelViews}
+                    {connectionState}
+                />
             </div>
         {/if}
     </div>

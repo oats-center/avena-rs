@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import type { DataPoint } from "$lib/plot/stream";
+    import { lowerBound, upperBound, type DataPoint } from "$lib/plot/stream";
     import {
         computeValueRange,
         downsampleMinMax,
@@ -766,24 +766,29 @@
     /**
      * Counts the samples with a value inside the visible time window (the same window
      * {@link getVisiblePoints} uses, without the neighbors past each edge and without
-     * gap markers).
+     * gap markers). Counts in place over the window's index range, without copying it.
      *
      * @param dataToPlot - Samples being shown, sorted by time.
      * @returns Number of samples on screen.
      */
     function countVisibleSamples(dataToPlot: DataPoint[]): number {
         if (dataToPlot.length === 0) return 0;
-        let points: DataPoint[];
+        let start: number;
+        let end: number;
         if (mode === 'frozen' && isTriggered) {
             const { pre, post } = getFrozenWindow();
-            points = selectTimeWindow(dataToPlot, triggerTime - pre * 1000, triggerTime + post * 1000);
+            start = triggerTime - pre * 1000;
+            end = triggerTime + post * 1000;
         } else {
             const referenceTime = getContinuousReferenceTime(dataToPlot);
-            points = selectTimeWindow(dataToPlot, referenceTime - timeWindow * 1000, referenceTime);
+            start = referenceTime - timeWindow * 1000;
+            end = referenceTime;
         }
+        // Same bounds as `selectTimeWindow(dataToPlot, start, end)`.
+        const to = upperBound(dataToPlot, end);
         let count = 0;
-        for (const point of points) {
-            if (Number.isFinite(point.value)) count++;
+        for (let i = lowerBound(dataToPlot, start); i < to; i++) {
+            if (Number.isFinite(dataToPlot[i].value)) count++;
         }
         return count;
     }
@@ -953,21 +958,26 @@
     }
     
     /**
-     * Sizes the canvas, draws the first frame, and redraws on window resize. The
-     * cleanup removes the listener and cancels any queued frame.
+     * Sizes the canvas, draws the first frame, and redraws whenever the canvas changes
+     * size (layout changes such as the camera column opening) or the window resizes
+     * (which also covers zoom changing the device pixel ratio). The cleanup stops both
+     * and cancels any queued frame.
      */
     onMount(() => {
         resizeCanvas();
         scheduleRender();
-        
+
         const handleResize = () => {
             resizeCanvas();
             scheduleRender();
         };
-        
+
+        const observer = new ResizeObserver(handleResize);
+        observer.observe(canvas);
         window.addEventListener('resize', handleResize);
-        
+
         return () => {
+            observer.disconnect();
             window.removeEventListener('resize', handleResize);
             if (animationFrame) cancelAnimationFrame(animationFrame);
         };

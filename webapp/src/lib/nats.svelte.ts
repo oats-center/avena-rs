@@ -8,8 +8,22 @@
  *
  * @module
  */
-import { Kvm } from "@nats-io/kv";
+import { jetstream } from "@nats-io/jetstream";
+import { Kvm, type KV } from "@nats-io/kv";
 import { wsconnect, credsAuthenticator, type NatsConnection } from "@nats-io/nats-core";
+
+/** Matches server text that starts with a URL scheme such as `ws://`. */
+const SCHEME_PATTERN = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//;
+
+/** Encodes `.creds` text for the authenticator. */
+const textEncoder = new TextEncoder();
+
+/**
+ * Most KV reads {@link getKeyValues} keeps in flight at once. Enough to hide the round
+ * trip on a slow link (100-350 ms), few enough that the last reply of a batch of
+ * configs does not queue behind megabytes of others on a 2 Mbit/s link.
+ */
+export const KV_READ_CONCURRENCY = 16;
 
 /**
  * Removes one trailing slash from a URL string.
@@ -28,7 +42,7 @@ function stripTrailingSlash(url: string): string {
  * @returns `true` if the text matches `<scheme>://` at the start.
  */
 function hasScheme(server: string): boolean {
-  return /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(server);
+  return SCHEME_PATTERN.test(server);
 }
 
 /**
@@ -45,62 +59,45 @@ function defaultWebsocketScheme(): "ws" | "wss" {
 }
 
 /**
- * Normalizes user-entered NATS server text into a WebSocket URL.
+ * Builds the WebSocket URLs to try, in order, for a NATS server value.
  *
- * Trims the text, adds the scheme from `defaultWebsocketScheme` when none is
- * given, maps `http:` to `ws:` and `https:` to `wss:`, and drops a bare `/` path and
- * any trailing slash.
+ * The first candidate is the normalized URL: the text is trimmed, the scheme from
+ * `defaultWebsocketScheme` is added when none is given, `http:` becomes `ws:` and
+ * `https:` becomes `wss:`, and a bare `/` path and any trailing slash are dropped.
+ * When the user omitted a scheme, the same URL with the other scheme (`ws` or `wss`)
+ * follows, so the dashboard can connect from both local and HTTPS deployments.
+ * An explicit scheme yields a single candidate. The text is parsed as a URL once.
  *
  * @param serverName - Server text as typed, e.g. `nats1.oats:8080` or
  *   `wss://nats.example.org`.
- * @returns The WebSocket URL, an empty string for blank input, or the text with the
- *   scheme prefix added if it does not parse as a URL.
- */
-function normalizeWebsocketServer(serverName: string): string {
-  const trimmed = serverName.trim();
-  if (!trimmed) return "";
-
-  const candidate = hasScheme(trimmed) ? trimmed : `${defaultWebsocketScheme()}://${trimmed}`;
-
-  try {
-    const parsed = new URL(candidate);
-    if (parsed.protocol === "http:") parsed.protocol = "ws:";
-    if (parsed.protocol === "https:") parsed.protocol = "wss:";
-    if (parsed.pathname === "/") parsed.pathname = "";
-    return stripTrailingSlash(parsed.toString());
-  } catch {
-    return candidate;
-  }
-}
-
-/**
- * Builds the WebSocket URLs to try, in order, for a NATS server value.
- *
- * The first candidate is the normalized URL from `normalizeWebsocketServer`.
- * When the user omitted a scheme, the same URL with the other scheme (`ws` or `wss`)
- * follows, so the dashboard can connect from both local and HTTPS deployments.
- * An explicit scheme yields a single candidate.
- *
- * @param serverName - Server text as typed.
- * @returns Distinct candidate URLs, or an empty array for blank input.
+ * @returns Distinct candidate URLs, or an empty array for blank input. Text that does
+ *   not parse as a URL yields a single candidate: the text with the scheme prefix
+ *   added.
  */
 function buildServerCandidates(serverName: string): string[] {
-  const normalized = normalizeWebsocketServer(serverName);
-  if (!normalized) return [];
+  const trimmed = serverName.trim();
+  if (!trimmed) return [];
 
-  const candidates = new Set<string>([normalized]);
-  const explicitScheme = hasScheme(serverName.trim());
+  const explicitScheme = hasScheme(trimmed);
+  const candidate = explicitScheme ? trimmed : `${defaultWebsocketScheme()}://${trimmed}`;
+
+  let parsed: URL;
   try {
-    const parsed = new URL(normalized);
-    if (!explicitScheme && parsed.protocol === "ws:") {
-      parsed.protocol = "wss:";
-      candidates.add(stripTrailingSlash(parsed.toString()));
-    } else if (!explicitScheme && parsed.protocol === "wss:") {
-      parsed.protocol = "ws:";
-      candidates.add(stripTrailingSlash(parsed.toString()));
-    }
+    parsed = new URL(candidate);
   } catch {
-    // keep normalized only if URL parsing fails
+    return [candidate];
+  }
+  if (parsed.protocol === "http:") parsed.protocol = "ws:";
+  if (parsed.protocol === "https:") parsed.protocol = "wss:";
+  if (parsed.pathname === "/") parsed.pathname = "";
+
+  const candidates = new Set<string>([stripTrailingSlash(parsed.toString())]);
+  if (!explicitScheme && parsed.protocol === "ws:") {
+    parsed.protocol = "wss:";
+    candidates.add(stripTrailingSlash(parsed.toString()));
+  } else if (!explicitScheme && parsed.protocol === "wss:") {
+    parsed.protocol = "ws:";
+    candidates.add(stripTrailingSlash(parsed.toString()));
   }
 
   return Array.from(candidates);
@@ -116,6 +113,8 @@ export class NatsService {
   public connection: NatsConnection;
   /** Key-Value manager bound to the active connection. */
   public kvm: Kvm;
+  /** Buckets opened by {@link NatsService.bucket}, by name. */
+  private buckets = new Map<string, Promise<KV>>();
   /**
    * Wraps an established connection and its KV manager.
    *
@@ -129,6 +128,27 @@ export class NatsService {
     this.connection = connection;
     this.kvm = kvm;
   }
+
+  /**
+   * Opens a KV bucket once per connection and returns the same handle afterwards.
+   *
+   * Opening only binds a handle to the bucket's stream; the helpers below used to do it
+   * on every call. A failed open is not kept, so the next call tries again.
+   *
+   * @param name - KV bucket name, e.g. `avenabox`.
+   * @returns The bucket handle.
+   */
+  bucket(name: string): Promise<KV> {
+    let opened = this.buckets.get(name);
+    if (!opened) {
+      opened = this.kvm.open(name);
+      this.buckets.set(name, opened);
+      opened.catch(() => {
+        if (this.buckets.get(name) === opened) this.buckets.delete(name);
+      });
+    }
+    return opened;
+  }
 }
 
 /**
@@ -138,6 +158,11 @@ export class NatsService {
  * connection that succeeds. TLS is turned off explicitly for `ws:` URLs. Every
  * failure is logged to the console, and the function resolves to `null` instead of
  * rejecting.
+ *
+ * The KV manager's JetStream client skips the JetStream account check
+ * (`checkAPI: false`), which would otherwise cost one extra round trip each time a
+ * bucket is opened. An account without JetStream then fails on the first KV request
+ * instead of on open.
  *
  * @param serverName - Server text as typed, e.g. `nats1.oats:8080`. A missing
  *   scheme is filled in from the page protocol, and the other scheme is tried next.
@@ -159,7 +184,7 @@ export async function connect(serverName: string, credentialsContent?: string): 
   const connectionOptions: any = {};
   if (credentialsContent) {
     try {
-      const creds = new TextEncoder().encode(credentialsContent);
+      const creds = textEncoder.encode(credentialsContent);
       connectionOptions.authenticator = credsAuthenticator(creds);
     } catch (error) {
       console.error("Failed to process credentials:", error);
@@ -170,13 +195,13 @@ export async function connect(serverName: string, credentialsContent?: string): 
   let lastError: unknown = null;
   for (const server of servers) {
     try {
-      const parsed = new URL(server);
+      // Candidates come from `URL.toString()`, so the scheme is already lower case.
       const nc = await wsconnect({
         ...connectionOptions,
         servers: server,
-        tls: parsed.protocol === "ws:" ? false : undefined
+        tls: server.startsWith("ws:") ? false : undefined
       });
-      const kvm = new Kvm(nc);
+      const kvm = new Kvm(jetstream(nc, { checkAPI: false }));
       return new NatsService(nc, kvm);
     } catch (error) {
       lastError = error;
@@ -204,7 +229,7 @@ export async function connect(serverName: string, credentialsContent?: string): 
 export async function getKeys(nats: NatsService, bucket: string, filter?: string): Promise<string[]> {
   if (!nats) throw new Error("NATS connection is not initialized");
   
-  const kv = await nats.kvm.open(bucket);
+  const kv = await nats.bucket(bucket);
   const keysList: string[] = [];
   const keys = await kv.keys(filter);
   
@@ -229,12 +254,49 @@ export async function getKeys(nats: NatsService, bucket: string, filter?: string
 export async function getKeyValue(nats: NatsService, bucket: string, key: string): Promise<string> {
   if (!nats) throw new Error("Nats connection is not initialized");
   
-  const kv = await nats.kvm.open(bucket);
+  const kv = await nats.bucket(bucket);
   let val = await kv.get(key);
   
   const valStr = val?.string() || "Key value does not exist";
   
   return valStr;
+}
+
+/**
+ * Reads several values from a KV bucket, keeping up to `concurrency` reads in flight.
+ *
+ * Each read costs one round trip, so reading N keys one after another costs N round
+ * trips; this costs about N / `concurrency`. Each key is read as by
+ * {@link getKeyValue}, and one failed read does not stop the others.
+ *
+ * @param nats - Connected service from {@link connect}.
+ * @param bucket - KV bucket name, e.g. `avenabox`.
+ * @param keys - Keys to read.
+ * @param concurrency - Most reads in flight at once. Default {@link KV_READ_CONCURRENCY}.
+ * @returns One result per key, in the order of `keys`: the value (see
+ *   {@link getKeyValue}, including its `"Key value does not exist"` text) or the error.
+ */
+export async function getKeyValues(
+  nats: NatsService,
+  bucket: string,
+  keys: readonly string[],
+  concurrency: number = KV_READ_CONCURRENCY
+): Promise<PromiseSettledResult<string>[]> {
+  const results: PromiseSettledResult<string>[] = new Array(keys.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < keys.length) {
+      const index = next++;
+      try {
+        results[index] = { status: "fulfilled", value: await getKeyValue(nats, bucket, keys[index]) };
+      } catch (reason) {
+        results[index] = { status: "rejected", reason };
+      }
+    }
+  };
+  const workers = Math.max(1, Math.min(Math.floor(concurrency) || 1, keys.length));
+  await Promise.all(Array.from({ length: workers }, worker));
+  return results;
 }
 
 /**
@@ -248,7 +310,7 @@ export async function getKeyValue(nats: NatsService, bucket: string, key: string
  */
 export async function putKeyValue(nats: NatsService, bucket: string, key: string, newValue: string): Promise<void> {
   if (!nats) throw new Error("Nats connection is not initialized");
-  const kv = await nats.kvm.open(bucket);
+  const kv = await nats.bucket(bucket);
   await kv.put(key, newValue);
 }
 
@@ -267,24 +329,38 @@ async function closeQuietly(nats: NatsService | null): Promise<void> {
 }
 
 /**
- * Opens a new connection, writes a configuration object to KV as JSON, and closes it.
+ * Returns `shared` when it is still open, so a write can skip opening a connection.
+ *
+ * @param shared - Connection the caller already holds, or `null`/`undefined`.
+ * @returns `shared`, or `null` when it is missing or closed.
+ */
+function openShared(shared: NatsService | null | undefined): NatsService | null {
+  return shared && !shared.connection.isClosed() ? shared : null;
+}
+
+/**
+ * Writes a configuration object to KV as JSON.
  *
  * The object is serialized with two-space indentation. Errors are logged to the
  * console and reported through the return value instead of being thrown.
  *
- * The connection opened here is always closed before returning.
+ * Uses `shared` when it is given and still open, which saves the connection setup
+ * (several round trips on a slow link); it is left open. Otherwise a new connection
+ * is opened and always closed before returning.
  *
  * @param serverName - Server text passed to {@link connect}.
  * @param credentialsContent - Contents of a `.creds` file, not a path.
  * @param bucket - KV bucket name, e.g. `avenabox`.
  * @param key - Key to write, e.g. `<site>.<box>.<source>.config`.
  * @param configData - Value passed to `JSON.stringify`.
+ * @param shared - Open connection to reuse, such as the page's own. Optional.
  * @returns `true` if the value was written, `false` if connecting or writing failed.
  */
-export async function updateConfig(serverName: string, credentialsContent: string, bucket: string, key: string, configData: any): Promise<boolean> {
+export async function updateConfig(serverName: string, credentialsContent: string, bucket: string, key: string, configData: any, shared?: NatsService | null): Promise<boolean> {
+  const reused = openShared(shared);
   let nats: NatsService | null = null;
   try {
-    nats = await connect(serverName, credentialsContent);
+    nats = reused ?? await connect(serverName, credentialsContent);
     if (!nats) {
       console.error("Failed to connect to NATS for update");
       return false;
@@ -297,41 +373,44 @@ export async function updateConfig(serverName: string, credentialsContent: strin
     console.error("Failed to update config:", error);
     return false;
   } finally {
-    await closeQuietly(nats);
+    if (!reused) await closeQuietly(nats);
   }
 }
 
 /**
- * Opens a new connection, deletes one key from a KV bucket, and closes it.
+ * Deletes one key from a KV bucket.
  *
  * Uses the KV `delete` operation, which records a delete marker rather than purging
  * the key's history. Errors are logged to the console and reported through the
  * return value instead of being thrown.
  *
- * The connection opened here is always closed before returning.
+ * Uses `shared` when it is given and still open, and leaves it open. Otherwise a new
+ * connection is opened and always closed before returning.
  *
  * @param serverName - Server text passed to {@link connect}.
  * @param credentialsContent - Contents of a `.creds` file, not a path.
  * @param bucket - KV bucket name, e.g. `avenabox`.
  * @param key - Key to delete.
+ * @param shared - Open connection to reuse, such as the page's own. Optional.
  * @returns `true` if the key was deleted, `false` if connecting or deleting failed.
  */
-export async function deleteKey(serverName: string, credentialsContent: string, bucket: string, key: string): Promise<boolean> {
+export async function deleteKey(serverName: string, credentialsContent: string, bucket: string, key: string, shared?: NatsService | null): Promise<boolean> {
+  const reused = openShared(shared);
   let nats: NatsService | null = null;
   try {
-    nats = await connect(serverName, credentialsContent);
+    nats = reused ?? await connect(serverName, credentialsContent);
     if (!nats) {
       console.error("Failed to connect to NATS for deletion");
       return false;
     }
     
-    const kv = await nats.kvm.open(bucket);
+    const kv = await nats.bucket(bucket);
     await kv.delete(key);
     return true;
   } catch (error) {
     console.error("Failed to delete key:", error);
     return false;
   } finally {
-    await closeQuietly(nats);
+    if (!reused) await closeQuietly(nats);
   }
 }

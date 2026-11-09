@@ -779,29 +779,122 @@ impl ParquetLogger {
         }
     }
 
-    /// Buffers one timestamped value and flushes when the row group is full.
+    /// Buffers the leading samples of a run that belong in this file.
     ///
-    /// The first call also records the file's first timestamp, which
-    /// [`Self::should_rotate_before`] uses to find the file's rotation window.
+    /// The run's samples are at `first_timestamp_unix_ns`, `first_timestamp_unix_ns +
+    /// sample_interval_ns` and so on, one per value. The first one must belong in this
+    /// file (see [`Self::accepts`]). The samples are buffered up to the first one that
+    /// belongs in another file or the row group limit, whichever comes first (see
+    /// [`Self::run_len`]), and the row group is flushed if it is full. This writes the
+    /// same rows and row groups as buffering the samples one by one with a rotation
+    /// check before each. The first call also records the file's first timestamp,
+    /// which [`Self::should_rotate_before`] uses to find the file's rotation window.
     ///
     /// # Arguments
     ///
-    /// * `timestamp_unix_ns` - Sample time in Unix nanoseconds.
-    /// * `val` - Raw sample value.
+    /// * `first_timestamp_unix_ns` - Time of the first value, in Unix nanoseconds.
+    /// * `sample_interval_ns` - Time between values.
+    /// * `rotate_secs` - Rotation window length in seconds.
+    /// * `values` - Raw sample values, in time order. Every one of their timestamps
+    ///   must fit in an `i64`.
+    ///
+    /// # Returns
+    ///
+    /// How many values were buffered: at least 1 unless `values` is empty.
     ///
     /// # Errors
     ///
     /// Returns an error if writing the full row group fails (see [`Self::flush`]).
     /// The file is then unusable and should be dropped without closing it.
-    fn write_row(&mut self, timestamp_unix_ns: i64, val: f64) -> Result<(), DynError> {
+    fn write_run(
+        &mut self,
+        first_timestamp_unix_ns: i64,
+        sample_interval_ns: u64,
+        rotate_secs: u64,
+        values: impl ExactSizeIterator<Item = f64>,
+    ) -> Result<usize, DynError> {
+        if values.len() == 0 {
+            return Ok(0);
+        }
         self.first_timestamp_unix_ns
-            .get_or_insert(timestamp_unix_ns);
-        self.timestamps.push(timestamp_unix_ns);
-        self.values.push(val);
+            .get_or_insert(first_timestamp_unix_ns);
+        let count = self.run_len(
+            first_timestamp_unix_ns,
+            sample_interval_ns,
+            values.len(),
+            rotate_secs,
+        );
+        // No wrap-around for a valid run: every timestamp fits in an i64, so the
+        // interval does too whenever there is more than one sample.
+        let step = sample_interval_ns as i64;
+        self.timestamps.extend(
+            (0..count as i64).map(|k| first_timestamp_unix_ns.wrapping_add(k.wrapping_mul(step))),
+        );
+        self.values.extend(values.take(count));
         if self.timestamps.len() >= self.max_rows {
             self.flush()?;
         }
-        Ok(())
+        Ok(count)
+    }
+
+    /// Returns whether a sample belongs in this file.
+    ///
+    /// It does when it has the file's UTC date and [`Self::should_rotate_before`] is
+    /// `false`.
+    fn accepts(&self, timestamp_unix_ns: i64, rotate_secs: u64) -> bool {
+        self.date == timestamp_ns_to_utc_date(timestamp_unix_ns)
+            && !self.should_rotate_before(timestamp_unix_ns, rotate_secs)
+    }
+
+    /// Counts how many samples of a run can be written to this file in one go.
+    ///
+    /// The run starts at `timestamp_unix_ns`, which this file must accept (see
+    /// [`Self::accepts`]), and rises by `sample_interval_ns` per sample. The file's
+    /// first timestamp must already be recorded. Timestamps only rise, and the file
+    /// accepts every timestamp from its first one up to the end of its rotation window
+    /// or UTC date, so the accepted samples are a prefix of the run. The count is also
+    /// capped at the rows left before the row group is full, so a flush (which can make
+    /// [`Self::should_rotate_before`] change its answer) always ends a run.
+    ///
+    /// Checks the last sample first, which settles the common case of a whole message
+    /// inside one window, and otherwise binary searches for the first rejected sample.
+    ///
+    /// # Arguments
+    ///
+    /// * `timestamp_unix_ns` - Time of the run's first sample.
+    /// * `sample_interval_ns` - Time between samples.
+    /// * `max_len` - Samples left in the run. Every one of their timestamps must fit
+    ///   in an `i64`.
+    /// * `rotate_secs` - Rotation window length in seconds.
+    ///
+    /// # Returns
+    ///
+    /// A count between 1 and `max_len`, or 0 when `max_len` is 0.
+    fn run_len(
+        &self,
+        timestamp_unix_ns: i64,
+        sample_interval_ns: u64,
+        max_len: usize,
+        rotate_secs: u64,
+    ) -> usize {
+        let room = self.max_rows.saturating_sub(self.timestamps.len()).max(1);
+        let max_len = max_len.min(room);
+        let step = sample_interval_ns as i64;
+        let at = |k: usize| timestamp_unix_ns.wrapping_add((k as i64).wrapping_mul(step));
+        if max_len <= 1 || self.accepts(at(max_len - 1), rotate_secs) {
+            return max_len;
+        }
+        // Sample `lo` is accepted and sample `hi` is not.
+        let (mut lo, mut hi) = (0, max_len - 1);
+        while hi - lo > 1 {
+            let mid = lo + (hi - lo) / 2;
+            if self.accepts(at(mid), rotate_secs) {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        hi
     }
 
     /// Writes the current buffer as a Parquet row group.
@@ -1166,7 +1259,10 @@ impl CloseOutcome {
 /// Before each sample, the open file is closed and a new one opened (with the next
 /// free part index) when there is no open file, when the sample's UTC date differs
 /// from the file's, or when [`ParquetLogger::should_rotate_before`] says so. A single
-/// payload can therefore close a file part way through.
+/// payload can therefore close a file part way through. The check is made once per run
+/// of samples rather than once per sample: [`ParquetLogger::write_run`] buffers, in one
+/// go, as many of the following samples as the open file accepts. The files and row
+/// groups are the same as with a check per sample.
 ///
 /// Sequence gaps and resets are logged but do not stop the write. A payload that is
 /// not a valid FlatBuffer `Scan` is logged and writes nothing. If a sample timestamp
@@ -1231,8 +1327,11 @@ fn process_scan_payload(
         if let Some(vals) = scan.values() {
             let first_sample_unix_ns = scan.first_sample_unix_ns();
             let sample_interval_ns = scan.sample_interval_ns();
+            let representable =
+                representable_samples(first_sample_unix_ns, sample_interval_ns, vals.len());
 
-            for (index, v) in vals.iter().enumerate() {
+            let mut index = 0;
+            while index < vals.len() {
                 let timestamp_unix_ns = match sample_timestamp_ns(
                     first_sample_unix_ns,
                     sample_interval_ns,
@@ -1248,15 +1347,11 @@ fn process_scan_payload(
                     }
                 };
 
-                let sample_date = timestamp_ns_to_utc_date(timestamp_unix_ns);
-                if logger
+                if !logger
                     .as_ref()
-                    .map(|l| {
-                        l.date != sample_date
-                            || l.should_rotate_before(timestamp_unix_ns, rotate_secs)
-                    })
-                    .unwrap_or(true)
+                    .is_some_and(|l| l.accepts(timestamp_unix_ns, rotate_secs))
                 {
+                    let sample_date = timestamp_ns_to_utc_date(timestamp_unix_ns);
                     if let Some(l) = logger.take() {
                         outcome.record(l.close(), channel, *file_index);
                         if outcome.failed > 0 {
@@ -1277,18 +1372,30 @@ fn process_scan_payload(
                     ));
                 }
 
-                let written = match logger.as_mut() {
-                    Some(log) => log.write_row(timestamp_unix_ns, v),
-                    None => Ok(()),
+                let Some(log) = logger.as_mut() else {
+                    break;
                 };
-                if let Err(err) = written {
-                    // The half-written file is dropped without a footer. It keeps
-                    // its `.inprogress` name, is quarantined at the next start, and
-                    // its samples come back through redelivery.
-                    outcome.record(Err(err), channel, *file_index);
-                    *logger = None;
-                    return outcome;
-                }
+                // Sample `index` fitted, so `representable` is above it; the run
+                // stops before the first timestamp that would overflow.
+                let run = representable.saturating_sub(index).max(1);
+                let written = log.write_run(
+                    timestamp_unix_ns,
+                    sample_interval_ns,
+                    rotate_secs,
+                    vals.iter().skip(index).take(run),
+                );
+                let len = match written {
+                    Ok(len) => len,
+                    Err(err) => {
+                        // The half-written file is dropped without a footer. It keeps
+                        // its `.inprogress` name, is quarantined at the next start, and
+                        // its samples come back through redelivery.
+                        outcome.record(Err(err), channel, *file_index);
+                        *logger = None;
+                        return outcome;
+                    }
+                };
+                index += len;
             }
         }
     } else {
@@ -1552,10 +1659,7 @@ impl ReplayState {
         channel: u8,
         force: bool,
     ) {
-        let Some(path) = self.path.clone() else {
-            return;
-        };
-        if !force && self.last_refresh.elapsed() < CHECKPOINT_INTERVAL {
+        if self.path.is_none() || (!force && self.last_refresh.elapsed() < CHECKPOINT_INTERVAL) {
             return;
         }
         self.last_refresh = Instant::now();
@@ -1571,6 +1675,9 @@ impl ReplayState {
         if floor <= self.saved {
             return;
         }
+        let Some(path) = self.path.clone() else {
+            return;
+        };
         let checkpoint = replay_guard::Checkpoint {
             stream: self.stream.clone(),
             stream_created_unix_ns: self.stream_created_unix_ns,
@@ -1762,6 +1869,7 @@ async fn spawn_channel_logger(
             next_file_index(&parquet_root, asset, channel, Utc::now().date_naive());
         let mut active_calibration = calibration_for_task;
         let mut last_sequence: Option<u64> = None;
+        // Messages whose samples are in the open file, with their payloads dropped.
         let mut pending: Vec<jetstream::Message> = Vec::new();
         let mut last_data = Instant::now();
 
@@ -1806,6 +1914,13 @@ async fn spawn_channel_logger(
                                     // the new file too, so it waits.
                                     ack_messages(&mut pending, channel).await;
                                 }
+                                // Only the reply subject is needed to ack. The payload
+                                // is a slice of the connection's shared read buffer, so
+                                // holding it until the file closes would keep a
+                                // window's worth of raw messages in memory next to
+                                // the decoded samples.
+                                let mut msg = msg;
+                                msg.message.payload = Default::default();
                                 pending.push(msg);
                             }
                             if pending.len() >= MAX_PENDING_ACKS_PER_FILE {
@@ -1908,6 +2023,30 @@ fn sample_timestamp_ns(
         .checked_add((sample_interval_ns as u128).saturating_mul(index as u128))
         .ok_or_else(|| "sample timestamp overflowed u128".to_string())?;
     i64::try_from(timestamp).map_err(|_| "sample timestamp exceeds i64 range".to_string())
+}
+
+/// Counts the leading samples of a scan whose timestamps fit in an `i64`.
+///
+/// These are exactly the indices for which [`sample_timestamp_ns`] succeeds.
+///
+/// # Arguments
+///
+/// * `first_sample_unix_ns` - Time of the scan's first sample, in Unix nanoseconds.
+/// * `sample_interval_ns` - Time between samples, in nanoseconds.
+/// * `count` - Number of samples in the scan.
+fn representable_samples(
+    first_sample_unix_ns: u64,
+    sample_interval_ns: u64,
+    count: usize,
+) -> usize {
+    let Some(headroom) = (i64::MAX as u64).checked_sub(first_sample_unix_ns) else {
+        return 0;
+    };
+    if sample_interval_ns == 0 {
+        return count;
+    }
+    let last_index = headroom / sample_interval_ns;
+    usize::try_from(last_index).map_or(count, |last| count.min(last.saturating_add(1)))
 }
 
 /// Converts a Unix nanosecond timestamp to its UTC calendar date.
@@ -2249,6 +2388,15 @@ mod tests {
     use parquet::file::reader::{FileReader, SerializedFileReader};
     use uuid::Uuid;
 
+    impl ParquetLogger {
+        /// Buffers one timestamped value and flushes when the row group is full:
+        /// [`ParquetLogger::write_run`] with a single sample.
+        fn write_row(&mut self, timestamp_unix_ns: i64, val: f64) -> Result<(), DynError> {
+            self.write_run(timestamp_unix_ns, 0, 1, std::iter::once(val))
+                .map(|_| ())
+        }
+    }
+
     /// Returns a unique, not yet created directory under the system temp directory.
     fn temporary_parquet_root(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!("rust-ljm-{name}-{}", Uuid::new_v4()))
@@ -2462,6 +2610,177 @@ mod tests {
         );
         builder.finish(scan, None);
         builder.finished_data().to_vec()
+    }
+
+    /// One test scan: first timestamp, interval and values.
+    type TestScan = (u64, u64, Vec<f64>);
+    /// Rows of one archived file: timestamp and value.
+    type TestRows = Vec<(i64, f64)>;
+
+    /// Groups samples into files with one rotation check per sample, the way the
+    /// archiver did before it checked once per run.
+    fn files_by_per_sample_check(scans: &[TestScan], rotate_secs: u64) -> Vec<TestRows> {
+        let mut files: Vec<(NaiveDate, i64, TestRows)> = Vec::new();
+        for (first, interval, values) in scans {
+            for (index, v) in values.iter().enumerate() {
+                let Ok(ts) = sample_timestamp_ns(*first, *interval, index) else {
+                    break;
+                };
+                let date = timestamp_ns_to_utc_date(ts);
+                let rotate = files.last().is_none_or(|(d, start, _)| {
+                    *d != date
+                        || ts < *start
+                        || rotation_window(ts, rotate_secs) != rotation_window(*start, rotate_secs)
+                });
+                if rotate {
+                    files.push((date, ts, Vec::new()));
+                }
+                files.last_mut().expect("file").2.push((ts, *v));
+            }
+        }
+        files.into_iter().map(|(_, _, rows)| rows).collect()
+    }
+
+    /// Rows of every archived file under `root`, in date and part order.
+    fn archived_rows(root: &Path) -> Vec<TestRows> {
+        use parquet::record::RowAccessor;
+        let mut paths = archived_files(root);
+        paths.sort();
+        paths
+            .iter()
+            .map(|path| {
+                SerializedFileReader::new(fs::File::open(path).expect("open"))
+                    .expect("readable")
+                    .get_row_iter(None)
+                    .expect("row iterator")
+                    .map(|row| {
+                        let row = row.expect("row");
+                        (row.get_long(0).expect("ts"), row.get_double(1).expect("v"))
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// Writing a run at a time splits samples into exactly the files a check per
+    /// sample does: across window edges inside a message, a UTC midnight that is not
+    /// a window edge, time going backwards, a zero interval and a timestamp overflow.
+    #[test]
+    fn runs_rotate_exactly_like_a_check_per_sample() {
+        let root = temporary_parquet_root("runs");
+        // 7 s windows do not divide a day, so midnight falls inside a window.
+        let rotate_secs = 7;
+        let midnight = 1_789_430_400_000_000_000_u64; // 2026-09-15 00:00:00 UTC
+        assert_eq!(midnight % 86_400_000_000_000, 0);
+        let mut scans: Vec<TestScan> = Vec::new();
+        // 3.7 s messages from 30 s before midnight, crossing several windows each.
+        for k in 0..20_u64 {
+            let first = midnight - 30_000_000_000 + k * 3_700_000_000;
+            let values = (0..100).map(|i| (k * 100 + i) as f64).collect();
+            scans.push((first, 37_000_000, values));
+        }
+        // Time goes backwards, then a message with every sample at one time.
+        scans.push((midnight + 1_000_000_000, 450_000_000, vec![-1.0; 40]));
+        scans.push((midnight + 30_000_000_000, 0, vec![-2.0; 10]));
+        // An empty message, then one whose last two timestamps do not fit in an i64.
+        scans.push((midnight + 40_000_000_000, 1_000, Vec::new()));
+        scans.push((
+            i64::MAX as u64 - 2_500,
+            1_000,
+            vec![-3.0, -4.0, -5.0, -6.0, -7.0],
+        ));
+
+        let mut logger = None;
+        let mut file_index = 0;
+        let mut last_sequence = None;
+        for (sequence, (first, interval, values)) in scans.iter().enumerate() {
+            let outcome = process_scan_payload(
+                &scan_payload(*first, *interval, sequence as u64, values),
+                8,
+                1001,
+                &root,
+                &CalibrationSpec::default(),
+                rotate_secs,
+                &mut logger,
+                &mut file_index,
+                &mut last_sequence,
+            );
+            assert_eq!(outcome.failed, 0);
+        }
+        logger.take().expect("open file").close().expect("close");
+
+        let expected = files_by_per_sample_check(&scans, rotate_secs);
+        assert!(expected.len() > 10, "the scans cross many files");
+        assert_eq!(expected.last().expect("file").len(), 3);
+        assert_eq!(archived_rows(&root), expected);
+        fs::remove_dir_all(root).expect("temporary directory should be removable");
+    }
+
+    /// A run that fills the row group is split there, so row groups keep their size.
+    #[test]
+    fn runs_split_at_the_row_group_limit() {
+        let root = temporary_parquet_root("run-row-groups");
+        let first_ns = 1_754_395_200_000_000_000_u64;
+        let date = timestamp_ns_to_utc_date(first_ns as i64);
+        let mut logger = ParquetLogger::new(1001, 3, 1, date, CalibrationSpec::default(), &root);
+        logger.max_rows = 4;
+        logger.write_row(first_ns as i64, 0.0).expect("row");
+        let mut logger = Some(logger);
+        let mut file_index = 1;
+        let mut last_sequence = None;
+        let values: Vec<f64> = (1..=10).map(f64::from).collect();
+        let payload = scan_payload(first_ns + 1_000, 1_000, 0, &values);
+        let outcome = process_scan_payload(
+            &payload,
+            3,
+            1001,
+            &root,
+            &CalibrationSpec::default(),
+            300,
+            &mut logger,
+            &mut file_index,
+            &mut last_sequence,
+        );
+        assert_eq!(outcome, CloseOutcome::default());
+        let path = logger.take().expect("open file").close().expect("close");
+        let reader =
+            SerializedFileReader::new(fs::File::open(&path).expect("open")).expect("readable");
+        let sizes: Vec<i64> = reader
+            .metadata()
+            .row_groups()
+            .iter()
+            .map(|rg| rg.num_rows())
+            .collect();
+        assert_eq!(sizes, vec![4, 4, 3]);
+        let rows = archived_rows(&root);
+        let expected: Vec<(i64, f64)> = (0..=10)
+            .map(|i| (first_ns as i64 + i * 1_000, i as f64))
+            .collect();
+        assert_eq!(rows, vec![expected]);
+        fs::remove_dir_all(root).expect("temporary directory should be removable");
+    }
+
+    /// The count of representable samples matches where `sample_timestamp_ns` fails.
+    #[test]
+    fn representable_samples_matches_timestamp_overflow() {
+        let max = i64::MAX as u64;
+        for (first, interval, count) in [
+            (0, 1_000, 10),
+            (max - 2_500, 1_000, 5),
+            (max, 1, 3),
+            (max, 0, 3),
+            (max + 1, 0, 3),
+            (0, u64::MAX, 3),
+        ] {
+            let fitting = (0..count)
+                .take_while(|&i| sample_timestamp_ns(first, interval, i).is_ok())
+                .count();
+            assert_eq!(
+                representable_samples(first, interval, count),
+                fitting,
+                "first {first} interval {interval}"
+            );
+        }
     }
 
     /// End-to-end check against a real NATS server:

@@ -35,10 +35,29 @@ export interface LabJackSubjectConfig {
 }
 
 /**
- * Characters Rust's `char::is_whitespace` accepts (the Unicode `White_Space` set).
- * JavaScript's `\s` differs from it: it also matches U+FEFF and misses U+0085.
+ * Reports whether a UTF-16 code unit is a character Rust's `char::is_whitespace`
+ * accepts (the Unicode `White_Space` set, all in the BMP). JavaScript's `\s` differs
+ * from it: it also matches U+FEFF and misses U+0085.
+ *
+ * @param code - UTF-16 code unit.
+ * @returns `true` for U+0009-U+000D, space, U+0085, U+00A0, U+1680, U+2000-U+200A,
+ *   U+2028, U+2029, U+202F, U+205F and U+3000.
  */
-const RUST_WHITESPACE = /^[\t\n\v\f\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]$/;
+function isRustWhitespace(code: number): boolean {
+  if (code <= 0x20) return code === 0x20 || (code >= 0x09 && code <= 0x0d);
+  if (code < 0x85) return false;
+  return (
+    code === 0x85 ||
+    code === 0xa0 ||
+    code === 0x1680 ||
+    (code >= 0x2000 && code <= 0x200a) ||
+    code === 0x2028 ||
+    code === 0x2029 ||
+    code === 0x202f ||
+    code === 0x205f ||
+    code === 0x3000
+  );
+}
 
 /**
  * Converts free-form identity text into a single NATS subject token.
@@ -61,16 +80,26 @@ const RUST_WHITESPACE = /^[\t\n\v\f\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u202
  * ```
  */
 function sanitizeToken(raw: string): string {
+  // Code units, not code points: every character kept or mapped is in the BMP, and
+  // both halves of a surrogate pair are dropped, just as the whole character was.
   let out = "";
-  for (const ch of raw) {
-    if (/^[A-Za-z0-9_-]$/.test(ch)) {
-      out += ch.toLowerCase();
-    } else if (ch === "." || ch === "/" || RUST_WHITESPACE.test(ch)) {
-      out += "-";
+  for (let i = 0; i < raw.length; i++) {
+    const code = raw.charCodeAt(i);
+    if (code >= 0x41 && code <= 0x5a) {
+      out += String.fromCharCode(code + 0x20); // A-Z to a-z
+    } else if ((code >= 0x61 && code <= 0x7a) || (code >= 0x30 && code <= 0x39) || code === 0x5f || code === 0x2d) {
+      out += raw[i]; // a-z, 0-9, `_`, `-`
+    } else if (code === 0x2e || code === 0x2f || isRustWhitespace(code)) {
+      out += "-"; // `.`, `/`, whitespace
     }
   }
 
-  const trimmed = out.replace(/^-+|-+$/g, "");
+  // Trim leading and trailing `-`.
+  let start = 0;
+  let end = out.length;
+  while (start < end && out.charCodeAt(start) === 0x2d) start++;
+  while (end > start && out.charCodeAt(end - 1) === 0x2d) end--;
+  const trimmed = out.slice(start, end);
   return trimmed || "unknown";
 }
 

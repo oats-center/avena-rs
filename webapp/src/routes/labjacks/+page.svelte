@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
-    import { connect, getKeys, getKeyValue, updateConfig, deleteKey } from "$lib/nats.svelte";
+    import { connect, getKeys, getKeyValues, updateConfig, deleteKey } from "$lib/nats.svelte";
     import { normalizeCalibration, resolveCalibrationUnit, RAW_UNIT } from "$lib/calibration";
     import { planConfigSave } from "$lib/plot/config-key";
     import LabJackConfigModal from "$lib/components/LabJackConfigModal.svelte";
@@ -31,8 +31,8 @@
      */
     let isAddingNew = $state<boolean>(false);
     /**
-     * Connection opened by {@link loadLabJacks} and used for KV reads. Closed before each
-     * reload and when the page is destroyed.
+     * Connection opened by {@link loadLabJacks} and used for KV reads, and for writes and
+     * deletes while it is open. Closed before each reload and when the page is destroyed.
      */
     let natsService: any = null;
     /**
@@ -78,8 +78,10 @@
      *
      * Reads `serverName` and `credentialsContent` from sessionStorage and opens a new
      * connection, then lists keys matching
-     * `*.*.*.config` in bucket `avenabox` and parses each one with
-     * {@link normalizeLabJackConfig}. A key that fails to parse is logged and skipped.
+     * `*.*.*.config` in bucket `avenabox`, reads them with `getKeyValues` (several reads
+     * in flight at once, so the load costs a few round trips instead of one per key) and
+     * parses each one with {@link normalizeLabJackConfig}. A key that fails to read or
+     * parse is logged and skipped. Cards keep the listing order.
      * Replaces {@link labjacks} with the result. Sets `error` when login data is missing,
      * the connection fails or listing fails; the promise does not reject.
      *
@@ -126,16 +128,18 @@
             
             const newLabJacks = new Map<string, LabJackConfig>();
             
-            // Load each LabJack configuration
-            for (const key of keys) {
+            // Read the configurations concurrently; results come back in key order.
+            const values = await getKeyValues(service, "avenabox", keys);
+            keys.forEach((key, index) => {
+                const result = values[index];
                 try {
-                    const configStr = await getKeyValue(service, "avenabox", key);
-                    const config = normalizeLabJackConfig(JSON.parse(configStr));
+                    if (result.status === "rejected") throw result.reason;
+                    const config = normalizeLabJackConfig(JSON.parse(result.value));
                     if (config) newLabJacks.set(key, config);
                 } catch (err) {
                     console.error(`Failed to parse config for key ${key}:`, err);
                 }
-            }
+            });
             
             if (superseded()) return;
             labjacks = newLabJacks;
@@ -203,9 +207,9 @@
     /**
      * Deletes a config from KV after the user confirms.
      *
-     * Calls `deleteKey`, which opens its own short-lived connection with the sessionStorage
-     * credentials. On success the card is removed from {@link labjacks}; on failure `error`
-     * is set.
+     * Calls `deleteKey` on this page's connection, or on a short-lived one opened with the
+     * sessionStorage credentials when the page has none open. On success the card is
+     * removed from {@link labjacks}; on failure `error` is set.
      *
      * @param key - KV key in `avenabox` to delete.
      */
@@ -225,7 +229,7 @@
             }
             
             // Delete the key using the delete operation
-            const success = await deleteKey(serverName, credentialsContent, "avenabox", key);
+            const success = await deleteKey(serverName, credentialsContent, "avenabox", key, natsService);
             
             if (success) {
                 // Remove from local state
@@ -256,8 +260,9 @@
      * in their `CFG_KEY` setting and ignore deletes, so a box keeps running its last
      * config until `CFG_KEY` is changed to the new key.
      *
-     * `updateConfig` and `deleteKey` open their own short-lived connections. On success
-     * the modal closes; on failure `error` is set and the modal stays open.
+     * `updateConfig` and `deleteKey` use this page's connection while it is open, and
+     * otherwise open their own short-lived ones. On success the modal closes; on failure
+     * `error` is set and the modal stays open.
      *
      * @param config - Config returned by `LabJackConfigModal`.
      */
@@ -296,7 +301,7 @@
                 return;
             }
 
-            const success = await updateConfig(serverName, credentialsContent, "avenabox", key, sanitizedConfig);
+            const success = await updateConfig(serverName, credentialsContent, "avenabox", key, sanitizedConfig, natsService);
             
             if (success) {
                 // Update local state
@@ -305,7 +310,7 @@
 
                 // Remove the old key only after the new one is stored.
                 if (plan.previousKey) {
-                    const deleted = await deleteKey(serverName, credentialsContent, "avenabox", plan.previousKey);
+                    const deleted = await deleteKey(serverName, credentialsContent, "avenabox", plan.previousKey, natsService);
                     if (deleted) {
                         newLabJacks.delete(plan.previousKey);
                     } else {
@@ -373,8 +378,8 @@ KV bucket `avenabox`:
 - Writes a config to `<site>.<box>.<source>.config` on save (an edit that changes site,
   box or source moves it to the new key and then deletes the old one), deletes a config
   key on delete. Writes
-  and deletes go through `updateConfig` and `deleteKey`, which each open their own
-  short-lived connection.
+  and deletes go through `updateConfig` and `deleteKey`, on the page's connection while it
+  is open and otherwise on a short-lived connection of their own.
 
 The page subscribes to no subjects. Editing and adding are done in
 `LabJackConfigModal`, which gets the config, `isAddingNew`, all loaded configs and the

@@ -187,8 +187,13 @@ export function ingestScan(
         points.push({ timestamp: markerTime, value: Number.NaN, raw: Number.NaN, sourceTimestamp: markerTime, receivedAt });
     }
 
-    for (let i = startIndex; i < count; i++) {
-        const timestamp = timeAt(i);
+    // Same integer nanoseconds as `timeAt(i)`, stepped by one interval per sample
+    // instead of a BigInt multiply per sample.
+    let sampleNs = scan.firstSampleUnixNs + intervalNs * BigInt(startIndex);
+    let lastTimestamp = firstMs;
+    for (let i = startIndex; i < count; i++, sampleNs += intervalNs) {
+        const timestamp = Number(sampleNs) / 1_000_000;
+        lastTimestamp = timestamp;
         const raw = scan.values[i];
         let value = Number.NaN;
         const missing = isMissingRawValue(raw);
@@ -200,7 +205,7 @@ export function ingestScan(
     }
 
     const nextState: ChannelStreamState = {
-        lastTimestamp: timeAt(count - 1),
+        lastTimestamp,
         lastFirstMs: firstMs,
         lastSequence: sequence,
         lastIntervalMs: intervalMs,

@@ -19,7 +19,7 @@ import { getTriggerWindows, type TriggerCapture, type TriggerSettings } from './
  */
 export type ChannelPlotMode = 'free_run' | 'trigger_normal' | 'trigger_single';
 
-/** Axis settings of one channel, edited in the Mode & Axis panel. */
+/** Axis settings of one channel, edited in its channel card's toolbar. */
 export interface AxisSettings {
     /** When true the plot scales Y to the data and ignores `yMin` and `yMax`. */
     autoY: boolean;

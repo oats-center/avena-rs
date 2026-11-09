@@ -1362,6 +1362,29 @@ fn replace_dummy_samples(batch: &mut [f64]) -> usize {
     replaced
 }
 
+/// Copies one channel's samples out of an interleaved LJM batch into `out`.
+///
+/// LJM returns scans interleaved (`ch0, ch1, ..., ch0, ch1, ...`). `out` is cleared
+/// first, so one buffer can be reused for every channel of every read.
+///
+/// # Arguments
+///
+/// * `batch` - Interleaved samples from one LJM read; its length must be a
+///   multiple of `num_channels` (a trailing partial scan is ignored).
+/// * `num_channels` - Channels per scan, greater than zero.
+/// * `channel` - Position of the channel in the scan list, below `num_channels`.
+/// * `out` - Receives the channel's samples in scan order.
+///
+/// # Examples
+///
+/// ```text
+/// batch [a0, b0, a1, b1], 2 channels, channel 1  ->  out [b0, b1]
+/// ```
+fn deinterleave_channel(batch: &[f64], num_channels: usize, channel: usize, out: &mut Vec<f64>) {
+    out.clear();
+    out.extend(batch.chunks_exact(num_channels).map(|scan| scan[channel]));
+}
+
 /// Returns the current Unix timestamp in nanoseconds.
 ///
 /// # Errors
@@ -1473,16 +1496,14 @@ async fn sample_with_config(
     .await?;
 
     let handle = labjack::open_labjack_from_env()?;
+    // Stops the stream and closes the handle on every return path below.
+    let _guard = LabJackGuard { handle };
     let info = labjack::handle_info(handle)?;
     let ip = labjack::handle_ip_address(&info)?.unwrap_or_else(|| "N/A".to_string());
     println!(
         "[labjack] connected via {:?}, serial {}, ip {}",
         info.connection_type, info.serial_number, ip
     );
-    // Stops the stream and closes the handle on every return path below.
-    let _guard = LabJackGuard { handle };
-
-    let info = LJMLibrary::get_handle_info(handle)?;
     println!(
         "[run #{run_id}] Connected to {:?} (serial {})",
         info.device_type, info.serial_number
@@ -1550,9 +1571,14 @@ async fn sample_with_config(
     });
     drop(scan_tx);
 
+    // Reused for every message of the run, so encoding a batch allocates only the
+    // payloads handed to the NATS client.
     let mut builder = FlatBufferBuilder::new();
+    let mut channel_values: Vec<f64> = Vec::new();
     let mut clock = StreamClock::new(sample_interval_ns);
-    let channel_subjects: Vec<String> = cfg
+    // Built once per run as `Subject`s: cloning one per message only bumps a
+    // reference count, where a `String` would be copied twice per publish.
+    let channel_subjects: Vec<async_nats::Subject> = cfg
         .channels
         .iter()
         .map(|ch| {
@@ -1566,6 +1592,7 @@ async fn sample_with_config(
                 cfg.source_type.as_deref(),
                 cfg.source_id.as_deref(),
             )
+            .into()
         })
         .collect();
 
@@ -1621,21 +1648,14 @@ async fn sample_with_config(
                         skipped, sequence
                     );
                 }
-                let scans = batch.chunks(num_channels);
-                let mut per_channel: Vec<Vec<f64>> = (0..num_channels)
-                    .map(|_| Vec::with_capacity(scans.len()))
-                    .collect();
-
-                for scan in batch.chunks(num_channels) {
-                    for (i, v) in scan.iter().enumerate() {
-                        per_channel[i].push(*v);
-                    }
-                }
-
                 let mut acks = Vec::with_capacity(num_channels);
-                for (i, values) in per_channel.into_iter().enumerate() {
+                // Each await only queues the message on the client's command
+                // channel; it waits only if that channel is full, and keeps the
+                // publishes in channel order.
+                for (channel, subject) in channel_subjects.iter().enumerate() {
+                    deinterleave_channel(&batch, num_channels, channel, &mut channel_values);
                     builder.reset();
-                    let values_fb = builder.create_vector(&values);
+                    let values_fb = builder.create_vector(&channel_values);
                     let scan_args = ScanArgs {
                         first_sample_unix_ns,
                         sample_interval_ns,
@@ -1648,7 +1668,7 @@ async fn sample_with_config(
 
                     let data = builder.finished_data().to_vec();
 
-                    match js.publish(channel_subjects[i].clone(), data.into()).await {
+                    match js.publish(subject.clone(), data.into()).await {
                         Ok(ack) => acks.push(ack),
                         Err(e) => eprintln!("[run #{run_id}] Failed to publish to NATS: {}", e),
                     }
@@ -2206,6 +2226,21 @@ mod tests {
         assert!(batch[3].is_nan());
         let mut clean = vec![-3.25, 0.0];
         assert_eq!(replace_dummy_samples(&mut clean), 0);
+    }
+
+    /// Checks that each channel gets its own samples in scan order, and that the
+    /// reused buffer holds only the latest channel.
+    #[test]
+    fn deinterleave_channel_splits_scans_and_reuses_buffer() {
+        // Three channels, three scans: value = 10 * channel + scan.
+        let batch = [0.0, 10.0, 20.0, 1.0, 11.0, 21.0, 2.0, 12.0, 22.0];
+        let mut out = Vec::new();
+        deinterleave_channel(&batch, 3, 0, &mut out);
+        assert_eq!(out, [0.0, 1.0, 2.0]);
+        deinterleave_channel(&batch, 3, 2, &mut out);
+        assert_eq!(out, [20.0, 21.0, 22.0]);
+        deinterleave_channel(&batch[..3], 3, 1, &mut out);
+        assert_eq!(out, [10.0]);
     }
 
     /// Checks that an empty batch is an error.

@@ -170,6 +170,12 @@ const EXPORT_FRAME_CANCEL = "cancel";
  */
 const BLOB_PART_BYTES = 8 * 1024 * 1024;
 
+/** Encodes the request and cancel bodies. Shared, since encoders hold no state. */
+const textEncoder = new TextEncoder();
+
+/** Decodes JSON frame bodies. Used only for whole messages, never with `stream`. */
+const textDecoder = new TextDecoder();
+
 /**
  * Reports whether a decoded JSON frame is a `meta` frame.
  *
@@ -316,7 +322,7 @@ export async function downloadExportViaNats(
       h.set(EXPORT_FRAME_HEADER, EXPORT_FRAME_CANCEL);
       nats.connection.publish(
         ackSubject,
-        new TextEncoder().encode(JSON.stringify({ type: EXPORT_FRAME_CANCEL })),
+        textEncoder.encode(JSON.stringify({ type: EXPORT_FRAME_CANCEL })),
         { headers: h }
       );
       if (typeof nats.connection.flush === "function") {
@@ -342,7 +348,7 @@ export async function downloadExportViaNats(
   try {
     nats.connection.publish(
       requestSubject,
-      new TextEncoder().encode(
+      textEncoder.encode(
         JSON.stringify({ ...payload, format: "csv" as const, ack_subject: ackSubject })
       ),
       { reply: inbox }
@@ -390,19 +396,18 @@ export async function downloadExportViaNats(
         }
         totalBytes += data.byteLength;
         // One ack per stored chunk; the exporter waits for these every eight chunks.
-        // A cancelled download sends no more acks.
+        // A cancelled download sends no more acks. The client writes the ack to the
+        // socket on its own right after this task; a flush here would only wait one
+        // round trip for the server's PONG before the next chunk is handled.
         if (signal?.aborted) throw cancelledError();
         nats.connection.publish(ackSubject);
-        if (typeof nats.connection.flush === "function") {
-          await nats.connection.flush();
-        }
         options.onProgress?.(totalBytes);
         continue;
       }
 
       let parsed: Frame;
       try {
-        parsed = JSON.parse(new TextDecoder().decode(msg.data)) as Frame;
+        parsed = JSON.parse(textDecoder.decode(msg.data)) as Frame;
       } catch (err) {
         throw new Error(
           err instanceof Error
