@@ -5174,7 +5174,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM21BR61E106MA73L"
+		(property "MPN" "GCM21BR71A106KE22L"
 			(at 257.81 102.87 0)
 			(hide yes)
 			(show_name no)
@@ -5941,7 +5941,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM21BR61E106MA73L"
+		(property "MPN" "GCM21BR71A106KE22L"
 			(at 228.6 104.14 0)
 			(hide yes)
 			(show_name no)
@@ -6690,7 +6690,7 @@
 				)
 			)
 		)
-		(property "MPN" "GRM31CR71E106KA12L"
+		(property "MPN" "GRM319R61E106KA12D"
 			(at 262.89 48.26 0)
 			(hide yes)
 			(show_name no)
