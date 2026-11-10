@@ -60,8 +60,29 @@ export const TARGET_SAMPLES_PER_WINDOW = 1000;
  */
 export const SNAPSHOT_OVERSCAN_FACTOR = 1.25;
 
-/** Most channels plotted at once. */
+/** Channels plotted when the page opens. */
+export const INITIAL_PLOT_CHANNELS = 2;
+
+/** Most channels plotted at once, unless the server sets `PUBLIC_MAX_PLOT_CHANNELS`. */
 export const MAX_PLOT_CHANNELS = 2;
+
+/**
+ * Reads the most channels plotted at once from the server's `PUBLIC_MAX_PLOT_CHANNELS`.
+ *
+ * @param value - The variable's text, or `undefined` when unset.
+ * @returns The value when it is a whole number from 1 to 16, else {@link MAX_PLOT_CHANNELS}.
+ *
+ * @example
+ * ```ts
+ * plotChannelLimit("6");       // 6
+ * plotChannelLimit(undefined); // 2
+ * plotChannelLimit("lots");    // 2
+ * ```
+ */
+export function plotChannelLimit(value: string | undefined): number {
+    const limit = Number(value);
+    return Number.isInteger(limit) && limit >= 1 && limit <= 16 ? limit : MAX_PLOT_CHANNELS;
+}
 
 /**
  * Returns the automatic X window for a scan rate.
@@ -126,30 +147,35 @@ export function isTriggerMode(mode: ChannelPlotMode): boolean {
 }
 
 /**
- * Chooses up to two channels to plot after a config load.
+ * Chooses the channels to plot after a config load.
  *
- * Keeps channels from the previous selection that are still enabled, then fills up to
- * two from `enabledChannels` in config order.
+ * Keeps channels from the previous selection that are still enabled (up to `limit`),
+ * then, if fewer than {@link INITIAL_PLOT_CHANNELS} remain, fills up to that many from
+ * `enabledChannels` in config order.
  *
  * @param enabledChannels - `channels_enabled` from the config.
  * @param existingSelection - Selection before the reload, if any.
- * @returns A new set with at most two channels.
+ * @param limit - Most channels plotted at once.
+ * @returns A new set with at most `limit` channels.
  */
-export function pickInitialPlotChannels(enabledChannels: number[], existingSelection?: Set<number>): Set<number> {
+export function pickInitialPlotChannels(
+    enabledChannels: number[],
+    existingSelection?: Set<number>,
+    limit: number = MAX_PLOT_CHANNELS
+): Set<number> {
     const selected = new Set<number>();
 
     if (existingSelection) {
         for (const channel of enabledChannels) {
-            if (existingSelection.has(channel)) {
-                selected.add(channel);
-                if (selected.size >= MAX_PLOT_CHANNELS) return selected;
-            }
+            if (selected.size >= limit) return selected;
+            if (existingSelection.has(channel)) selected.add(channel);
         }
     }
 
+    const fill = Math.min(limit, INITIAL_PLOT_CHANNELS);
     for (const channel of enabledChannels) {
+        if (selected.size >= fill) break;
         selected.add(channel);
-        if (selected.size >= MAX_PLOT_CHANNELS) break;
     }
 
     return selected;
@@ -161,12 +187,18 @@ export function pickInitialPlotChannels(enabledChannels: number[], existingSelec
  * @param selection - Current selection.
  * @param channel - LabJack channel number.
  * @param checked - New checkbox state.
- * @returns A new set, or `null` when the change is refused (adding a third channel).
+ * @param limit - Most channels plotted at once.
+ * @returns A new set, or `null` when the change is refused (adding past `limit`).
  */
-export function togglePlotSelection(selection: Set<number>, channel: number, checked: boolean): Set<number> | null {
+export function togglePlotSelection(
+    selection: Set<number>,
+    channel: number,
+    checked: boolean,
+    limit: number = MAX_PLOT_CHANNELS
+): Set<number> | null {
     const next = new Set(selection);
     if (checked) {
-        if (next.size >= MAX_PLOT_CHANNELS) return null;
+        if (next.size >= limit) return null;
         next.add(channel);
     } else {
         next.delete(channel);

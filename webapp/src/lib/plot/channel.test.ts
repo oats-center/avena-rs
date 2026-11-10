@@ -11,7 +11,8 @@ import {
     snapshotKeepMs,
     snapshotRateHz,
     streamProblemText,
-    togglePlotSelection
+    togglePlotSelection,
+    plotChannelLimit
 } from './channel';
 import type { TriggerCapture } from './trigger';
 
@@ -48,6 +49,21 @@ describe('plot selection', () => {
         expect(togglePlotSelection(new Set([1, 2]), 3, true)).toBeNull();
         expect([...togglePlotSelection(new Set([1]), 3, true)!]).toEqual([1, 3]);
         expect([...togglePlotSelection(new Set([1, 2]), 1, false)!]).toEqual([2]);
+    });
+    it('allows up to the configured limit and keeps that many across a reload', () => {
+        const six = new Set([0, 1, 2, 3, 4, 5]);
+        expect(togglePlotSelection(new Set([0, 1, 2, 3, 4]), 5, true, 6)).toEqual(six);
+        expect(togglePlotSelection(six, 6, true, 6)).toBeNull();
+        expect([...pickInitialPlotChannels([0, 1, 2, 3, 4, 5, 6], six, 6)]).toEqual([0, 1, 2, 3, 4, 5]);
+        expect([...pickInitialPlotChannels([0, 1, 2, 3], undefined, 6)]).toEqual([0, 1]);
+        expect([...pickInitialPlotChannels([0, 1, 2], new Set([0, 1, 2]), 2)]).toEqual([0, 1]);
+    });
+    it('reads the limit from the server setting, falling back to two', () => {
+        expect(plotChannelLimit('6')).toBe(6);
+        expect(plotChannelLimit(undefined)).toBe(2);
+        expect(plotChannelLimit('0')).toBe(2);
+        expect(plotChannelLimit('2.5')).toBe(2);
+        expect(plotChannelLimit('lots')).toBe(2);
     });
 });
 

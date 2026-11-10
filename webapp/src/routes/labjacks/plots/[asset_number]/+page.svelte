@@ -38,6 +38,7 @@
         deriveAutoTimeWindowSec,
         isTriggerMode,
         pickInitialPlotChannels,
+        plotChannelLimit,
         requiredBufferPoints,
         snapshotKeepMs,
         togglePlotSelection
@@ -175,7 +176,9 @@
      * Drained in order by {@link processPendingVisualizationBatches}.
      */
     let scanQueue = new ScanMessageQueue(MAX_QUEUED_MESSAGES_PER_CHANNEL);
-    /** Channels chosen for plotting, at most two. Only these are decoded. */
+    /** Most channels plotted at once: `PUBLIC_MAX_PLOT_CHANNELS`, else 2. */
+    const maxPlotChannels = plotChannelLimit(env.PUBLIC_MAX_PLOT_CHANNELS);
+    /** Channels chosen for plotting, at most {@link maxPlotChannels}. Only these are decoded. */
     let selectedPlotChannels = $state<Set<number>>(new Set());
     /** True when the server relays a camera (`PUBLIC_CAMERA=1`, see `routes/camera`). */
     const cameraAvailable = env.PUBLIC_CAMERA === "1";
@@ -313,14 +316,14 @@
      * Adds or removes a channel from the plot selection and subscribes or unsubscribes
      * its live subject.
      *
-     * Adding is ignored when two channels are already selected. The channel's stream
+     * Adding is ignored when {@link maxPlotChannels} are already selected. The channel's stream
      * state is reset either way, so a channel selected again starts a fresh trace.
      *
      * @param channel - LabJack channel number.
      * @param checked - New checkbox state.
      */
     function togglePlotChannel(channel: number, checked: boolean) {
-        const next = togglePlotSelection(selectedPlotChannels, channel, checked);
+        const next = togglePlotSelection(selectedPlotChannels, channel, checked, maxPlotChannels);
         if (!next) return;
         selectedPlotChannels = next;
         resetChannelStream(channel);
@@ -608,7 +611,8 @@
         scanQueue.clear();
         selectedPlotChannels = pickInitialPlotChannels(
             labjackConfig.sensor_settings.channels_enabled,
-            selectedPlotChannels
+            selectedPlotChannels,
+            maxPlotChannels
         );
         uiSnapshotDirty = false;
     }
@@ -1019,7 +1023,8 @@ URL: `/labjacks/plots/[asset_number]?key=<kv key>`
 Reads `serverName` and `credentialsContent` from sessionStorage (written by the login
 page) and opens its own connection to central NATS. Shows an error if either is missing.
 
-Live data: subscribes only to the channels selected for plotting (at most two), one
+Live data: subscribes only to the channels selected for plotting (two at first, at most
+`PUBLIC_MAX_PLOT_CHANNELS` or two), one
 subject each, built by `liveLabJackChannelSubject`:
 `avenars.<site>.<box>.<source>.live.chNN` for structured configs or
 `<root>.<asset>.data.chNN` for legacy ones. Selecting a channel subscribes it and
@@ -1148,7 +1153,7 @@ subscription is released and nothing is saved.
                     <div class="flex min-w-0 flex-1 flex-wrap gap-3">
                         {#each labjackConfig.sensor_settings.channels_enabled as channel}
                             {@const isSelected = selectedPlotChannels.has(channel)}
-                            {@const disableUnchecked = !isSelected && selectedPlotChannels.size >= 2}
+                            {@const disableUnchecked = !isSelected && selectedPlotChannels.size >= maxPlotChannels}
                             <label class="label cursor-pointer gap-2 border border-base-300 rounded-lg px-3 py-2">
                                 <input
                                     type="checkbox"
